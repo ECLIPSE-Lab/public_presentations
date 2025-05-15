@@ -1,2 +1,3 @@
-# public_presentations
-public_presentations
+# Public presentations of the Pelz Lab
+
+- Data Science for Electron Microscopy
