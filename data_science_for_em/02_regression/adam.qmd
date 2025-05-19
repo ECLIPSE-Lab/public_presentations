@@ -1,0 +1,151 @@
+<!-- ---
+title: "Adam Optimization"
+format: 
+  revealjs:
+    theme: custom.scss
+    css: custom.css
+    width: 1920
+    height: 1080
+    menu:
+      side: right
+      width: wide
+    template-partials:
+      - title-slide.html
+    slide-number: c/t
+    logo: "eclipse_logo_small.png"
+    highlight-style: a11y
+    incremental: false
+    background-transition: fade
+    footer: "©Philipp Pelz - FAU Erlangen-Nürnberg - Data Science for Electron Microscopy"
+execute:
+  eval: true
+  echo: true
+--- -->
+
+# Adam Optimization
+
+- Adam combines multiple optimization techniques:
+  - Stochastic Gradient Descent (SGD)
+  - Minibatch processing
+  - Momentum
+  - Per-coordinate scaling (AdaGrad)
+  - Learning rate adjustment (RMSProp)
+- Popular in deep learning due to:
+  - Robustness
+  - Effectiveness
+  - Computational efficiency
+
+## Previous Optimization Methods
+
+- SGD: Efficient for redundant data
+- Minibatch SGD: Enables parallel processing
+- Momentum: Accelerates convergence
+- AdaGrad: Efficient preconditioning
+- RMSProp: Decoupled scaling
+
+## The Algorithm
+
+### State Variables
+
+- Uses exponential weighted moving averages
+- Momentum estimate:
+  $$\mathbf{v}_t \leftarrow \beta_1 \mathbf{v}_{t-1} + (1 - \beta_1) \mathbf{g}_t$$
+- Second moment estimate:
+  $$\mathbf{s}_t \leftarrow \beta_2 \mathbf{s}_{t-1} + (1 - \beta_2) \mathbf{g}_t^2$$
+- Typical values: $\beta_1 = 0.9$, $\beta_2 = 0.999$
+
+### Bias Correction
+
+- Initial bias towards smaller values
+- Normalized state variables:
+  $$\hat{\mathbf{v}}_t = \frac{\mathbf{v}_t}{1 - \beta_1^t}$$
+  $$\hat{\mathbf{s}}_t = \frac{\mathbf{s}_t}{1 - \beta_2^t}$$
+
+---
+
+### Update Rule
+
+- Rescaled gradient:
+  $$\mathbf{g}_t' = \frac{\eta \hat{\mathbf{v}}_t}{\sqrt{\hat{\mathbf{s}}_t} + \epsilon}$$
+- Parameter update:
+  $$\mathbf{x}_t \leftarrow \mathbf{x}_{t-1} - \mathbf{g}_t'$$
+- Typically $\epsilon = 10^{-6}$
+
+## Implementation
+
+### State Initialization
+
+```{python}
+import d2l
+import torch
+#| label: init-states
+def init_adam_states(feature_dim):
+    v_w, v_b = d2l.zeros((feature_dim, 1)), d2l.zeros(1)
+    s_w, s_b = d2l.zeros((feature_dim, 1)), d2l.zeros(1)
+    return ((v_w, s_w), (v_b, s_b))
+```
+
+### Adam Update
+
+```{python}
+#| label: adam-update
+def adam(params, states, hyperparams):
+    beta1, beta2, eps = 0.9, 0.999, 1e-6
+    for p, (v, s) in zip(params, states):
+        with torch.no_grad():
+            # Update momentum
+            v[:] = beta1 * v + (1 - beta1) * p.grad
+            # Update second moment
+            s[:] = beta2 * s + (1 - beta2) * torch.square(p.grad)
+            # Bias correction
+            v_bias_corr = v / (1 - beta1 ** hyperparams['t'])
+            s_bias_corr = s / (1 - beta2 ** hyperparams['t'])
+            # Parameter update
+            p[:] -= hyperparams['lr'] * v_bias_corr / (
+                torch.sqrt(s_bias_corr) + eps)
+        p.grad.data.zero_()
+    hyperparams['t'] += 1
+```
+
+---
+
+### Training
+
+```{python}
+#| label: training
+data_iter, feature_dim = d2l.get_data_ch11(batch_size=10)
+d2l.train_ch11(adam, init_adam_states(feature_dim),
+               {'lr': 0.01, 't': 1}, data_iter, feature_dim)
+```
+
+---
+
+### Concise Implementation
+
+```{python}
+#| label: concise-impl
+trainer = torch.optim.Adam
+d2l.train_concise_ch11(trainer, {'lr': 0.01}, data_iter)
+```
+
+---
+
+ 
+## Summary
+
+- Adam combines multiple optimization techniques
+- Key features:
+  - Momentum from RMSProp
+  - Bias correction
+  - Learning rate control
+- Yogi variant:
+  - Addresses convergence issues
+  - Modified second moment update
+  - Better variance control
+
+## Exercises
+
+1. Experiment with learning rate adjustments
+2. Rewrite momentum updates without bias correction
+3. Analyze learning rate reduction during convergence
+4. Construct divergence cases for Adam vs Yogi 
