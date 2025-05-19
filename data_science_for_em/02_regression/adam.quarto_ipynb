@@ -1,0 +1,220 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "<!-- ---\n",
+        "title: \"Adam Optimization\"\n",
+        "format: \n",
+        "  revealjs:\n",
+        "    theme: custom.scss\n",
+        "    css: custom.css\n",
+        "    width: 1920\n",
+        "    height: 1080\n",
+        "    menu:\n",
+        "      side: right\n",
+        "      width: wide\n",
+        "    template-partials:\n",
+        "      - title-slide.html\n",
+        "    slide-number: c/t\n",
+        "    logo: \"eclipse_logo_small.png\"\n",
+        "    highlight-style: a11y\n",
+        "    incremental: false\n",
+        "    background-transition: fade\n",
+        "    footer: \"©Philipp Pelz - FAU Erlangen-Nürnberg - Data Science for Electron Microscopy\"\n",
+        "execute:\n",
+        "  eval: true\n",
+        "  echo: true\n",
+        "--- -->\n",
+        "\n",
+        "# Adam Optimization\n",
+        "\n",
+        "- Adam combines multiple optimization techniques:\n",
+        "  - Stochastic Gradient Descent (SGD)\n",
+        "  - Minibatch processing\n",
+        "  - Momentum\n",
+        "  - Per-coordinate scaling (AdaGrad)\n",
+        "  - Learning rate adjustment (RMSProp)\n",
+        "- Popular in deep learning due to:\n",
+        "  - Robustness\n",
+        "  - Effectiveness\n",
+        "  - Computational efficiency\n",
+        "\n",
+        "## Previous Optimization Methods\n",
+        "\n",
+        "- SGD: Efficient for redundant data\n",
+        "- Minibatch SGD: Enables parallel processing\n",
+        "- Momentum: Accelerates convergence\n",
+        "- AdaGrad: Efficient preconditioning\n",
+        "- RMSProp: Decoupled scaling\n",
+        "\n",
+        "## The Algorithm\n",
+        "\n",
+        "### State Variables\n",
+        "\n",
+        "- Uses exponential weighted moving averages\n",
+        "- Momentum estimate:\n",
+        "  $$\\mathbf{v}_t \\leftarrow \\beta_1 \\mathbf{v}_{t-1} + (1 - \\beta_1) \\mathbf{g}_t$$\n",
+        "- Second moment estimate:\n",
+        "  $$\\mathbf{s}_t \\leftarrow \\beta_2 \\mathbf{s}_{t-1} + (1 - \\beta_2) \\mathbf{g}_t^2$$\n",
+        "- Typical values: $\\beta_1 = 0.9$, $\\beta_2 = 0.999$\n",
+        "\n",
+        "### Bias Correction\n",
+        "\n",
+        "- Initial bias towards smaller values\n",
+        "- Normalized state variables:\n",
+        "  $$\\hat{\\mathbf{v}}_t = \\frac{\\mathbf{v}_t}{1 - \\beta_1^t}$$\n",
+        "  $$\\hat{\\mathbf{s}}_t = \\frac{\\mathbf{s}_t}{1 - \\beta_2^t}$$\n",
+        "\n",
+        "---\n",
+        "\n",
+        "### Update Rule\n",
+        "\n",
+        "- Rescaled gradient:\n",
+        "  $$\\mathbf{g}_t' = \\frac{\\eta \\hat{\\mathbf{v}}_t}{\\sqrt{\\hat{\\mathbf{s}}_t} + \\epsilon}$$\n",
+        "- Parameter update:\n",
+        "  $$\\mathbf{x}_t \\leftarrow \\mathbf{x}_{t-1} - \\mathbf{g}_t'$$\n",
+        "- Typically $\\epsilon = 10^{-6}$\n",
+        "\n",
+        "## Implementation\n",
+        "\n",
+        "### State Initialization\n"
+      ],
+      "id": "9bb3394a"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "import d2l\n",
+        "import torch\n",
+        "#| label: init-states\n",
+        "def init_adam_states(feature_dim):\n",
+        "    v_w, v_b = d2l.zeros((feature_dim, 1)), d2l.zeros(1)\n",
+        "    s_w, s_b = d2l.zeros((feature_dim, 1)), d2l.zeros(1)\n",
+        "    return ((v_w, s_w), (v_b, s_b))"
+      ],
+      "id": "734731b2",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### Adam Update\n"
+      ],
+      "id": "30ad3a87"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: adam-update\n",
+        "def adam(params, states, hyperparams):\n",
+        "    beta1, beta2, eps = 0.9, 0.999, 1e-6\n",
+        "    for p, (v, s) in zip(params, states):\n",
+        "        with torch.no_grad():\n",
+        "            # Update momentum\n",
+        "            v[:] = beta1 * v + (1 - beta1) * p.grad\n",
+        "            # Update second moment\n",
+        "            s[:] = beta2 * s + (1 - beta2) * torch.square(p.grad)\n",
+        "            # Bias correction\n",
+        "            v_bias_corr = v / (1 - beta1 ** hyperparams['t'])\n",
+        "            s_bias_corr = s / (1 - beta2 ** hyperparams['t'])\n",
+        "            # Parameter update\n",
+        "            p[:] -= hyperparams['lr'] * v_bias_corr / (\n",
+        "                torch.sqrt(s_bias_corr) + eps)\n",
+        "        p.grad.data.zero_()\n",
+        "    hyperparams['t'] += 1"
+      ],
+      "id": "adam-update",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "---\n",
+        "\n",
+        "### Training\n"
+      ],
+      "id": "323dd425"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: training\n",
+        "data_iter, feature_dim = d2l.get_data_ch11(batch_size=10)\n",
+        "d2l.train_ch11(adam, init_adam_states(feature_dim),\n",
+        "               {'lr': 0.01, 't': 1}, data_iter, feature_dim)"
+      ],
+      "id": "training",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "---\n",
+        "\n",
+        "### Concise Implementation\n"
+      ],
+      "id": "ffe66154"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: concise-impl\n",
+        "trainer = torch.optim.Adam\n",
+        "d2l.train_concise_ch11(trainer, {'lr': 0.01}, data_iter)"
+      ],
+      "id": "concise-impl",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "---\n",
+        "\n",
+        " \n",
+        "## Summary\n",
+        "\n",
+        "- Adam combines multiple optimization techniques\n",
+        "- Key features:\n",
+        "  - Momentum from RMSProp\n",
+        "  - Bias correction\n",
+        "  - Learning rate control\n",
+        "- Yogi variant:\n",
+        "  - Addresses convergence issues\n",
+        "  - Modified second moment update\n",
+        "  - Better variance control\n",
+        "\n",
+        "## Exercises\n",
+        "\n",
+        "1. Experiment with learning rate adjustments\n",
+        "2. Rewrite momentum updates without bias correction\n",
+        "3. Analyze learning rate reduction during convergence\n",
+        "4. Construct divergence cases for Adam vs Yogi "
+      ],
+      "id": "5c66dfad"
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "name": "python3",
+      "language": "python",
+      "display_name": "Python 3 (ipykernel)",
+      "path": "/usr/share/jupyter/kernels/python3"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 5
+}
