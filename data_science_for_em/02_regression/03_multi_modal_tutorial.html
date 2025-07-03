@@ -6,8 +6,8 @@
 <script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
 <link href="../../site_libs/quarto-html/light-border.css" rel="stylesheet">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles"><meta charset="utf-8">
-  <meta name="generator" content="quarto-1.7.32">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-de070a7b0ab54f8780927367ac907214.css" rel="stylesheet" id="quarto-text-highlighting-styles"><meta charset="utf-8">
+  <meta name="generator" content="quarto-1.7.30">
 
   <title>ECLIPSE Presentations – Multi-Modal Tutorial DyScO3</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -207,82 +207,12 @@
 <h3 id="guided-computation-of-fused-multi-modal-electron-microscopy">Guided Computation of Fused Multi-Modal Electron Microscopy</h3>
 <p>This tutorial describes how you can fuse your EELS/X-EDS maps with HAADF or similar elastic imaging modalities to improve chemical resolution. This is Tutorial 1 of 2 where we look at an atomic resolution HAADF and X-EDS dataset of DyScO<span class="math inline">\(_3\)</span>. The multi-modal data fusion workflow relies on Python, and requires minimal user input with &lt;10 tunable lines. Both here and in the Mathematical Overview section we outline best practices for these adjustments. Within a few minutes, datasets such as the one in this tutorial can be transformed into resolution enhanced chemical maps.</p>
 <p>:::{figure} ./figs/Figure_3_Output.png :name: Raw vs Fused DyScO<span class="math inline">\(_3\)</span> :width: 700px Comparison of raw input vs fused multi-modal DyScO<span class="math inline">\(_3\)</span> HAADF elastic and X-EDS inelastic images :::</p>
-<p><code>hudtkaqas Step 0: Experimental Requirements To reconstruct using fused multi-modal electron microscopy you need to collect both elastic (e.g. HAADF) and inelastic (e.g. EELS X-EDS) maps of your material. For the elastic signal, it is important that it provides Z-contrast of your elements. For the inelastic signal, you should have all chemistries in your sample mapped. Solving for under-determined chemical maps, or using difficult to interpret elastic signals are outside the scope of this tutorial. The collected chemical maps and HAADF must all have the same dimensionality, i.e. the same image size and number of pixels. For this reason, we recommend using the HAADF signal that is simultaneously collected when taking an EELS/X-EDS scan</code></p>
-<p><code>ucucqorihbso Step 1: Python Imports First, we import standard python packages alongside our custom class of functions for data fusion called [fusion_utils](https://github.com/jtschwar/Multi-Modal-2D-Data-Fusion/blob/170fea3292da7e6390bfff7236610eb0c8077ff7/EDX/fusion_utils.py). The fusion_utils package contains 3 functions and a class of TV functions: `save_data()`, `plot_convergence()`, `create_weighted_measurement_matrix()`, and `tvlib()`. The `save_data` function saves the fused images into .tif files and all the parameters and matrix data into a .h5 file. `plot_convergence` plots the convergence of the cost functions. `create_weighted_measurement_matrix` is for generating the first part of our cost function that relates the elastic and inelastic modalities. Finally, the class of functions called `tvlib` performs the Fast Gradient Project (FGP) method of TV image denoising, which deblurs output images while preserving edges.</code></p>
-<div id="d6270eaf-b2e6-4be1-a469-ed36e0c0b968" class="cell" data-execution_count="1">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a></a><span class="im">import</span> data.fusion_utils <span class="im">as</span> utils</span>
-<span id="cb1-2"><a></a><span class="im">from</span> data.widget_helpers <span class="im">import</span> return_reconstruction_plots</span>
-<span id="cb1-3"><a></a><span class="im">from</span> scipy.sparse <span class="im">import</span> spdiags</span>
-<span id="cb1-4"><a></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
-<span id="cb1-5"><a></a><span class="im">from</span> tqdm.notebook <span class="im">import</span> tqdm </span>
-<span id="cb1-6"><a></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
-<span id="cb1-7"><a></a></span>
-<span id="cb1-8"><a></a><span class="im">import</span> ipywidgets <span class="im">as</span> widgets</span>
-<span id="cb1-9"><a></a><span class="im">from</span> IPython.display <span class="im">import</span> display</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p><code>ucucqorihbso Step 2: Load your data Load your inelastic and elastic data. Define the element names and their corresponding atomic weights. For the sake of this tutorial a generic .npz file is used, but for .dm3,.dm4,.emd, or another EM file format, just extract the 2D image data into numpy matrices. In Tutorial 2 this is shown by extracting from a .h5 file. Your elastic data should be stored in the HAADF variable, and your inelastic data (X-EDS/EELS) should be stored in the chemMap variable.</code> <code>cmrtz Loading alternate file formats If you are loading data from a .dm3, .dm4 or .emd file, we recommend you use HyperSpy. The documentation for loading and saving data from those file types can be found [here](https://hyperspy.org/hyperspy-doc/v1.3/user_guide/io.html).</code></p>
-<div id="10b1176e-f344-4b76-9137-11433e50725d" class="cell" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a></a>data <span class="op">=</span> np.load(<span class="st">'data/PTO_Trilayer_dataset.npz'</span>)</span>
-<span id="cb2-2"><a></a><span class="co"># Define element names and their atomic weights</span></span>
-<span id="cb2-3"><a></a>elem_names<span class="op">=</span>[<span class="st">'Sc'</span>, <span class="st">'Dy'</span>, <span class="st">'O'</span>]</span>
-<span id="cb2-4"><a></a>elem_weights<span class="op">=</span>[<span class="dv">21</span>,<span class="dv">66</span>,<span class="dv">8</span>]</span>
-<span id="cb2-5"><a></a><span class="co"># Parse elastic HAADF data and inelastic chemical maps based on element index from line above</span></span>
-<span id="cb2-6"><a></a>HAADF <span class="op">=</span> data[<span class="st">'HAADF'</span>]</span>
-<span id="cb2-7"><a></a>xx <span class="op">=</span> np.array([],dtype<span class="op">=</span>np.float32)</span>
-<span id="cb2-8"><a></a><span class="cf">for</span> ee <span class="kw">in</span> elem_names:</span>
-<span id="cb2-9"><a></a></span>
-<span id="cb2-10"><a></a>    <span class="co"># Read Chemical Map for Element "ee"</span></span>
-<span id="cb2-11"><a></a>    chemMap <span class="op">=</span> data[ee]</span>
-<span id="cb2-12"><a></a></span>
-<span id="cb2-13"><a></a>    <span class="co"># Check if chemMap has the same dimensions as HAADF</span></span>
-<span id="cb2-14"><a></a>    <span class="cf">if</span> chemMap.shape <span class="op">!=</span> HAADF.shape:</span>
-<span id="cb2-15"><a></a>        <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="ss">f"The dimensions of </span><span class="sc">{</span>ee<span class="sc">}</span><span class="ss"> chemical map do not match HAADF dimensions."</span>)</span>
-<span id="cb2-16"><a></a>    </span>
-<span id="cb2-17"><a></a>    <span class="co"># Set Noise Floor to Zero and Normalize Chemical Maps</span></span>
-<span id="cb2-18"><a></a>    chemMap <span class="op">-=</span> np.<span class="bu">min</span>(chemMap)<span class="op">;</span> chemMap <span class="op">/=</span> np.<span class="bu">max</span>(chemMap)</span>
-<span id="cb2-19"><a></a></span>
-<span id="cb2-20"><a></a>    <span class="co"># Concatenate Chemical Map to Variable of Interest</span></span>
-<span id="cb2-21"><a></a>    xx <span class="op">=</span> np.concatenate([xx,chemMap.flatten()])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p><code>ucucqorihbso Step 3: Reshape your data This cell reshapes your data and relates the elastic to the inelastic modalities within a cost function, which is described in greater depth in the Mathematical Methods section.</code></p>
-<div id="83db9c37-7258-422e-89ab-52b2a5ef4f6a" class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a></a><span class="co"># Make Copy of Raw Measurements for Poisson Maximum Likelihood Term </span></span>
-<span id="cb3-2"><a></a>xx0 <span class="op">=</span> xx.copy()</span>
-<span id="cb3-3"><a></a></span>
-<span id="cb3-4"><a></a><span class="co"># Incoherent linear imaging for elastic scattering scales with atomic number Z raised to γ  ∈ [1.4, 2]</span></span>
-<span id="cb3-5"><a></a>gamma <span class="op">=</span> <span class="fl">1.6</span> </span>
-<span id="cb3-6"><a></a></span>
-<span id="cb3-7"><a></a><span class="co"># Image Dimensions</span></span>
-<span id="cb3-8"><a></a>(nx, ny) <span class="op">=</span> chemMap.shape<span class="op">;</span> nPix <span class="op">=</span> nx <span class="op">*</span> ny</span>
-<span id="cb3-9"><a></a>nz <span class="op">=</span> <span class="bu">len</span>(elem_names)</span>
-<span id="cb3-10"><a></a></span>
-<span id="cb3-11"><a></a><span class="co"># C++ TV Min Regularizers</span></span>
-<span id="cb3-12"><a></a>reg <span class="op">=</span> utils.tvlib(nx,ny)</span>
-<span id="cb3-13"><a></a></span>
-<span id="cb3-14"><a></a><span class="co"># Data Subtraction and Normalization </span></span>
-<span id="cb3-15"><a></a>HAADF <span class="op">-=</span> np.<span class="bu">min</span>(HAADF)<span class="op">;</span> HAADF <span class="op">/=</span> np.<span class="bu">max</span>(HAADF)</span>
-<span id="cb3-16"><a></a>HAADF<span class="op">=</span>HAADF.flatten()</span>
-<span id="cb3-17"><a></a></span>
-<span id="cb3-18"><a></a><span class="co"># Create Summation Matrix</span></span>
-<span id="cb3-19"><a></a>A <span class="op">=</span> utils.create_weighted_measurement_matrix(nx,ny,nz,elem_weights,gamma,<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p><code>ucucqorihbso Optional :class: tip  Plot your raw elastic/inelastic data</code></p>
+<p><code>jqmtndkhd Step 0: Experimental Requirements To reconstruct using fused multi-modal electron microscopy you need to collect both elastic (e.g. HAADF) and inelastic (e.g. EELS X-EDS) maps of your material. For the elastic signal, it is important that it provides Z-contrast of your elements. For the inelastic signal, you should have all chemistries in your sample mapped. Solving for under-determined chemical maps, or using difficult to interpret elastic signals are outside the scope of this tutorial. The collected chemical maps and HAADF must all have the same dimensionality, i.e. the same image size and number of pixels. For this reason, we recommend using the HAADF signal that is simultaneously collected when taking an EELS/X-EDS scan</code></p>
+<p><code>qdufuifggfjz Step 1: Python Imports First, we import standard python packages alongside our custom class of functions for data fusion called [fusion_utils](https://github.com/jtschwar/Multi-Modal-2D-Data-Fusion/blob/170fea3292da7e6390bfff7236610eb0c8077ff7/EDX/fusion_utils.py). The fusion_utils package contains 3 functions and a class of TV functions: `save_data()`, `plot_convergence()`, `create_weighted_measurement_matrix()`, and `tvlib()`. The `save_data` function saves the fused images into .tif files and all the parameters and matrix data into a .h5 file. `plot_convergence` plots the convergence of the cost functions. `create_weighted_measurement_matrix` is for generating the first part of our cost function that relates the elastic and inelastic modalities. Finally, the class of functions called `tvlib` performs the Fast Gradient Project (FGP) method of TV image denoising, which deblurs output images while preserving edges.</code></p>
+<p><code>qdufuifggfjz Step 2: Load your data Load your inelastic and elastic data. Define the element names and their corresponding atomic weights. For the sake of this tutorial a generic .npz file is used, but for .dm3,.dm4,.emd, or another EM file format, just extract the 2D image data into numpy matrices. In Tutorial 2 this is shown by extracting from a .h5 file. Your elastic data should be stored in the HAADF variable, and your inelastic data (X-EDS/EELS) should be stored in the chemMap variable.</code> <code>cnioe Loading alternate file formats If you are loading data from a .dm3, .dm4 or .emd file, we recommend you use HyperSpy. The documentation for loading and saving data from those file types can be found [here](https://hyperspy.org/hyperspy-doc/v1.3/user_guide/io.html).</code></p>
+<p><code>qdufuifggfjz Step 3: Reshape your data This cell reshapes your data and relates the elastic to the inelastic modalities within a cost function, which is described in greater depth in the Mathematical Methods section.</code></p>
+<p><code>qdufuifggfjz Optional :class: tip  Plot your raw elastic/inelastic data</code></p>
 <div id="623254cb-209b-4e34-b12e-fb368b2420fc" class="cell" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a></a>fig, ax <span class="op">=</span> plt.subplots(<span class="dv">2</span>,<span class="bu">len</span>(elem_names)<span class="op">+</span><span class="dv">1</span>,figsize<span class="op">=</span>(<span class="dv">12</span>,<span class="fl">6.5</span>))</span>
-<span id="cb4-2"><a></a>ax <span class="op">=</span> ax.flatten()</span>
-<span id="cb4-3"><a></a>ax[<span class="dv">0</span>].imshow(HAADF.reshape(nx,ny),cmap<span class="op">=</span><span class="st">'gray'</span>)<span class="op">;</span> ax[<span class="dv">0</span>].set_title(<span class="st">'HAADF'</span>)<span class="op">;</span> ax[<span class="dv">0</span>].axis(<span class="st">'off'</span>)</span>
-<span id="cb4-4"><a></a>ax[<span class="dv">1</span><span class="op">+</span><span class="bu">len</span>(elem_names)].imshow(HAADF.reshape(nx,ny)[<span class="dv">70</span>:<span class="dv">130</span>,<span class="dv">25</span>:<span class="dv">85</span>],cmap<span class="op">=</span><span class="st">'gray'</span>)<span class="op">;</span> ax[<span class="dv">1</span><span class="op">+</span><span class="bu">len</span>(elem_names)].set_title(<span class="st">'HAADF Cropped'</span>)<span class="op">;</span> ax[<span class="dv">1</span><span class="op">+</span><span class="bu">len</span>(elem_names)].axis(<span class="st">'off'</span>)</span>
-<span id="cb4-5"><a></a></span>
-<span id="cb4-6"><a></a><span class="cf">for</span> ii <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(elem_names)):</span>
-<span id="cb4-7"><a></a>    ax[ii<span class="op">+</span><span class="dv">1</span>].imshow(xx0[ii<span class="op">*</span>(nx<span class="op">*</span>ny):(ii<span class="op">+</span><span class="dv">1</span>)<span class="op">*</span>(nx<span class="op">*</span>ny)].reshape(nx,ny),cmap<span class="op">=</span><span class="st">'gray'</span>)</span>
-<span id="cb4-8"><a></a>    ax[ii<span class="op">+</span><span class="dv">2</span><span class="op">+</span><span class="bu">len</span>(elem_names)].imshow(xx0[ii<span class="op">*</span>(nx<span class="op">*</span>ny):(ii<span class="op">+</span><span class="dv">1</span>)<span class="op">*</span>(nx<span class="op">*</span>ny)].reshape(nx,ny)[<span class="dv">70</span>:<span class="dv">130</span>,<span class="dv">25</span>:<span class="dv">85</span>],cmap<span class="op">=</span><span class="st">'gray'</span>)</span>
-<span id="cb4-9"><a></a>    </span>
-<span id="cb4-10"><a></a>    ax[ii<span class="op">+</span><span class="dv">1</span>].set_title(elem_names[ii])</span>
-<span id="cb4-11"><a></a>    ax[ii<span class="op">+</span><span class="dv">1</span>].axis(<span class="st">'off'</span>)</span>
-<span id="cb4-12"><a></a>    ax[ii<span class="op">+</span><span class="dv">2</span><span class="op">+</span><span class="bu">len</span>(elem_names)].set_title(elem_names[ii]<span class="op">+</span><span class="st">' Cropped'</span>)</span>
-<span id="cb4-13"><a></a>    ax[ii<span class="op">+</span><span class="dv">2</span><span class="op">+</span><span class="bu">len</span>(elem_names)].axis(<span class="st">'off'</span>)</span>
-<span id="cb4-14"><a></a></span>
-<span id="cb4-15"><a></a>fig.tight_layout()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure>
@@ -291,83 +221,24 @@
 </div>
 </div>
 </div>
-<p><code>ucucqorihbso Step 4: Fine tune your weights for each of the three parts of the cost function  The first weight, labeled as `lambdaHAADF`, is defined as the inverse of the number of elements to normalize each element's contribution. This prevents a single element from disproportionately influencing the solution. The second weight, labeled as `lambdaChem`, is our data consistency term and we typically find to be ideal between 0.05 and 0.3 although the total range for this term is 0 to 1. The final weight is `lambdaTV` and it dictates how strong our Total Variation denoising is. In order to preserve fine features while removing noise, we find that a &lt;0.2 lambdaTV value is ideal. `nIter` is the number of iterations the cost function will run for; although we typically see convergence within 10 iterations, we recommend using 30 iterations to make sure convergence is met long term. The variable `bkg` represents the background and we use this number to perform minor background subtraction to try and reduce noise; we recommend keeping this variable small. Finally, we give the user the option to turn the TV regularization off, and define a `nIter_TV` variable to define the number of iterations the FGP TV algorithm should run for.</code></p>
-<div id="db2802da-543d-449a-96ec-53592f1db677" class="cell" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a></a><span class="co"># Convergence Parameters</span></span>
-<span id="cb5-2"><a></a>lambdaHAADF <span class="op">=</span> <span class="dv">1</span><span class="op">/</span>nz <span class="co"># Do not modify this</span></span>
-<span id="cb5-3"><a></a>lambdaChem <span class="op">=</span> <span class="fl">0.08</span></span>
-<span id="cb5-4"><a></a>lambdaTV <span class="op">=</span> <span class="fl">0.15</span><span class="op">;</span> <span class="co">#Typically between 0.001 and 1</span></span>
-<span id="cb5-5"><a></a>nIter <span class="op">=</span> <span class="dv">30</span> <span class="co"># Typically 10-15 will suffice</span></span>
-<span id="cb5-6"><a></a>bkg <span class="op">=</span> <span class="fl">2.4e-1</span></span>
-<span id="cb5-7"><a></a></span>
-<span id="cb5-8"><a></a><span class="co"># FGP TV Parameters</span></span>
-<span id="cb5-9"><a></a>regularize <span class="op">=</span> <span class="va">True</span><span class="op">;</span> nIter_TV <span class="op">=</span> <span class="dv">3</span><span class="op">;</span> </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p><code>ucucqorihbso Step 5: Run the Fused Multi-Modal algorithm The code will typically finsh running in &lt;10 seconds even when runnings for hundreds of iterations. For most applications, the number of iterations will be &lt;100 and the code should run in under 3 seconds.</code></p>
+<p><code>qdufuifggfjz Step 4: Fine tune your weights for each of the three parts of the cost function  The first weight, labeled as `lambdaHAADF`, is defined as the inverse of the number of elements to normalize each element's contribution. This prevents a single element from disproportionately influencing the solution. The second weight, labeled as `lambdaChem`, is our data consistency term and we typically find to be ideal between 0.05 and 0.3 although the total range for this term is 0 to 1. The final weight is `lambdaTV` and it dictates how strong our Total Variation denoising is. In order to preserve fine features while removing noise, we find that a &lt;0.2 lambdaTV value is ideal. `nIter` is the number of iterations the cost function will run for; although we typically see convergence within 10 iterations, we recommend using 30 iterations to make sure convergence is met long term. The variable `bkg` represents the background and we use this number to perform minor background subtraction to try and reduce noise; we recommend keeping this variable small. Finally, we give the user the option to turn the TV regularization off, and define a `nIter_TV` variable to define the number of iterations the FGP TV algorithm should run for.</code></p>
+<p><code>qdufuifggfjz Step 5: Run the Fused Multi-Modal algorithm The code will typically finsh running in &lt;10 seconds even when runnings for hundreds of iterations. For most applications, the number of iterations will be &lt;100 and the code should run in under 3 seconds.</code></p>
 <div id="f2fc6224-0eb0-4a09-9671-9a88fc49b2ae" class="cell" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a></a><span class="co"># xx represents the flattened 1D elastic maps we are trying to improve via the cost function</span></span>
-<span id="cb6-2"><a></a>xx <span class="op">=</span> xx0.copy()</span>
-<span id="cb6-3"><a></a></span>
-<span id="cb6-4"><a></a><span class="co"># Auxiliary Functions for measuring the cost functions</span></span>
-<span id="cb6-5"><a></a>lsqFun <span class="op">=</span> <span class="kw">lambda</span> inData : <span class="fl">0.5</span> <span class="op">*</span> np.linalg.norm(A.dot(inData<span class="op">**</span>gamma) <span class="op">-</span> HAADF) <span class="op">**</span><span class="dv">2</span></span>
-<span id="cb6-6"><a></a>poissonFun <span class="op">=</span> <span class="kw">lambda</span> inData : np.<span class="bu">sum</span>(xx0 <span class="op">*</span> np.log(inData <span class="op">+</span> <span class="fl">1e-8</span>) <span class="op">-</span> inData)</span>
-<span id="cb6-7"><a></a></span>
-<span id="cb6-8"><a></a><span class="co"># Main Loop</span></span>
-<span id="cb6-9"><a></a></span>
-<span id="cb6-10"><a></a><span class="co"># Initialize the three cost functions components </span></span>
-<span id="cb6-11"><a></a>costHAADF <span class="op">=</span> np.zeros(nIter,dtype<span class="op">=</span>np.float32)<span class="op">;</span> costChem <span class="op">=</span> np.zeros(nIter, dtype<span class="op">=</span>np.float32)<span class="op">;</span> costTV <span class="op">=</span> np.zeros(nIter, dtype<span class="op">=</span>np.float32)<span class="op">;</span></span>
-<span id="cb6-12"><a></a></span>
-<span id="cb6-13"><a></a><span class="cf">for</span> kk <span class="kw">in</span> tqdm(<span class="bu">range</span>(nIter)):</span>
-<span id="cb6-14"><a></a>    <span class="co"># Solve for the first two optimization functions $\Psi_1$ and $\Psi_2$</span></span>
-<span id="cb6-15"><a></a>    xx <span class="op">-=</span>  gamma <span class="op">*</span> spdiags(xx<span class="op">**</span>(gamma <span class="op">-</span> <span class="dv">1</span>), [<span class="dv">0</span>], nz<span class="op">*</span>nx<span class="op">*</span>ny, nz<span class="op">*</span>nx<span class="op">*</span>ny) <span class="op">*</span> lambdaHAADF <span class="op">*</span> A.transpose() <span class="op">*</span> (A.dot(xx<span class="op">**</span>gamma) <span class="op">-</span> HAADF) <span class="op">+</span> lambdaChem <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> xx0 <span class="op">/</span> (xx <span class="op">+</span> bkg))</span>
-<span id="cb6-16"><a></a></span>
-<span id="cb6-17"><a></a>    <span class="co"># Enforce positivity constraint</span></span>
-<span id="cb6-18"><a></a>    xx[xx<span class="op">&lt;</span><span class="dv">0</span>] <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb6-19"><a></a></span>
-<span id="cb6-20"><a></a>    <span class="co"># FGP Regularization if turned on</span></span>
-<span id="cb6-21"><a></a>    <span class="cf">if</span> regularize:</span>
-<span id="cb6-22"><a></a>        <span class="cf">for</span> zz <span class="kw">in</span> <span class="bu">range</span>(nz):</span>
-<span id="cb6-23"><a></a>            xx[zz<span class="op">*</span>nPix:(zz<span class="op">+</span><span class="dv">1</span>)<span class="op">*</span>nPix] <span class="op">=</span> reg.fgp_tv( xx[zz<span class="op">*</span>nPix:(zz<span class="op">+</span><span class="dv">1</span>)<span class="op">*</span>nPix].reshape(nx,ny), lambdaTV, nIter_TV).flatten()</span>
-<span id="cb6-24"><a></a></span>
-<span id="cb6-25"><a></a>            <span class="co"># Measure TV Cost Function</span></span>
-<span id="cb6-26"><a></a>            costTV[kk] <span class="op">+=</span> reg.tv( xx[zz<span class="op">*</span>nPix:(zz<span class="op">+</span><span class="dv">1</span>)<span class="op">*</span>nPix].reshape(nx,ny) )</span>
-<span id="cb6-27"><a></a>            </span>
-<span id="cb6-28"><a></a>    <span class="co"># Measure $\Psi_1$ and $\Psi_2$ Cost Functions</span></span>
-<span id="cb6-29"><a></a>    costHAADF[kk] <span class="op">=</span> lsqFun(xx)<span class="op">;</span> costChem[kk] <span class="op">=</span> poissonFun(xx)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <script type="application/vnd.jupyter.widget-view+json">
 {"model_id":"2cda4418e1a94aa09d20c0c7cd047504","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
 </script>
 </div>
 </div>
-<p><code>ucucqorihbso Step 6: Assess Convergence Assess convergence by confirming that all 3 cost functions asymptotically approach a low value as shown in the example plots below. You should see all three curves start high and approach a plateau without any substantial changes. Sometimes the metric value may appear as a exponential decay and othertimes it may overshoot briefly superficially resembling the shape of a Lennard-Jones potential. Look out for incomplete convergence or severe oscillations. If you do not have convergence, the easiest solution is to run the reconstruction for more iterations or adjust the associated lambda value for that term. For example, if the `lambdaCHEM` cost function does not show convergence, try changing the `lambdaCHEM` value to something lower. Repeat until all 3 cost functions show convergence.</code></p>
+<p><code>qdufuifggfjz Step 6: Assess Convergence Assess convergence by confirming that all 3 cost functions asymptotically approach a low value as shown in the example plots below. You should see all three curves start high and approach a plateau without any substantial changes. Sometimes the metric value may appear as a exponential decay and othertimes it may overshoot briefly superficially resembling the shape of a Lennard-Jones potential. Look out for incomplete convergence or severe oscillations. If you do not have convergence, the easiest solution is to run the reconstruction for more iterations or adjust the associated lambda value for that term. For example, if the `lambdaCHEM` cost function does not show convergence, try changing the `lambdaCHEM` value to something lower. Repeat until all 3 cost functions show convergence.</code></p>
 <p>:::{figure} ./figs/Figure_4_Convergence.png :name: convergence :width: 700px Convergence of 3 subparts of the multi-modal cost function. The top plot represents the first term that is dictated by <span class="math inline">\(\lambda_{\text{HAADF}}\)</span>. The middle plot represents the second term that is dictated by <span class="math inline">\(\lambda_{\text{Chem}}\)</span>. The bottom plot represents the third TV term that is dictated by <span class="math inline">\(\lambda_{\text{TV}}\)</span>. :::</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource sjtlixkhdtdhaszbmgohhhtzqvtdbhvowmihsgzqrzuiyrwan$! number-lines code-with-copy"><code class="sourceCode"><span id="cb7-1"><a></a>:class: attention</span>
-<span id="cb7-2"><a></a>You may see convergence with an over or under weighted TV term.</span>
-<span id="cb7-3"><a></a>Under weighting the TV term results in noisy reconstructions, while over weighting results in blurring and loss of features in the image.</span>
-<span id="cb7-4"><a></a>Below is an example of the output images from under, over, and just right TV weights.</span>
-<span id="cb7-5"><a></a>Err on the side of under weighting the TV term  because noise is familiar to the data, but when oversmoothing, the added artifacts are unphysical and can lead to faulty interpretations.</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource uxrpdktnuqwdbwmghmkwztitsyxuqrgemcmmecwrcrahxtcif$! number-lines code-with-copy"><code class="sourceCode"><span id="cb1-1"><a></a>:class: attention</span>
+<span id="cb1-2"><a></a>You may see convergence with an over or under weighted TV term.</span>
+<span id="cb1-3"><a></a>Under weighting the TV term results in noisy reconstructions, while over weighting results in blurring and loss of features in the image.</span>
+<span id="cb1-4"><a></a>Below is an example of the output images from under, over, and just right TV weights.</span>
+<span id="cb1-5"><a></a>Err on the side of under weighting the TV term  because noise is familiar to the data, but when oversmoothing, the added artifacts are unphysical and can lead to faulty interpretations.</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>:::{figure} ./figs/Figure_5_TV.png :name: TV_weights :width: 700px Comparison of TV weighting across different chemistries and HAADF. Too low of a TV results in noise and artifacts across images. Proper TV preserves fine features like the dumbell shape of the Dy particles, while reducing noise. High TV oversmoothes the image resulting in loss of important features for analysis. :::</p>
 <div id="d9f74c64-744c-49a1-85a3-0ed6bd314a58" class="cell" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a></a><span class="co"># Display Cost Functions and Descent Parameters</span></span>
-<span id="cb8-2"><a></a>utils.plot_convergence(costHAADF, lambdaHAADF, costChem, lambdaChem, costTV, lambdaTV)</span>
-<span id="cb8-3"><a></a></span>
-<span id="cb8-4"><a></a><span class="co"># Show Reconstructed Signal</span></span>
-<span id="cb8-5"><a></a>fig, ax <span class="op">=</span> plt.subplots(<span class="dv">2</span>,<span class="bu">len</span>(elem_names)<span class="op">+</span><span class="dv">1</span>,figsize<span class="op">=</span>(<span class="dv">12</span>,<span class="fl">6.5</span>))</span>
-<span id="cb8-6"><a></a>ax <span class="op">=</span> ax.flatten()</span>
-<span id="cb8-7"><a></a>ax[<span class="dv">0</span>].imshow((A.dot(xx<span class="op">**</span>gamma)).reshape(nx,ny),cmap<span class="op">=</span><span class="st">'gray'</span>)<span class="op">;</span> ax[<span class="dv">0</span>].set_title(<span class="st">'HAADF'</span>)<span class="op">;</span> ax[<span class="dv">0</span>].axis(<span class="st">'off'</span>)</span>
-<span id="cb8-8"><a></a>ax[<span class="dv">1</span><span class="op">+</span><span class="bu">len</span>(elem_names)].imshow((A.dot(xx<span class="op">**</span>gamma)).reshape(nx,ny)[<span class="dv">70</span>:<span class="dv">130</span>,<span class="dv">25</span>:<span class="dv">85</span>],cmap<span class="op">=</span><span class="st">'gray'</span>)<span class="op">;</span> ax[<span class="dv">1</span><span class="op">+</span><span class="bu">len</span>(elem_names)].set_title(<span class="st">'HAADF Cropped'</span>)<span class="op">;</span> ax[<span class="dv">1</span><span class="op">+</span><span class="bu">len</span>(elem_names)].axis(<span class="st">'off'</span>)</span>
-<span id="cb8-9"><a></a></span>
-<span id="cb8-10"><a></a><span class="cf">for</span> ii <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(elem_names)):</span>
-<span id="cb8-11"><a></a>    ax[ii<span class="op">+</span><span class="dv">1</span>].imshow(xx[ii<span class="op">*</span>(nx<span class="op">*</span>ny):(ii<span class="op">+</span><span class="dv">1</span>)<span class="op">*</span>(nx<span class="op">*</span>ny)].reshape(nx,ny),cmap<span class="op">=</span><span class="st">'gray'</span>)</span>
-<span id="cb8-12"><a></a>    ax[ii<span class="op">+</span><span class="dv">2</span><span class="op">+</span><span class="bu">len</span>(elem_names)].imshow(xx[ii<span class="op">*</span>(nx<span class="op">*</span>ny):(ii<span class="op">+</span><span class="dv">1</span>)<span class="op">*</span>(nx<span class="op">*</span>ny)].reshape(nx,ny)[<span class="dv">70</span>:<span class="dv">130</span>,<span class="dv">25</span>:<span class="dv">85</span>],cmap<span class="op">=</span><span class="st">'gray'</span>)</span>
-<span id="cb8-13"><a></a>    </span>
-<span id="cb8-14"><a></a>    ax[ii<span class="op">+</span><span class="dv">1</span>].set_title(elem_names[ii])</span>
-<span id="cb8-15"><a></a>    ax[ii<span class="op">+</span><span class="dv">1</span>].axis(<span class="st">'off'</span>)</span>
-<span id="cb8-16"><a></a>    ax[ii<span class="op">+</span><span class="dv">2</span><span class="op">+</span><span class="bu">len</span>(elem_names)].set_title(elem_names[ii]<span class="op">+</span><span class="st">' Cropped'</span>)</span>
-<span id="cb8-17"><a></a>    ax[ii<span class="op">+</span><span class="dv">2</span><span class="op">+</span><span class="bu">len</span>(elem_names)].axis(<span class="st">'off'</span>)</span>
-<span id="cb8-18"><a></a></span>
-<span id="cb8-19"><a></a>fig.tight_layout()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure>
@@ -383,49 +254,15 @@
 </div>
 </div>
 </div>
-<p><code>ucucqorihbso Try it yourself! Try changing lambda parameters to see how convergence is effected. Notice how by changing the `lambdaChem` parameter, the cost function oscillates preventing convergence.</code></p>
+<p><code>qdufuifggfjz Try it yourself! Try changing lambda parameters to see how convergence is effected. Notice how by changing the `lambdaChem` parameter, the cost function oscillates preventing convergence.</code></p>
 <div id="1787dd2d-3733-4382-9b9e-a8931bb878ff" class="cell" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a></a><span class="co"># Widgets for the parameters</span></span>
-<span id="cb9-2"><a></a></span>
-<span id="cb9-3"><a></a>kwargs <span class="op">=</span> {</span>
-<span id="cb9-4"><a></a>    <span class="st">'style'</span>:{<span class="st">'description_width'</span>: <span class="st">'initial'</span>},</span>
-<span id="cb9-5"><a></a>    <span class="st">'layout'</span>:widgets.Layout(width<span class="op">=</span><span class="st">'400px'</span>),</span>
-<span id="cb9-6"><a></a>    <span class="st">'continuous_update'</span>: <span class="va">False</span>,</span>
-<span id="cb9-7"><a></a>    <span class="st">'readout_format'</span>:<span class="st">'.3f'</span></span>
-<span id="cb9-8"><a></a>}</span>
-<span id="cb9-9"><a></a></span>
-<span id="cb9-10"><a></a>lambdaChem_slider <span class="op">=</span> widgets.FloatSlider(value<span class="op">=</span>lambdaChem, <span class="bu">min</span><span class="op">=</span><span class="fl">0.001</span>, <span class="bu">max</span><span class="op">=</span><span class="dv">1</span>, step<span class="op">=</span><span class="fl">0.001</span>, description<span class="op">=</span><span class="st">'lambdaChem'</span>,<span class="op">**</span>kwargs)</span>
-<span id="cb9-11"><a></a>lambdaTV_slider <span class="op">=</span> widgets.FloatSlider(value<span class="op">=</span>lambdaTV, <span class="bu">min</span><span class="op">=</span><span class="fl">0.001</span>, <span class="bu">max</span><span class="op">=</span><span class="dv">1</span>, step<span class="op">=</span><span class="fl">0.001</span>, description<span class="op">=</span><span class="st">'lambdaTV'</span>,<span class="op">**</span>kwargs)</span>
-<span id="cb9-12"><a></a>nIter_slider <span class="op">=</span> widgets.IntSlider(value<span class="op">=</span>nIter, <span class="bu">min</span><span class="op">=</span><span class="dv">10</span>, <span class="bu">max</span><span class="op">=</span><span class="dv">50</span>, step<span class="op">=</span><span class="dv">1</span>, description<span class="op">=</span><span class="st">'# Cost Function Iterations'</span>,<span class="op">**</span>kwargs)</span>
-<span id="cb9-13"><a></a>nIter_TV_slider <span class="op">=</span> widgets.IntSlider(value<span class="op">=</span>nIter_TV, <span class="bu">min</span><span class="op">=</span><span class="dv">1</span>, <span class="bu">max</span><span class="op">=</span><span class="dv">10</span>, step<span class="op">=</span><span class="dv">1</span>, description<span class="op">=</span><span class="st">' # TV Iterations'</span>,<span class="op">**</span>kwargs)</span>
-<span id="cb9-14"><a></a></span>
-<span id="cb9-15"><a></a><span class="kw">def</span> widget_wrapper(lambdaChem,lambdaTV,nIter,nIter_TV):</span>
-<span id="cb9-16"><a></a>    return_reconstruction_plots(</span>
-<span id="cb9-17"><a></a>        xx0,</span>
-<span id="cb9-18"><a></a>        HAADF,</span>
-<span id="cb9-19"><a></a>        A,</span>
-<span id="cb9-20"><a></a>        bkg,</span>
-<span id="cb9-21"><a></a>        (nx,ny,nz),</span>
-<span id="cb9-22"><a></a>        elem_names,</span>
-<span id="cb9-23"><a></a>        (<span class="dv">70</span>,<span class="dv">130</span>,<span class="dv">25</span>,<span class="dv">85</span>),</span>
-<span id="cb9-24"><a></a>        lambdaChem,</span>
-<span id="cb9-25"><a></a>        lambdaTV,</span>
-<span id="cb9-26"><a></a>        nIter,</span>
-<span id="cb9-27"><a></a>        nIter_TV</span>
-<span id="cb9-28"><a></a>    )</span>
-<span id="cb9-29"><a></a></span>
-<span id="cb9-30"><a></a>widgets.interact(widget_wrapper, lambdaChem<span class="op">=</span>lambdaChem_slider, lambdaTV<span class="op">=</span>lambdaTV_slider, nIter<span class="op">=</span>nIter_slider, nIter_TV<span class="op">=</span>nIter_TV_slider)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <script type="application/vnd.jupyter.widget-view+json">
 {"model_id":"6e427a58ac4b484a86415712011f0746","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
 </script>
 </div>
 </div>
-<p><code>ucucqorihbso Step 7: Save your data Define the folder you would like to save to. The output images and data will be saved to .tif and .h5 file formats</code></p>
-<div id="e2882153-728c-42e6-93a7-155acbfebc3e" class="cell" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a></a><span class="co">#save_folder_name='test'</span></span>
-<span id="cb10-2"><a></a><span class="co">#utils.save_data(save_folder_name, xx0, xx, HAADF, A.dot(xx**gamma), elem_names, nx, ny, costHAADF, costChem, costTV, lambdaHAADF, lambdaChem, lambdaTV, gamma)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
+<p><code>qdufuifggfjz Step 7: Save your data Define the folder you would like to save to. The output images and data will be saved to .tif and .h5 file formats</code></p>
 
 
 </section>
