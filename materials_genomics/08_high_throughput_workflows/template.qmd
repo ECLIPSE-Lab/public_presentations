@@ -46,296 +46,355 @@ format:
 
 ### Week 8 — High-Throughput Workflows
 
-**Goals:**
+**Goals for today:**
 
-- Understand symmetry in crystals  
-- Learn space groups & Wyckoff positions  
-- See how symmetry reduces structural complexity  
-- Understand why symmetry matters for ML descriptors  
-- Use pymatgen / spglib to analyze symmetry (conceptually)  
+- Understand what “high-throughput” means in computational materials science  
+- Learn the roles of pymatgen, custodian, FireWorks, and atomate  
+- See how automated workflows generate data for surrogate ML models  
+- Conceptually design and (optionally) “run” a small FireWorks workflow  
 
 ---
 
 ## Outline
 
-1. Why symmetry matters  
-2. Lattices & crystal systems  
-3. Space groups & symmetry operations  
-4. Wyckoff positions  
-5. How symmetry informs descriptors  
-6. Hands-on exercise  
+1. Why high-throughput?  
+2. Building blocks: pymatgen & custodian  
+3. Workflow engines: FireWorks & atomate  
+4. From workflows to surrogate model datasets  
+5. Exercise: a small FireWorks-style workflow  
+6. Summary  
 
 ---
 
-## 1. Why Symmetry Matters in Materials Genomics
+## 1. Why High-Throughput?
 
-Crystal structure encodes:
+Single DFT calculation:
 
-- Atomic arrangement  
-- Local coordination  
-- Bond topology  
-- Allowed physical behaviors  
+- Gives detailed information for *one* structure  
 
-Symmetry:
+Materials Genomics:
 
-- Compresses the description of an infinite periodic structure  
-- Governs degeneracy of properties  
-- Influences electronic/phonon behavior  
-- Shapes which descriptors are meaningful  
+- Needs data for **thousands** of structures  
+- Needs consistency and reproducibility  
+- Needs automation and error handling  
 
----
+High-throughput:
 
-## Structure as Information
-
-In Materials Genomics:
-
-- Structure = “genotype”  
-- Properties = “phenotype”  
-- Symmetry = the coordinate system of the genotype  
-
-Symmetry is essential for:
-
-- Standardization  
-- Featurization  
-- Machine learning invariance  
-- Pattern recognition  
+- Run standardized workflows on large sets of materials  
+- Store results in structured databases  
+- Feed ML models with clean, comparable data  
 
 ---
 
-## 2. Lattices, Bravais Types, Crystal Systems
+## The Goal of High-Throughput
 
-### Review
+Transform:
 
-- Lattice vectors \(a, b, c\)  
-- Angles \(\alpha, \beta, \gamma\)  
-- Fractional vs Cartesian coordinates  
+- “One structure, one manual input file”  
+into:
 
-### 7 Crystal Systems
+- “Thousands of structures, standardized workflows, reliable logs”  
 
-- Triclinic  
-- Monoclinic  
-- Orthorhombic  
-- Tetragonal  
-- Trigonal  
-- Hexagonal  
-- Cubic  
+Outputs:
 
-### 14 Bravais Lattices
+- Formation energies  
+- Relaxed structures  
+- Band gaps & DOS  
+- Elastic tensors  
+- Many more properties  
 
-Students should understand:
-- The Bravais lattice = translational skeleton  
-- The unit cell is not unique  
-- The *primitive* cell is the minimal representation  
+All suitable as training data for ML surrogates.
 
 ---
 
-## Why This Matters
+## 2. Building Blocks: pymatgen & custodian
 
-For ML pipelines:
+### pymatgen (Python Materials Genomics)
 
-- Structures must often be standardized  
-- spglib reduces to conventional and primitive forms  
-- Descriptors assume stable ordering of atoms  
+pymatgen provides:
 
----
+- Data structures for:
+  - Structures, lattices, sites  
+  - Band structures, DOS  
+- Tools for:
+  - Symmetry analysis  
+  - Featurization  
+  - Input/output for many DFT codes  
+- Interface to Materials Project API  
 
-## 3. Space Groups & Symmetry Operations
-
-### Space Groups
-
-- Combine translations + point-group operations  
-- 230 distinct groups  
-- Govern all symmetry-allowed operations  
-
-### Symmetry Operations
-
-- Rotations  
-- Reflections  
-- Inversions  
-- Improper rotations  
-- Glide planes  
-- Screw axes  
+It’s the **data and IO layer** for many workflows.
 
 ---
 
-## Understanding Space Groups
+## What pymatgen Does in Workflows
+
+- Reads/creates CIF and POSCAR files  
+- Generates:
+- 
+  - k-point meshes  
+  - Input parameter sets  
+- Parses:
+- 
+  - DFT output files  
+  - Errors and final structures  
+- Standardizes structures for databases  
+
+pymatgen = glue between DFT codes and automation.
+
+---
+
+## custodian: The Error Handler
+
+custodian:
+
+- Monitors running calculations  
+- Detects known error patterns  
+- Applies fixes and restarts calculations  
 
 Examples:
 
-- Rocksalt (Fm-3m) → high symmetry  
-- Perovskites (Pm-3m, Pnma…) → symmetry-lowering distortions  
-- Wurtzite (P6₃mc) → polar axis  
+- SCF convergence failures  
+- Insufficient k-point density  
+- Memory errors  
+- Smearing parameter problems  
 
-Students should learn to:
+In high-throughput:
 
-- Interpret space group symbols  
-- See symmetry in atomic environments  
-
----
-
-## Symmetry Reduces Independent Information
-
-Example:
-
-- High-symmetry structures have fewer unique sites  
-- Low-symmetry structures have many inequivalent positions  
-
-Symmetry determines:
-
-- Elastic tensor components  
-- Optical activity  
-- Electronic degeneracies  
-- Phonon selection rules  
+- Manual debugging is impossible  
+- custodian automates “DFT babysitting”  
 
 ---
 
-## 4. Wyckoff Positions
+## 3. Workflow Engines: FireWorks & atomate
 
-Wyckoff positions describe:
+### FireWorks
 
-- Equivalent atomic sites  
-- Multiplicity = number of equivalent atoms  
-- Site symmetry = allowed operations at that point  
+FireWorks is a **workflow manager**:
 
-Each space group has Wyckoff labels: a, b, c, …
+- Defines tasks (FireWorks)  
+- Connects them into workflows  
+- Manages execution on clusters / queues  
+- Restarts failed jobs  
+- Stores execution history  
 
----
+Abstractions:
 
-## Why Wyckoff Positions Matter
-
-They define:
-
-- Prototype structures  
-- Where atoms “live” in a symmetry-consistent way  
-- Which substitution or vacancy sites are distinct  
-- How many unique environments must be featurized  
-
-Example: Perovskite ABO₃  
-- A on 1a  
-- B on 1b  
-- O on 3c  
+- Firework = a single job (e.g., run VASP relaxation)  
+- Workflow = DAG of FireWorks  
 
 ---
 
-## Wyckoff Patterns as Structural Fingerprints
+## Why FireWorks?
 
-- Ideal perovskite vs distorted perovskite  
-- Spinels, Heuslers, antifluorites  
-- Site splitting reveals structural transitions  
+Advantages:
 
-These patterns are building blocks for genomic classification.
+- Scales to thousands of jobs  
+- Handles dependencies between steps  
+- Supports multiple queues and clusters  
+- Keeps a record of:
+  - What was run  
+  - Inputs & outputs  
+  - Status (completed, failed, defused)  
 
----
-
-## 5. How Symmetry Informs Descriptors
-
-ML descriptors must be:
-
-- Invariant to rotation  
-- Invariant to translation  
-- Invariant to permutation of equivalent atoms  
-
-Symmetry gives the rules for these invariances.
+FireWorks = the “operating system” for your high-throughput calculations.
 
 ---
 
-## Examples of Symmetry-Aware Descriptors
+## atomate: Pre-Built Workflows
 
-### Coordination-based features
-- Coordination numbers  
-- Radial distribution histogram  
-- Bond-angle distributions  
+atomate:
 
-### Local environment descriptors
-- Voronoi features  
-- Atom-centered symmetry functions (ACSF)  
-- SOAP (spherical harmonics representation)  
+- Library built on pymatgen + FireWorks + custodian  
+- Provides ready-made workflows for:
+  - Structure optimization  
+  - Static energy calculations  
+  - Band structure & DOS  
+  - Elastic constants  
+  - Dielectric tensors  
 
-### Graph-based descriptors
-- Crystal Graph Convolutional Networks  
-- Message-Passing Neural Networks  
-- Symmetry preserves node equivalence  
-
----
-
-## Why Symmetry Makes ML Better
-
-Symmetry:
-
-- Reduces redundant features  
-- Ensures physically meaningful predictions  
-- Makes models data-efficient  
-- Encodes constraints directly into representation  
+Instead of building everything from scratch:
+- Use atomate’s workflow templates  
+- Customize if needed  
 
 ---
 
-## Designing Symmetry-Informed Features
+## Typical atomate Workflow
 
-Teach students:
+Example: “Optimize structure and compute band structure”
 
-- A descriptor must not change if the crystal is rotated  
-- Equivalent atomic sites have identical descriptors  
-- Operations must respect periodicity  
+Includes:
 
-This understanding becomes essential in Weeks 3–4.
+1. Structure relaxation  
+2. Static energy calculation  
+3. Band structure along high-symmetry path  
+4. DOS calculation  
+
+Each step:
+- A Firework with DFT input gen (pymatgen) + error handling (custodian)  
 
 ---
 
-## 6. Hands-On Exercise: pymatgen + spglib
+## 4. From Workflows to Surrogate Model Datasets
+
+High-throughput workflows produce:
+
+- Consistent DFT results for many materials  
+- Stored in MongoDB / DB or exported as JSON/CSV  
+
+These data become:
+
+- Training labels \(y\) for ML models  
+- Combined with descriptors \(X\) (Magpie, SOAP, graphs…)  
+
+Thus pipeline is:
+
+1. Structure library (CIFs, prototypes, Materials Project)  
+2. High-throughput workflow runs (DFT + automation)  
+3. Clean database of properties  
+4. Featurization (matminer, graph featurizers, SOAP, etc.)  
+5. ML surrogate training & validation  
+
+---
+
+## Data Quality & Consistency
+
+High-throughput requires:
+
+- Standard input settings (functional, cutoff, k-mesh)  
+- Standard error-handling strategies  
+- Standard post-processing (e.g., hull construction)  
+
+ML surrogates assume:
+
+- Consistent data distribution  
+- No hidden changes in calculation setup  
+
+Workflows enforce this consistency.
+
+---
+
+## 5. Exercise: Small FireWorks-Style Workflow (Conceptual)
 
 Goal:
-
-- Analyze symmetry from structure files  
-- Identify space group and Wyckoff positions  
-- Standardize cells  
-- Extract symmetry operations  
+- Show how a simple workflow might look  
+- Students don’t need a real cluster; can simulate locally or just conceptually  
 
 ---
 
-## Demonstrated Workflow (Conceptual)
+## Step 1 — Define a Simple Workflow
 
-Example code placeholder:
+Example workflow:
+
+1. Relax structure with DFT  
+2. Run static energy calculation  
+3. Parse results and store them  
+
+Nodes:
+- FW1: Relaxation  
+- FW2: Static energy (depends on FW1)  
+
+---
+
+## Step 2 — Define FireWorks
+
+Each Firework has:
+
+- A “task” or list of tasks  
+- Parameters (structure, INCAR, KPOINTS, etc.)  
+- Optional dependencies  
+
+Conceptual representation:
 
 **PYTHONHERE**
 
-Operations to illustrate:
-
-- `SpacegroupAnalyzer(struct)`  
-- `get_space_group_symbol()`  
-- `get_conventional_standard_structure()`  
-- `get_primitive_standard_structure()`  
-- `get_symmetry_operations()`  
-- `get_wyckoff_symbols()`  
+- Create a Firework object for relaxation  
+- Create a Firework object for static calculation  
+- Combine them into a Workflow  
 
 ---
 
-## Suggested Demo Structures
+## Step 3 — Launch Workflow
 
-- NaCl (Fm-3m) — simple cubic symmetry  
-- CaTiO₃ — ideal vs distorted perovskite  
-- Diamond — covalent network symmetry  
-- β-Ga₂O₃ — low symmetry example  
+Under real conditions:
+
+- FireWorks uses a launchpad (MongoDB backend)  
+- `rlaunch` / `qlaunch` commands start jobs  
+- Jobs are submitted to queue (SLURM, PBS, etc.)  
+
+Conceptually:
+
+- FireWorks picks the first ready Firework (relaxation)  
+- Runs it on available resource  
+- After completion, static job is automatically triggered  
+
+---
+
+## Step 4 — Parse & Store Results
+
+After both steps:
+
+- Parse:
+  - Relaxed structure  
+  - Total energy  
+  - Band gap (if relevant)  
+
+Store in:
+
+- MongoDB collection  
+- Or CSV / JSON for teaching purposes  
+
+These become:
+
+- Data rows for ML regression  
+- Example entries in a mini “materials database”  
+
+---
+
+## Optional: Simulation Without Real DFT
+
+If no DFT:
+
+- Mock the tasks:
+  - Pretend to “run” DFT  
+  - Instead, generate random but structured outputs  
+- Show how FireWorks orchestrates tasks and data flow  
+
+**PYTHONHERE**
+
+This teaches:
+- Workflow logic  
+- Dependency management  
+- Data logging  
+
+without requiring an HPC cluster.
+
+---
+
+## Why This Exercise Is Useful
 
 Students see:
 
-- How symmetry interprets structure  
-- Why standardization is essential  
-- How ML descriptors depend on symmetry  
+- How “thousands of DFT calculations” are actually orchestrated  
+- How pymatgen/custodian/FireWorks/atomate interact  
+- How high-throughput == *system + workflow* rather than “many manual runs”  
+- The direct path from automation → ML-ready datasets  
 
 ---
 
-## Summary
+## 6. Summary
 
 **Today you learned:**
 
-- Why symmetry is central to Materials Genomics  
-- Space groups, Wyckoff positions, symmetry operations  
-- How symmetry reduces complexity  
-- How symmetry shapes descriptors  
-- How pymatgen/spglib automate symmetry analysis  
+- High-throughput workflows are essential for Materials Genomics  
+- pymatgen handles structures and IO  
+- custodian automates error handling  
+- FireWorks manages job dependencies and execution  
+- atomate provides ready-made DFT workflows  
+- These workflows generate large, consistent datasets for ML surrogates  
 
-Next week:
-**Week 3 — Structure Representation & Materials Descriptors**
+Next week:  
+**Week 9 — From High-Throughput Data to Surrogate Models**  
+(Data splits, target leakage, and building robust property predictors.)
 
 ---
 
