@@ -1,0 +1,454 @@
+---
+title: |
+  Materials Genomics<br>
+  Lecture 5: Graph-Based Representations
+bibliography: ref.bib
+# csl: custom.csl
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation: 
+      - FAU Erlangen-Nürnberg
+      - Institute of Micro- and Nanostructure Research
+   
+execute: 
+  eval: true
+  echo: true
+format: 
+    revealjs: 
+        chalkboard: true
+        mermaid:
+            theme: forest
+        # mermaid-format: png
+        # scroll-view:
+        #     activate: true
+        #     snap: mandatory
+        #     layout: full 
+        width: 1920
+        height: 1080
+        menu:
+            side: right
+            width: wide 
+        template-partials:
+            - title-slide.html
+        css: custom.css
+        theme: custom.scss
+        slide-number: c/t    
+        logo: "eclipse_logo_small.png"          
+        highlight-style: a11y
+        incremental: true 
+        background-transition: fade
+        footer: "©Philipp Pelz - FAU Erlangen-Nürnberg - Materials Genomics"
+---
+ 
+
+## Welcome
+
+### Week 5 — Graph-Based Representations
+
+**Goals for today:**
+
+- Understand how crystal structures can be represented as graphs  
+- Learn about nodes, edges, and periodic boundary conditions  
+- Build intuition for CGCNN and MEGNet architectures  
+- See how a simple CGCNN-like graph featurizer would work (conceptually)  
+
+---
+
+## Outline
+
+1. Why graphs for materials?  
+2. Crystal structures as graphs  
+3. Periodic boundary conditions in graphs  
+4. CGCNN architecture intuition  
+5. MEGNet architecture intuition  
+6. Exercise: simple CGCNN-like featurizer  
+7. Summary  
+
+---
+
+## 1. Why Graphs for Materials?
+
+Traditional descriptors:
+
+- Hand-crafted (Magpie, stoichiometric, elemental, structural)  
+- Limited flexibility  
+- Hard to adapt to arbitrary chemistries and structures  
+
+Graph view:
+
+- Atoms → nodes  
+- Bonds / neighbors → edges  
+- Structure = a message-passing playground  
+
+Advantages:
+
+- Naturally handles varying coordination environments  
+- Scale to large and complex unit cells  
+- Learns features directly from data  
+- Built-in invariances (permutation, translation, rotation via distances)  
+
+---
+
+## 2. Crystal Structures as Graphs
+
+We want to map:
+
+**Structure (lattice + atomic positions)**  
+→ **Graph (nodes + edges + periodic neighbors)**
+
+### Nodes:
+- Represent atoms  
+- Node features:
+  - Element type (one-hot or embedding)  
+  - Atomic number  
+  - Group/period  
+  - Electronegativity  
+  - Atomic radius  
+  - Optional: magnetic moment, oxidation state  
+
+---
+
+### Edges:
+- Represent connections between atoms  
+- Usually based on:
+  - Distance (within a cutoff)  
+  - k-nearest neighbors (k-NN)  
+- Edge features:
+  - Interatomic distance (possibly expanded via basis functions)  
+  - Direction (optional)  
+  - Bond order (if appropriate)  
+
+---
+
+### Graph notation:
+
+- Node set: \( V = \{v_1, ..., v_N\} \)  
+- Edge set: \( E = \{(i, j)\} \)  
+- Node feature matrix: \( X \in \mathbb{R}^{N \times d_{\text{node}}} \)  
+- Edge feature matrix: \( E_{ij} \in \mathbb{R}^{d_{\text{edge}}} \)  
+
+Crystal graph = **periodic graph**: edges wrap through the unit cell.
+
+---
+
+## Graph Construction: Intuition
+
+Steps:
+
+1. Take a standardized structure (e.g. from pymatgen).  
+2. For each atom, find neighbors within a radius or k nearest neighbors.  
+3. Create edges between center atom and neighbors.  
+4. Compute node and edge features.  
+
+This yields an atomistic graph ready for ML.
+
+---
+
+## 3. Periodic Boundary Conditions in Graphs
+
+Crystals are infinite; graphs are finite.
+
+### Problem:
+How to encode periodicity using only the atoms in the unit cell?
+
+### Solution:
+
+- Use **neighbor search in a supercell** (e.g. 3×3×3)  
+- Map neighbors back to the original cell  
+- Store:
+  - Index of neighbor atom  
+  - Translation vector (lattice image)  
+
+Edge knows that neighbor is in a shifted cell:
+- This preserves periodic connectivity  
+- Ensures proper environment for boundary atoms  
+
+---
+
+## Why PBC Matters
+
+- Local environment near lattice boundaries must be correct  
+- Energetic and structural features depend on repeated neighbors  
+- Graph without PBC will “cut off” interactions incorrectly  
+
+Graph + PBC = finite representation of infinite network.
+
+---
+
+## 4. CGCNN: Crystal Graph Convolutional Neural Network
+
+CGCNN is one of the earliest and most influential crystal graph models.
+
+### Key Ideas:
+
+- Represent crystal as a graph (nodes = atoms, edges = neighbor bonds)  
+- Use **message passing** to update atomic features  
+- Pool (aggregate) atomic features to get a crystal-level representation  
+- Predict properties like formation energy, band gap, bulk modulus  
+
+---
+
+## CGCNN Node & Edge Features
+
+Node features:
+
+- One-hot element encoding  
+- Optional: group, period, etc.
+
+Edge features:
+
+- Distance-based features  
+- Often expanded using radial basis functions (e.g. Gaussians over distance)  
+
+This allows smooth distance dependence:
+
+- Close neighbors vs far neighbors  
+- Different influence on node updates  
+
+---
+
+## CGCNN Message Passing (Conceptual)
+
+For each layer:
+
+1. For each edge (i, j):
+   - Compute a message from atom j to atom i  
+   - Message depends on node features of i and j, and edge features (distance)  
+
+2. Aggregate messages at each node (e.g. sum or average).  
+
+3. Update node features using a neural network (nonlinear transformation).  
+
+Repeat this for several layers.
+
+Finally:
+- Pool all node features (e.g. sum or mean)  
+- Get a fixed-size **crystal embedding**  
+- Feed into MLP to predict property  
+
+---
+
+## Why CGCNN Works Well
+
+- Learns local chemistry and bonding patterns  
+- Naturally handles varying coordination and topology  
+- Does not require explicit feature engineering per property  
+- Encodes periodicity via neighbor search  
+
+But:
+
+- Still uses relatively simple message-passing functions  
+- Ignores global/global-condition inputs by default  
+
+---
+
+## 5. MEGNet: Message-Passing with Global States
+
+MEGNet extends CGCNN-style ideas.
+
+### Core concept:
+
+In addition to:
+
+- Node features (atoms)  
+- Edge features (bonds)  
+
+MEGNet includes:
+- **Global state vectors** (e.g., temperature, pressure, composition-level info)  
+
+---
+
+## MEGNet Block Structure (High-Level)
+
+Each MEGNet block:
+1. Updates edge features using:
+2. 
+   - Current edge features  
+   - Node features of connected atoms  
+   - Global state  
+
+3. Updates node features using:
+4. 
+   - Aggregated edge information  
+   - Current node features  
+   - Global state  
+
+5. Updates global state using:
+6. 
+   - Aggregation over edge and node features  
+   - Current global state  
+
+This is a **node–edge–global** update trifecta.
+
+---
+
+## Why Global States Matter
+
+Many properties:
+- Depend on external conditions (T, p)  
+- Depend on global features (e.g., overall composition, charge state)  
+
+MEGNet:
+- Incorporates these directly  
+- Allows predictions across varying conditions  
+
+Still maintains:
+- Graph-based local interactions  
+- Periodicity via neighbor search  
+
+---
+
+## CGCNN vs MEGNet: Intuition
+
+CGCNN:
+
+- Focused on node–edge interactions  
+- No explicit global state  
+- Great for composition/structure-dependent properties at fixed conditions  
+
+MEGNet:
+
+- Adds explicit global state  
+- Can model temperature/pressure/composition conditions  
+- More flexible, but conceptually similar graph core  
+
+---
+
+## 6. Exercise: Simple CGCNN-like Graph Featurizer (Conceptual)
+
+Goal:
+- Show students how to go from crystal → graph → feature matrices.
+
+We don’t implement training; just build the **featurizer**.
+
+---
+
+## Step 1 — Input Structure
+
+Assume:
+- You have a structure from pymatgen (e.g., `Structure` object)  
+
+**PYTHONHERE**
+
+Conceptual:
+- Load CIF / POSCAR  
+- Ensure structure is standardized (Week 2 & 3 concepts)  
+
+---
+
+## Step 2 — Build Node Features
+
+For each atom:
+- Get its element (e.g., “Fe”, “O”)  
+- Convert to features:
+  - One-hot of element  
+  - Atomic number  
+  - Group, period  
+  - Electronegativity  
+
+Combine into a feature vector for each node.
+
+Results:
+- Node feature matrix \(X \in \mathbb{R}^{N \times d_{\text{node}}}\)  
+
+---
+
+## Step 3 — Build Edge List with PBC
+
+For each atom:
+- Find neighbors within cutoff radius (e.g. 5 Å)  
+- Or find k nearest neighbors  
+
+For each pair (i, j):
+- Add an edge i → j  
+- Record:
+  - Distance between atoms (including periodic images)  
+  - Optional direction vector  
+
+Results:
+- Edge list: pairs (i, j)  
+- Edge distances \(d_{ij}\)  
+
+---
+
+## Step 4 — Edge Features
+
+Convert distance to edge features:
+- Use radial basis expansion, e.g. Gaussians centered at fixed points  
+
+Conceptual:
+
+**PYTHONHERE**
+
+This yields:
+- Edge feature matrix \(E \in \mathbb{R}^{M \times d_{\text{edge}}}\)  
+
+where \(M\) = number of edges.
+
+---
+
+## Step 5 — Graph Data Structure
+
+Final CGCNN-like graph:
+- Node feature matrix \(X\)  
+- Edge feature matrix \(E\)  
+- Edge index array (source & target indices)  
+- Optional: lattice information, cell lengths/angles  
+
+This is what a graph neural network sees as input.
+
+---
+
+## Why This Exercise Is Important
+
+Students learn:
+- How to think in terms of **nodes and edges**  
+- How to encode atomic and geometric information as features  
+- How PBC translates to neighbor lists  
+- How graph ML connects directly to physical structure  
+
+This forms the foundation for:
+- Implementing actual CGCNN / MEGNet models later  
+- Understanding advanced graph-equivariant architectures  
+
+---
+
+## 7. Summary
+
+**Today you learned:**
+
+- How to represent crystals as graphs (nodes + edges + PBC)  
+- The basic building blocks of CGCNN  
+- How MEGNet extends CGCNN with global state  
+- How a simple CGCNN-like featurizer would be built conceptually  
+
+Next week:  
+
+**Week 6 — Property Prediction with Graph Neural Networks**  
+(Training, data splitting, evaluation, and pitfalls.)
+
+---
+
+## Questions?
+
+Use the chalkboard!
+
+ 
+<div>
+<script>
+document.getElementById("marimo-frame").onload = function() {
+    try {
+        let iframeDoc = document.getElementById("marimo-frame").contentWindow.document;
+        let marimoBadge = iframeDoc.querySelector("div.fixed.bottom-0.right-0.z-50");
+        if (marimoBadge) {
+            marimoBadge.style.display = "none";
+            console.log("Marimo badge hidden successfully.");
+        } else {
+            console.log("Badge not found.");
+        }
+    } catch (error) {
+        console.warn("Unable to modify iframe content due to CORS restrictions.");
+    }
+};
+</script>
+</div>
