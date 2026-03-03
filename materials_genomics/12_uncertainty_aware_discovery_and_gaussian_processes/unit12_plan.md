@@ -1,11 +1,11 @@
-# Unit 3 Plan — Materials Genomics
+# Unit 12 Plan — Materials Genomics
 
 ## Unit title
-Materials Databases and Thermodynamic Quantities
+Uncertainty-Aware Discovery and Gaussian Processes
 
 ## Learning objectives
-By the end of Unit 3, students can:
-1. Explain core concepts in materials databases and thermodynamic quantities.
+By the end of Unit 12, students can:
+1. Explain core concepts in uncertainty-aware discovery and gaussian processes.
 2. Connect methods to materials-discovery decisions.
 3. Identify dataset/model validity risks and mitigation.
 4. Distinguish lecture-essential theory from exercise implementation tasks.
@@ -20,7 +20,7 @@ By the end of Unit 3, students can:
 - 85–90: summary + exercise handoff
 
 ## Unit focus
-Database foundations, file formats, and thermodynamic targets for materials ML.
+UQ-driven screening and exploration–exploitation logic.
 
 ## Exercise (90 min)
 - build a minimal reproducible pipeline for the unit topic

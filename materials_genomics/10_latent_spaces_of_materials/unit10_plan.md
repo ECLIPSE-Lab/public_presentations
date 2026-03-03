@@ -1,11 +1,11 @@
-# Unit 3 Plan — Materials Genomics
+# Unit 10 Plan — Materials Genomics
 
 ## Unit title
-Materials Databases and Thermodynamic Quantities
+Latent Spaces of Materials
 
 ## Learning objectives
-By the end of Unit 3, students can:
-1. Explain core concepts in materials databases and thermodynamic quantities.
+By the end of Unit 10, students can:
+1. Explain core concepts in latent spaces of materials.
 2. Connect methods to materials-discovery decisions.
 3. Identify dataset/model validity risks and mitigation.
 4. Distinguish lecture-essential theory from exercise implementation tasks.
@@ -20,7 +20,7 @@ By the end of Unit 3, students can:
 - 85–90: summary + exercise handoff
 
 ## Unit focus
-Database foundations, file formats, and thermodynamic targets for materials ML.
+Embeddings/autoencoders for structure and chemistry organization.
 
 ## Exercise (90 min)
 - build a minimal reproducible pipeline for the unit topic
