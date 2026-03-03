@@ -1,0 +1,154 @@
+# Materials Genomics Unit 3 — 50-Slide Scaffold Pack
+
+## Slide-by-slide scaffold
+
+1. **Title: Feature Engineering in Materials Genomics**
+- Unit role in discovery pipeline.
+- Database records to ML-ready descriptors.
+2. **Learning objectives**
+- What students should master today.
+- Deliverable expectations for exercise.
+3. **Recap from Units 1–2**
+- Design-space framing and structure basics.
+- Now convert structure into features.
+4. **Why feature engineering matters**
+- Model quality depends on representation.
+- Good features reduce data demand.
+5. **Feature taxonomy overview**
+- Composition, structure, process, metadata.
+- Each family captures different physics.
+6. **Composition descriptors basics**
+- Stoichiometry-derived statistics.
+- Elemental property aggregations.
+7. **Element property tables**
+- Electronegativity, radius, valence etc.
+- Choice affects bias and interpretability.
+8. **Hand-crafted descriptor pros/cons**
+- Interpretable and cheap.
+- Can miss nonlinear interactions.
+9. **Structure-aware descriptors**
+- Local environment and coordination cues.
+- Capture beyond composition only.
+10. **Symmetry-informed features**
+- Respect crystallographic equivalence.
+- Reduce redundancy and leakage.
+11. **Process descriptors**
+- Synthesis/processing conditions as inputs.
+- Bridge to PSPP mapping.
+12. **Metadata as features vs confounders**
+- Source/lab identifiers risk shortcut learning.
+- Use carefully or exclude deliberately.
+13. **Feature invariance requirements**
+- Permutation/rotation/translation awareness.
+- Representation must match physical equivalence.
+14. **Normalization and scaling**
+- Standardization for stable training.
+- Different descriptors need harmonization.
+15. **Handling missing values**
+- Deletion, imputation, model-aware strategies.
+- Imputation can inject bias.
+16. **Encoding categorical variables**
+- One-hot and alternatives.
+- Beware high-cardinality leakage.
+17. **Outlier treatment strategies**
+- Physical anomaly vs data error.
+- Do not blindly remove extremes.
+18. **Feature correlation analysis**
+- Detect multicollinearity.
+- Avoid redundant noisy features.
+19. **Dimensionality reduction overview**
+- PCA and manifold previews.
+- Compression vs interpretability tradeoff.
+20. **Feature selection motivation**
+- Reduce variance and improve robustness.
+- Selection must avoid test leakage.
+21. **Filter methods**
+- Variance threshold and univariate scoring.
+- Fast baseline screening.
+22. **Wrapper methods**
+- Model-based iterative selection.
+- Higher compute, task-tuned.
+23. **Embedded methods**
+- L1/tree importance ideas.
+- Selection during training.
+24. **Leakage in featurization pipelines**
+- Fit transforms on train only.
+- Prevent target-proxy contamination.
+25. **Train/val/test with grouped splits**
+- Group by chemistry/structure family.
+- Estimate deployment realism better.
+26. **Feature drift across datasets**
+- Descriptor distribution shift.
+- Need transfer diagnostics.
+27. **Interpretability of features**
+- Feature importance caveats.
+- Correlated features mislead naive interpretation.
+28. **Descriptor uncertainty**
+- Input uncertainty propagation concept.
+- Confidence-aware modeling setup.
+29. **Computational cost considerations**
+- Featurization bottlenecks in HT workflows.
+- Balance accuracy and throughput.
+30. **Reproducible featurization**
+- Versioned scripts and provenance logs.
+- Deterministic pipelines preferred.
+31. **Baseline feature set template**
+- Minimal robust starter set.
+- Useful for early benchmarking.
+32. **Advanced feature set template**
+- Adds structure/process richness.
+- Use only with validation discipline.
+33. **Classical vs learned reps preview**
+- When to transition to graph/NN methods.
+- Keep baseline for sanity checks.
+34. **Case sketch: bandgap baseline**
+- Build composition+structure table.
+- Compare two descriptor families.
+35. **Case sketch: stability prediction**
+- Feature choices for hull-distance task.
+- Grouped split evaluation.
+36. **Case sketch: process-aware modeling**
+- Add synthesis features carefully.
+- Check confounding effects.
+37. **Error analysis by feature subset**
+- Which features fail where.
+- Subgroup diagnostics approach.
+38. **Ablation study scaffold**
+- Remove feature groups systematically.
+- Quantify contribution and robustness.
+39. **Model card fields for descriptors**
+- Assumptions, constraints, known limits.
+- Prepare for scientific reporting.
+40. **Common pitfalls checklist**
+- Unit inconsistencies, leakage, over-selection.
+- Domain shift ignored.
+41. **Mini concept quiz**
+- Identify valid vs invalid featurization step.
+- Exam-style quick check.
+42. **MFML dependency map**
+- Risk/validation concepts reused.
+- Notation consistency reminder.
+43. **Link to Unit 4 databases/FAIR**
+- Next unit deepens data infrastructure.
+- Featurization pipeline inputs rely on DB quality.
+44. **Exercise setup**
+- Dataset and target definition.
+- Quality checks before modeling.
+45. **Exercise task 1 scaffold**
+- Build and document descriptor table.
+- Apply scaling and missingness strategy.
+46. **Exercise task 2 scaffold**
+- Run grouped-split baseline model.
+- Track metric and uncertainty proxy.
+47. **Exercise task 3 scaffold**
+- Perform one ablation and leakage test.
+- Summarize findings with caveats.
+48. **Summary slide**
+- Key principles to retain.
+- Checklist for future units.
+49. **References + reading assignment**
+- Prepare for Unit 4 workflows.
+- Suggested chapters and notes.
+50. **Next-unit preview**
+- Transition from features to data infrastructure and FAIR workflows.
+- Preview of quality-governed database pipelines.

@@ -1,0 +1,52 @@
+# Unit 4 Content Pack (50-slide scaffold)
+
+- 01. Title: Databases, Ontologies, and FAIR — Unit scope in MG pipeline.
+- 02. Learning outcomes — Data governance competencies for MG.
+- 03. Why data infrastructure decides model quality — Garbage-in at scale.
+- 04. Recap from Units 1–3 — Structure, representation, and descriptors.
+- 05. Materials data lifecycle — Generate, curate, reuse, iterate.
+- 06. Data source taxonomy — Experiments, simulations, literature.
+- 07. Public materials databases overview — MP, OQMD, AFLOW, NOMAD (high-level).
+- 08. Local lab databases — Typical schema and pain points.
+- 09. Structured vs semi-structured data — CIF/JSON/CSV implications.
+- 10. Metadata as first-class signal — Context for reproducibility.
+- 11. Provenance chains — Traceability of transformations.
+- 12. Versioning datasets — Immutable snapshots and diffs.
+- 13. Data quality dimensions — Completeness, consistency, validity.
+- 14. Duplicate and near-duplicate detection — Leakage prevention step.
+- 15. Identifier strategy — Persistent IDs and key collisions.
+- 16. Ontology concept — Controlled vocabulary for interoperability.
+- 17. Why ontologies in materials science — Semantic alignment across labs.
+- 18. Entity-relation model sketch — Material, process, measurement, property.
+- 19. Units and dimensional consistency — Conversion and normalization traps.
+- 20. Naming conventions — Avoiding ambiguous labels.
+- 21. FAIR: Findable — Indexing and discoverability basics.
+- 22. FAIR: Accessible — Access policies and APIs.
+- 23. FAIR: Interoperable — Standard formats and vocabularies.
+- 24. FAIR: Reusable — Licensing, metadata richness, quality.
+- 25. FAIR maturity rubric — Practical scoring scaffold.
+- 26. API-first data access — Programmatic ingestion benefits.
+- 27. ETL pipeline blueprint — Extract, transform, validate, load.
+- 28. Validation rules and schema checks — Guardrails before model training.
+- 29. Missing-data strategy — Imputation vs exclusion.
+- 30. Uncertainty fields in databases — Preserve error bars.
+- 31. Split strategy from metadata — Group-aware partitioning.
+- 32. Data cards for materials datasets — Standardized documentation.
+- 33. Bias sources in repositories — Popular materials overrepresentation.
+- 34. Domain shift across data sources — Experimental vs computational mismatch.
+- 35. Security and compliance basics — Sensitive/embargoed data handling.
+- 36. Minimal governance policy — Ownership, updates, approvals.
+- 37. Case sketch: integrating two databases — Schema mapping challenges.
+- 38. Case sketch: ontology-backed search — Better retrieval for modeling.
+- 39. Case sketch: FAIR audit — Identify weakest pillar.
+- 40. Tooling stack options — SQL + object store + catalog.
+- 41. MFML dependency map — Probability and uncertainty language reuse.
+- 42. Link to Unit 5 — Supervised learning for property prediction.
+- 43. Exercise scaffold: dataset inventory — Build metadata table.
+- 44. Exercise scaffold: schema + validation — Define required fields.
+- 45. Exercise scaffold: FAIR scoring — Evaluate one dataset.
+- 46. Exercise scaffold: leakage audit — Duplicate/provenance checks.
+- 47. Exercise scaffold: split proposal — Group-aware split design.
+- 48. Exam-oriented key statements — High-yield concepts.
+- 49. Summary slide — Core takeaways.
+- 50. References + reading assignment — Prepare for supervised-learning unit.
