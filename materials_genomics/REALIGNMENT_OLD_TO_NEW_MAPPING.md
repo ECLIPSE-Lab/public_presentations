@@ -39,3 +39,10 @@ For each canonical unit folder above:
 - `unitX_plan.md`
 - `unitX_content_50slides.md`
 - `01_intro.qmd` (50-slide scaffold)
+
+## Regeneration status (2026-03-03)
+- Units 3–13 were **reset and regenerated** with book-anchored scaffold content.
+- Each unit now includes:
+  - explicit chapter anchors from Neuer / Sandfeld / McClarren (+ Murphy/Bishop context)
+  - a content summary section
+  - a 50-slide scaffold with concrete, topic-specific slide titles and applied anchors

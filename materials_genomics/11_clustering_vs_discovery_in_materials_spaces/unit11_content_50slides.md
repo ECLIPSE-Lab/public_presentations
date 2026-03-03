@@ -1,156 +1,233 @@
-# Materials Genomics Unit 11 — 50-Slide Scaffold Pack
+# Materials Genomics Unit 11 — 50-Slide Teaching Scaffold (book-backed)
 
-Focus: Why clustering alone is insufficient for scientific discovery.
+## Book-backed content summary (for this unit)
+- Clustering objectives vs discovery objectives
+- K-means objective and centroid interpretation
+- Distance metrics and scaling sensitivity
+- Cluster validity indices and their limitations
+- Gaussian mixture models and soft assignments
+- Hierarchical clustering and dendrogram interpretation
+- Density-based clustering for irregular structures
+- Clustering in raw descriptor vs latent spaces
+- When clusters align with known material families
+- When clusters reflect artifacts instead of science
+- Outlier and novelty detection distinction
+- Discovery requires hypothesis + validation loop
 
-## Slide-by-slide scaffold
+## Source anchors used
+- Neuer 5.3
+- Sandfeld cluster analysis
+- Bishop Ch9
+- Murphy Ch11
+- McClarren Ch9 context
+
+## Essential equations / objects (lecture must-include)
+- $\hat{\theta}=\arg\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i),y_i)+\lambda\Omega(\theta)$
+- Train/validation/test with grouped split by chemistry/prototype
+- Generalization gap: $R_{test}-R_{train}$
+- Uncertainty decomposition: aleatoric + epistemic
+- Acquisition objective (conceptual): exploration vs exploitation
+
+## 50-slide scaffold
 
 1. **Title: Clustering vs Discovery in Materials Spaces**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-2. **Learning objectives**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-3. **Recap from previous unit**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-4. **Why this topic matters for materials genomics**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-5. **Core definitions and notation**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-6. **Domain context and assumptions**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-7. **Data requirements and scope**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-8. **Key workflow overview**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-9. **Method component 1**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-10. **Method component 2**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-11. **Method component 3**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-12. **Representation choices**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-13. **Invariance/constraint perspective**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-14. **Computational tradeoffs**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-15. **Modeling assumptions**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-16. **Evaluation setup basics**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-17. **Train/validation/test split strategy**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-18. **Leakage risks for this topic**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-19. **Bias and shift considerations**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-20. **Metric selection rationale**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-21. **Baseline method**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-22. **Improved method A**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-23. **Improved method B**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-24. **Interpretability hooks**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-25. **Uncertainty perspective**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-26. **Case study setup**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-27. **Case study data curation**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-28. **Case study model choices**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-29. **Case study results interpretation**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-30. **Case study limitations**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-31. **Failure mode #1**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-32. **Failure mode #2**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-33. **Failure mode #3**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-34. **Mitigation checklist**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-35. **Reproducibility checklist**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-36. **Common anti-patterns**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-37. **Scientific validity checks**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-38. **Connection to MFML concepts**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-39. **Connection to ML-PC concepts**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-40. **Practical deployment relevance**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-41. **Exercise setup**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-42. **Exercise task 1**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-43. **Exercise task 2**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-44. **Exercise task 3**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-45. **Exam-oriented key statements**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-46. **Summary: what to retain**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-47. **Reading assignment**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-48. **Next-unit dependency preview**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-49. **References + citations**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
-50. **Closing prompt / reflection**
-- Unit 11 scaffold point for clustering vs discovery in materials spaces.
-- Keep this concise now; expand during full-content pass.
+- Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+2. **Learning objectives and expected outputs**
+- State measurable outcomes (what students can explain, implement, and critique by the end of the unit).
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+3. **Recap from previous unit and dependency map**
+- Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+4. **Why this unit matters for materials discovery**
+- Motivate with a realistic failure/success scenario from materials discovery practice.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+5. **Reading map and chapter anchors**
+- Map slide blocks to the key book chapters so students can pre-read and post-review effectively.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+6. **Clustering objectives vs discovery objectives**
+- Explain **clustering objectives vs discovery objectives** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+7. **K-means objective and centroid interpretation**
+- Compare **k-means objective and centroid interpretation** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+8. **Distance metrics and scaling sensitivity**
+- Diagnose **distance metrics and scaling sensitivity** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+9. **Cluster validity indices and their limitations**
+- Apply **cluster validity indices and their limitations** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+10. **Gaussian mixture models and soft assignments**
+- Define **gaussian mixture models and soft assignments** using one concrete materials example and one common failure mode.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+11. **Hierarchical clustering and dendrogram interpretation**
+- Explain **hierarchical clustering and dendrogram interpretation** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+12. **Density-based clustering for irregular structures**
+- Compare **density-based clustering for irregular structures** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+13. **Clustering in raw descriptor vs latent spaces**
+- Diagnose **clustering in raw descriptor vs latent spaces** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+14. **When clusters align with known material families**
+- Apply **when clusters align with known material families** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+15. **When clusters reflect artifacts instead of science**
+- Define **when clusters reflect artifacts instead of science** using one concrete materials example and one common failure mode.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+16. **Outlier and novelty detection distinction**
+- Explain **outlier and novelty detection distinction** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+17. **Discovery requires hypothesis + validation loop**
+- Compare **discovery requires hypothesis + validation loop** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+18. **Cluster stability under resampling and perturbation**
+- Diagnose **cluster stability under resampling and perturbation** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+19. **Cluster drift across datasets and domains**
+- Apply **cluster drift across datasets and domains** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+20. **Human-in-the-loop interpretation of cluster semantics**
+- Define **human-in-the-loop interpretation of cluster semantics** using one concrete materials example and one common failure mode.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+21. **Linking clusters to target properties and uncertainty**
+- Explain **linking clusters to target properties and uncertainty** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+22. **Semi-supervised refinement after unsupervised grouping**
+- Compare **semi-supervised refinement after unsupervised grouping** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+23. **Failure mode: equating compactness with scientific novelty**
+- Diagnose **failure mode: equating compactness with scientific novelty** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+24. **Failure mode: over-trusting 2D visualizations**
+- Apply **failure mode: over-trusting 2d visualizations** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+25. **Failure mode: tuning clustering to desired story**
+- Define **failure mode: tuning clustering to desired story** using one concrete materials example and one common failure mode.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+26. **Case: k-means vs GMM on latent embeddings**
+- Explain **case: k-means vs gmm on latent embeddings** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+27. **Case: cluster-to-property enrichment analysis**
+- Compare **case: cluster-to-property enrichment analysis** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+28. **Case: anomaly candidates from low-density regions**
+- Diagnose **case: anomaly candidates from low-density regions** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+29. **Experimental follow-up design from cluster hypotheses**
+- Apply **experimental follow-up design from cluster hypotheses** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+30. **Reproducible clustering protocol and reporting**
+- Define **reproducible clustering protocol and reporting** using one concrete materials example and one common failure mode.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+31. **Statistical significance of discovered groups**
+- Explain **statistical significance of discovered groups** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+32. **Connection to uncertainty-aware acquisition in Unit 12**
+- Compare **connection to uncertainty-aware acquisition in unit 12** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+33. **Connection to constraints/trust in Unit 13**
+- Diagnose **connection to constraints/trust in unit 13** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+34. **Exercise: compare clustering objectives on same dataset**
+- Apply **exercise: compare clustering objectives on same dataset** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+35. **Exercise: quantify cluster stability**
+- Define **exercise: quantify cluster stability** using one concrete materials example and one common failure mode.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+36. **Exercise: propose one experimentally testable discovery hypothesis**
+- Explain **exercise: propose one experimentally testable discovery hypothesis** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+37. **Exam checklist: clustering claim vs discovery claim**
+- Compare **exam checklist: clustering claim vs discovery claim** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+38. **Advanced note: Clustering vs Discovery in Materials Spaces concept extension 33**
+- Diagnose **advanced note: clustering vs discovery in materials spaces concept extension 33** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+39. **Advanced note: Clustering vs Discovery in Materials Spaces concept extension 34**
+- Apply **advanced note: clustering vs discovery in materials spaces concept extension 34** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+40. **Advanced note: Clustering vs Discovery in Materials Spaces concept extension 35**
+- Define **advanced note: clustering vs discovery in materials spaces concept extension 35** using one concrete materials example and one common failure mode.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+41. **Advanced note: Clustering vs Discovery in Materials Spaces concept extension 36**
+- Explain **advanced note: clustering vs discovery in materials spaces concept extension 36** using one concrete materials example and one common failure mode.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+42. **Advanced note: Clustering vs Discovery in Materials Spaces concept extension 37**
+- Compare **advanced note: clustering vs discovery in materials spaces concept extension 37** using one concrete materials example and one common failure mode.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+43. **Advanced note: Clustering vs Discovery in Materials Spaces concept extension 38**
+- Diagnose **advanced note: clustering vs discovery in materials spaces concept extension 38** using one concrete materials example and one common failure mode.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+44. **Advanced note: Clustering vs Discovery in Materials Spaces concept extension 39**
+- Apply **advanced note: clustering vs discovery in materials spaces concept extension 39** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+45. **Exercise setup and dataset definition**
+- Define dataset, split protocol, and expected deliverables before any coding begins.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+46. **Exercise task 1 (pipeline core)**
+- Implement the core pipeline component with reproducible settings and documented assumptions.
+- Applied anchor: k-means/GMM comparison.
+- Book anchor: [Neuer 5.3].
+47. **Exercise task 2 (comparison/ablation)**
+- Run an ablation/comparison under identical validation protocol and interpret differences.
+- Applied anchor: silhouette vs downstream utility.
+- Book anchor: [Sandfeld cluster analysis].
+48. **Exercise task 3 (failure analysis)**
+- Perform structured failure analysis and propose one evidence-backed mitigation.
+- Applied anchor: bootstrap cluster stability.
+- Book anchor: [Bishop Ch9].
+49. **Exam-oriented key statements**
+- Summarize high-yield statements in concise written-exam style with definitions and caveats.
+- Applied anchor: cluster-property enrichment table.
+- Book anchor: [Murphy Ch11].
+50. **Summary, next-unit bridge, and references**
+- Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
+- Applied anchor: novelty candidate shortlist.
+- Book anchor: [McClarren Ch9 context].
+

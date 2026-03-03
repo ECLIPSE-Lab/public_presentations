@@ -3,27 +3,28 @@
 ## Unit title
 Materials Databases and Thermodynamic Quantities
 
+## Unit focus
+Build a reliable data foundation for materials ML by understanding databases, schemas, thermodynamic targets, and known biases.
+
+## Book-chapter anchors used for scaffold design
+- Sandfeld 2.2; Neuer 4.2.2; Neuer 4.4.1; McClarren Ch4; Bishop 3.1–3.3
+
 ## Learning objectives
 By the end of Unit 3, students can:
-1. Explain core concepts in materials databases and thermodynamic quantities.
-2. Connect methods to materials-discovery decisions.
-3. Identify dataset/model validity risks and mitigation.
-4. Distinguish lecture-essential theory from exercise implementation tasks.
-5. Prepare for subsequent unit dependencies.
+1. Explain the main modeling and data concepts behind **Materials Databases and Thermodynamic Quantities**.
+2. Map these concepts to materials-discovery decisions and failure modes.
+3. Apply leakage-aware validation logic in practical workflows.
+4. Distinguish what is lecture-essential vs what belongs in exercise implementation.
 
-## 90-minute structure
-- 0–10: recap and framing
-- 10–30: conceptual foundations
-- 30–50: methods and representations
-- 50–70: validation and failure modes
-- 70–85: case sketch + interpretation
-- 85–90: summary + exercise handoff
-
-## Unit focus
-Database foundations, file formats, and thermodynamic targets for materials ML.
+## 90-minute lecture structure
+- 0–10 min: dependency recap + notation alignment
+- 10–35 min: concepts and methods (book-backed foundations)
+- 35–60 min: materials-domain translation and modeling choices
+- 60–80 min: validation, uncertainty, and failure analysis
+- 80–90 min: summary + exercise handoff
 
 ## Exercise (90 min)
-- build a minimal reproducible pipeline for the unit topic
-- compare at least two methodological choices
-- run leakage-aware split/evaluation
-- provide one failure analysis and one mitigation proposal
+- implement a minimal reproducible pipeline for the unit topic
+- compare two methodological choices under identical split protocol
+- perform one structured failure analysis and mitigation proposal
+- produce a short report with claims, evidence, and limitations

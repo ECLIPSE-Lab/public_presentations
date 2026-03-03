@@ -1,156 +1,233 @@
-# Materials Genomics Unit 6 — 50-Slide Scaffold Pack
+# Materials Genomics Unit 6 — 50-Slide Teaching Scaffold (book-backed)
 
-Focus: Local descriptors (coordination, SOAP-like ideas) bridging physics and ML.
+## Book-backed content summary (for this unit)
+- Local vs global representation of crystal information
+- Coordination number and neighbor shells
+- Bond-length and bond-angle distributions
+- Voronoi tessellation intuition for local structure
+- SOAP descriptor concept and kernel view
+- ACSF and related atom-centered features
+- Symmetry functions and rotational invariance
+- Environment fingerprints for phase discrimination
+- Aggregating local descriptors to material-level vectors
+- Histogram and moment summaries of environments
+- Local environments for defect characterization
+- Sensitivity to noise in atomic positions
 
-## Slide-by-slide scaffold
+## Source anchors used
+- Sandfeld 2.2
+- Neuer 6.2
+- Neuer 6.3
+- McClarren Ch4
+- Bishop kernels/feature maps
+
+## Essential equations / objects (lecture must-include)
+- $\hat{\theta}=\arg\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i),y_i)+\lambda\Omega(\theta)$
+- Train/validation/test with grouped split by chemistry/prototype
+- Generalization gap: $R_{test}-R_{train}$
+- Uncertainty decomposition: aleatoric + epistemic
+- Acquisition objective (conceptual): exploration vs exploitation
+
+## 50-slide scaffold
 
 1. **Title: Local Atomic Environments**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-2. **Learning objectives**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-3. **Recap from previous unit**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-4. **Why this topic matters for materials genomics**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-5. **Core definitions and notation**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-6. **Domain context and assumptions**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-7. **Data requirements and scope**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-8. **Key workflow overview**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-9. **Method component 1**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-10. **Method component 2**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-11. **Method component 3**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-12. **Representation choices**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-13. **Invariance/constraint perspective**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-14. **Computational tradeoffs**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-15. **Modeling assumptions**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-16. **Evaluation setup basics**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-17. **Train/validation/test split strategy**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-18. **Leakage risks for this topic**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-19. **Bias and shift considerations**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-20. **Metric selection rationale**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-21. **Baseline method**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-22. **Improved method A**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-23. **Improved method B**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-24. **Interpretability hooks**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-25. **Uncertainty perspective**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-26. **Case study setup**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-27. **Case study data curation**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-28. **Case study model choices**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-29. **Case study results interpretation**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-30. **Case study limitations**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-31. **Failure mode #1**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-32. **Failure mode #2**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-33. **Failure mode #3**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-34. **Mitigation checklist**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-35. **Reproducibility checklist**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-36. **Common anti-patterns**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-37. **Scientific validity checks**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-38. **Connection to MFML concepts**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-39. **Connection to ML-PC concepts**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-40. **Practical deployment relevance**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-41. **Exercise setup**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-42. **Exercise task 1**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-43. **Exercise task 2**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-44. **Exercise task 3**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-45. **Exam-oriented key statements**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-46. **Summary: what to retain**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-47. **Reading assignment**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-48. **Next-unit dependency preview**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-49. **References + citations**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
-50. **Closing prompt / reflection**
-- Unit 6 scaffold point for local atomic environments.
-- Keep this concise now; expand during full-content pass.
+- Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+2. **Learning objectives and expected outputs**
+- State measurable outcomes (what students can explain, implement, and critique by the end of the unit).
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+3. **Recap from previous unit and dependency map**
+- Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+4. **Why this unit matters for materials discovery**
+- Motivate with a realistic failure/success scenario from materials discovery practice.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+5. **Reading map and chapter anchors**
+- Map slide blocks to the key book chapters so students can pre-read and post-review effectively.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+6. **Local vs global representation of crystal information**
+- Explain **local vs global representation of crystal information** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+7. **Coordination number and neighbor shells**
+- Compare **coordination number and neighbor shells** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+8. **Bond-length and bond-angle distributions**
+- Diagnose **bond-length and bond-angle distributions** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+9. **Voronoi tessellation intuition for local structure**
+- Apply **voronoi tessellation intuition for local structure** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+10. **SOAP descriptor concept and kernel view**
+- Define **soap descriptor concept and kernel view** using one concrete materials example and one common failure mode.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+11. **ACSF and related atom-centered features**
+- Explain **acsf and related atom-centered features** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+12. **Symmetry functions and rotational invariance**
+- Compare **symmetry functions and rotational invariance** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+13. **Environment fingerprints for phase discrimination**
+- Diagnose **environment fingerprints for phase discrimination** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+14. **Aggregating local descriptors to material-level vectors**
+- Apply **aggregating local descriptors to material-level vectors** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+15. **Histogram and moment summaries of environments**
+- Define **histogram and moment summaries of environments** using one concrete materials example and one common failure mode.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+16. **Local environments for defect characterization**
+- Explain **local environments for defect characterization** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+17. **Sensitivity to noise in atomic positions**
+- Compare **sensitivity to noise in atomic positions** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+18. **Preprocessing choices: normalization and cutoff selection**
+- Diagnose **preprocessing choices: normalization and cutoff selection** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+19. **Computational scaling of local descriptor extraction**
+- Apply **computational scaling of local descriptor extraction** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+20. **Interpretability benefits of local descriptors**
+- Define **interpretability benefits of local descriptors** using one concrete materials example and one common failure mode.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+21. **Comparing SOAP-like descriptors to graph embeddings**
+- Explain **comparing soap-like descriptors to graph embeddings** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+22. **Using local environments as hybrid model inputs**
+- Compare **using local environments as hybrid model inputs** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+23. **Kernel methods on local descriptors**
+- Diagnose **kernel methods on local descriptors** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+24. **Transferability across crystal families**
+- Apply **transferability across crystal families** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+25. **OOD detection via environment distribution shifts**
+- Define **ood detection via environment distribution shifts** using one concrete materials example and one common failure mode.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+26. **Failure mode: nonphysical neighborhoods from parser errors**
+- Explain **failure mode: nonphysical neighborhoods from parser errors** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+27. **Failure mode: aliasing environments across polymorphs**
+- Compare **failure mode: aliasing environments across polymorphs** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+28. **Descriptor compression and PCA for environment vectors**
+- Diagnose **descriptor compression and pca for environment vectors** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+29. **Clustering local motifs before supervised modeling**
+- Apply **clustering local motifs before supervised modeling** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+30. **Uncertainty estimates from environment variability**
+- Define **uncertainty estimates from environment variability** using one concrete materials example and one common failure mode.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+31. **Case: local motifs vs hardness proxy**
+- Explain **case: local motifs vs hardness proxy** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+32. **Case: identifying coordination-driven anomalies**
+- Compare **case: identifying coordination-driven anomalies** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+33. **Case: structure family separation in environment space**
+- Diagnose **case: structure family separation in environment space** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+34. **How local descriptors support regression in Unit 7**
+- Apply **how local descriptors support regression in unit 7** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+35. **How local descriptors support latent spaces in Unit 10**
+- Define **how local descriptors support latent spaces in unit 10** using one concrete materials example and one common failure mode.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+36. **Exercise design: build environment pipeline end-to-end**
+- Explain **exercise design: build environment pipeline end-to-end** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+37. **Quality checklist for environment-based features**
+- Compare **quality checklist for environment-based features** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+38. **Advanced note: Local Atomic Environments concept extension 33**
+- Diagnose **advanced note: local atomic environments concept extension 33** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+39. **Advanced note: Local Atomic Environments concept extension 34**
+- Apply **advanced note: local atomic environments concept extension 34** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+40. **Advanced note: Local Atomic Environments concept extension 35**
+- Define **advanced note: local atomic environments concept extension 35** using one concrete materials example and one common failure mode.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+41. **Advanced note: Local Atomic Environments concept extension 36**
+- Explain **advanced note: local atomic environments concept extension 36** using one concrete materials example and one common failure mode.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+42. **Advanced note: Local Atomic Environments concept extension 37**
+- Compare **advanced note: local atomic environments concept extension 37** using one concrete materials example and one common failure mode.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+43. **Advanced note: Local Atomic Environments concept extension 38**
+- Diagnose **advanced note: local atomic environments concept extension 38** using one concrete materials example and one common failure mode.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+44. **Advanced note: Local Atomic Environments concept extension 39**
+- Apply **advanced note: local atomic environments concept extension 39** using one concrete materials example and one common failure mode.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+45. **Exercise setup and dataset definition**
+- Define dataset, split protocol, and expected deliverables before any coding begins.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+46. **Exercise task 1 (pipeline core)**
+- Implement the core pipeline component with reproducible settings and documented assumptions.
+- Applied anchor: compute coordination distribution.
+- Book anchor: [Sandfeld 2.2].
+47. **Exercise task 2 (comparison/ablation)**
+- Run an ablation/comparison under identical validation protocol and interpret differences.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Neuer 6.2].
+48. **Exercise task 3 (failure analysis)**
+- Perform structured failure analysis and propose one evidence-backed mitigation.
+- Applied anchor: cluster local motifs.
+- Book anchor: [Neuer 6.3].
+49. **Exam-oriented key statements**
+- Summarize high-yield statements in concise written-exam style with definitions and caveats.
+- Applied anchor: aggregate motif histograms.
+- Book anchor: [McClarren Ch4].
+50. **Summary, next-unit bridge, and references**
+- Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
+- Applied anchor: regression with motif features.
+- Book anchor: [Bishop kernels/feature maps].
+

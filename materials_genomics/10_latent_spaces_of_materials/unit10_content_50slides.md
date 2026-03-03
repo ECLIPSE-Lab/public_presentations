@@ -1,156 +1,233 @@
-# Materials Genomics Unit 10 — 50-Slide Scaffold Pack
+# Materials Genomics Unit 10 — 50-Slide Teaching Scaffold (book-backed)
 
-Focus: Embeddings/autoencoders for structure and chemistry organization.
+## Book-backed content summary (for this unit)
+- Latent space definition and role in materials ML
+- Autoencoder encoder-bottleneck-decoder pipeline
+- Bottleneck dimension and information compression
+- Reconstruction loss and its physical implications
+- Latent smoothness and neighborhood consistency
+- Interpreting latent directions with controlled traversals
+- Linking latent axes to chemistry/structure trends
+- Latent interpolation between known materials
+- Anomaly detection in latent space
+- Latent class separation and overlap analysis
+- Variational ideas (conceptual only) for uncertainty in latent codes
+- Regularization strategies for stable latent geometry
 
-## Slide-by-slide scaffold
+## Source anchors used
+- Neuer 5.5.1–5.5.3
+- McClarren Ch5
+- Bishop 12.3–12.4
+- Murphy latent models
+- Sandfeld visualization context
+
+## Essential equations / objects (lecture must-include)
+- $\hat{\theta}=\arg\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i),y_i)+\lambda\Omega(\theta)$
+- Train/validation/test with grouped split by chemistry/prototype
+- Generalization gap: $R_{test}-R_{train}$
+- Uncertainty decomposition: aleatoric + epistemic
+- Acquisition objective (conceptual): exploration vs exploitation
+
+## 50-slide scaffold
 
 1. **Title: Latent Spaces of Materials**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-2. **Learning objectives**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-3. **Recap from previous unit**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-4. **Why this topic matters for materials genomics**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-5. **Core definitions and notation**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-6. **Domain context and assumptions**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-7. **Data requirements and scope**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-8. **Key workflow overview**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-9. **Method component 1**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-10. **Method component 2**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-11. **Method component 3**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-12. **Representation choices**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-13. **Invariance/constraint perspective**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-14. **Computational tradeoffs**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-15. **Modeling assumptions**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-16. **Evaluation setup basics**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-17. **Train/validation/test split strategy**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-18. **Leakage risks for this topic**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-19. **Bias and shift considerations**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-20. **Metric selection rationale**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-21. **Baseline method**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-22. **Improved method A**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-23. **Improved method B**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-24. **Interpretability hooks**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-25. **Uncertainty perspective**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-26. **Case study setup**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-27. **Case study data curation**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-28. **Case study model choices**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-29. **Case study results interpretation**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-30. **Case study limitations**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-31. **Failure mode #1**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-32. **Failure mode #2**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-33. **Failure mode #3**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-34. **Mitigation checklist**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-35. **Reproducibility checklist**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-36. **Common anti-patterns**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-37. **Scientific validity checks**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-38. **Connection to MFML concepts**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-39. **Connection to ML-PC concepts**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-40. **Practical deployment relevance**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-41. **Exercise setup**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-42. **Exercise task 1**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-43. **Exercise task 2**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-44. **Exercise task 3**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-45. **Exam-oriented key statements**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-46. **Summary: what to retain**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-47. **Reading assignment**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-48. **Next-unit dependency preview**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-49. **References + citations**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
-50. **Closing prompt / reflection**
-- Unit 10 scaffold point for latent spaces of materials.
-- Keep this concise now; expand during full-content pass.
+- Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+2. **Learning objectives and expected outputs**
+- State measurable outcomes (what students can explain, implement, and critique by the end of the unit).
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+3. **Recap from previous unit and dependency map**
+- Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+4. **Why this unit matters for materials discovery**
+- Motivate with a realistic failure/success scenario from materials discovery practice.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+5. **Reading map and chapter anchors**
+- Map slide blocks to the key book chapters so students can pre-read and post-review effectively.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+6. **Latent space definition and role in materials ML**
+- Explain **latent space definition and role in materials ml** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+7. **Autoencoder encoder-bottleneck-decoder pipeline**
+- Compare **autoencoder encoder-bottleneck-decoder pipeline** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+8. **Bottleneck dimension and information compression**
+- Diagnose **bottleneck dimension and information compression** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+9. **Reconstruction loss and its physical implications**
+- Apply **reconstruction loss and its physical implications** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+10. **Latent smoothness and neighborhood consistency**
+- Define **latent smoothness and neighborhood consistency** using one concrete materials example and one common failure mode.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+11. **Interpreting latent directions with controlled traversals**
+- Explain **interpreting latent directions with controlled traversals** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+12. **Linking latent axes to chemistry/structure trends**
+- Compare **linking latent axes to chemistry/structure trends** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+13. **Latent interpolation between known materials**
+- Diagnose **latent interpolation between known materials** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+14. **Anomaly detection in latent space**
+- Apply **anomaly detection in latent space** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+15. **Latent class separation and overlap analysis**
+- Define **latent class separation and overlap analysis** using one concrete materials example and one common failure mode.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+16. **Variational ideas (conceptual only) for uncertainty in latent codes**
+- Explain **variational ideas (conceptual only) for uncertainty in latent codes** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+17. **Regularization strategies for stable latent geometry**
+- Compare **regularization strategies for stable latent geometry** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+18. **Visualization methods: PCA/t-SNE/UMAP on latent vectors**
+- Diagnose **visualization methods: pca/t-sne/umap on latent vectors** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+19. **Quantitative latent quality metrics**
+- Apply **quantitative latent quality metrics** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+20. **Latent collapse and posterior collapse warnings**
+- Define **latent collapse and posterior collapse warnings** using one concrete materials example and one common failure mode.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+21. **Data normalization effects on latent geometry**
+- Explain **data normalization effects on latent geometry** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+22. **Model capacity effects on overfitting in latent models**
+- Compare **model capacity effects on overfitting in latent models** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+23. **Transfer of latent embeddings to downstream regressors**
+- Diagnose **transfer of latent embeddings to downstream regressors** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+24. **Latent-space clustering limits and opportunities**
+- Apply **latent-space clustering limits and opportunities** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+25. **OOD detection with latent density proxies**
+- Define **ood detection with latent density proxies** using one concrete materials example and one common failure mode.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+26. **Failure mode: visually clean but scientifically useless latent maps**
+- Explain **failure mode: visually clean but scientifically useless latent maps** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+27. **Failure mode: latent manifold dominated by dataset source**
+- Compare **failure mode: latent manifold dominated by dataset source** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+28. **Failure mode: reconstruction quality without predictive value**
+- Diagnose **failure mode: reconstruction quality without predictive value** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+29. **Case: autoencoder on crystal descriptor matrix**
+- Apply **case: autoencoder on crystal descriptor matrix** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+30. **Case: latent trajectories across composition series**
+- Define **case: latent trajectories across composition series** using one concrete materials example and one common failure mode.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+31. **Case: anomaly scoring for unusual local environments**
+- Explain **case: anomaly scoring for unusual local environments** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+32. **Connection to clustering-vs-discovery in Unit 11**
+- Compare **connection to clustering-vs-discovery in unit 11** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+33. **Connection to uncertainty-aware screening in Unit 12**
+- Diagnose **connection to uncertainty-aware screening in unit 12** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+34. **Connection to trust/integration in Unit 13**
+- Apply **connection to trust/integration in unit 13** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+35. **Exercise: train AE and evaluate latent utility**
+- Define **exercise: train ae and evaluate latent utility** using one concrete materials example and one common failure mode.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+36. **Exercise: latent interpolation and plausibility checks**
+- Explain **exercise: latent interpolation and plausibility checks** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+37. **Exam checklist: what latent-space evidence is credible**
+- Compare **exam checklist: what latent-space evidence is credible** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+38. **Advanced note: Latent Spaces of Materials concept extension 33**
+- Diagnose **advanced note: latent spaces of materials concept extension 33** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+39. **Advanced note: Latent Spaces of Materials concept extension 34**
+- Apply **advanced note: latent spaces of materials concept extension 34** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+40. **Advanced note: Latent Spaces of Materials concept extension 35**
+- Define **advanced note: latent spaces of materials concept extension 35** using one concrete materials example and one common failure mode.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+41. **Advanced note: Latent Spaces of Materials concept extension 36**
+- Explain **advanced note: latent spaces of materials concept extension 36** using one concrete materials example and one common failure mode.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+42. **Advanced note: Latent Spaces of Materials concept extension 37**
+- Compare **advanced note: latent spaces of materials concept extension 37** using one concrete materials example and one common failure mode.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+43. **Advanced note: Latent Spaces of Materials concept extension 38**
+- Diagnose **advanced note: latent spaces of materials concept extension 38** using one concrete materials example and one common failure mode.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+44. **Advanced note: Latent Spaces of Materials concept extension 39**
+- Apply **advanced note: latent spaces of materials concept extension 39** using one concrete materials example and one common failure mode.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+45. **Exercise setup and dataset definition**
+- Define dataset, split protocol, and expected deliverables before any coding begins.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+46. **Exercise task 1 (pipeline core)**
+- Implement the core pipeline component with reproducible settings and documented assumptions.
+- Applied anchor: AE reconstruction vs latent quality.
+- Book anchor: [Neuer 5.5.1–5.5.3].
+47. **Exercise task 2 (comparison/ablation)**
+- Run an ablation/comparison under identical validation protocol and interpret differences.
+- Applied anchor: latent traversal of alloy system.
+- Book anchor: [McClarren Ch5].
+48. **Exercise task 3 (failure analysis)**
+- Perform structured failure analysis and propose one evidence-backed mitigation.
+- Applied anchor: anomaly detection in latent code.
+- Book anchor: [Bishop 12.3–12.4].
+49. **Exam-oriented key statements**
+- Summarize high-yield statements in concise written-exam style with definitions and caveats.
+- Applied anchor: latent->property regressor.
+- Book anchor: [Murphy latent models].
+50. **Summary, next-unit bridge, and references**
+- Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
+- Applied anchor: source-bias test in latent map.
+- Book anchor: [Sandfeld visualization context].
+
