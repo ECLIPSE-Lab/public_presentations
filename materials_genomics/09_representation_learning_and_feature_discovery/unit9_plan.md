@@ -28,3 +28,37 @@ By the end of Unit 9, students can:
 - compare two methodological choices under identical split protocol
 - perform one structured failure analysis and mitigation proposal
 - produce a short report with claims, evidence, and limitations
+
+## Required chapter files
+- Neuer:
+  - `neuer-machine-learning-for-engineers/markdown/05-unsupervised-learning.qmd` (5.5)
+- Sandfeld:
+  - `sandfeld-materials-data-science/markdown/07-part-iv-artificial-neural-networks-and-deep-learning.qmd`
+- McClarren:
+  - `mcclarren-machine-learning-for-engineers/markdown/08-unsupervised-learning-with-neural-networks-autoencoders.qmd`
+- Bishop:
+  - `bishop-pattern-recognition-and-machine-learning-2006/markdown/16-continuous-latent-variables.qmd`
+- Murphy:
+  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/19-latent-linear-models.qmd`
+  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/35-deep-learning.qmd`
+
+## Cross-book summary target
+- Use Neuer and McClarren to explain autoencoders and hidden representations as tools for feature discovery rather than only compression.
+- Use Bishop and Murphy to provide latent-variable intuition and transferability language.
+- Use Sandfeld to keep the unit grounded in scientific feature interpretation and domain-aware embedding use.
+- Emphasize learned embeddings, feature discovery, transfer across chemical systems, and the distinction between useful and merely visually appealing representations.
+- Exclude self-supervised objective details beyond concept-level motivation.
+
+## 50-slide strategy
+- Slides 1-10: engineered vs learned features and why the distinction matters.
+- Slides 11-22: autoencoder and embedding intuition, bottlenecks, reconstruction objectives.
+- Slides 23-34: transferability, robustness, downstream regressors, hidden-layer interpretation.
+- Slides 35-44: failure cases, source bias, visually clean but useless embeddings.
+- Slides 45-50: representation-comparison exercise and recap.
+
+## Website summary update
+- Heading: `#### Week 10 – Representation learning and feature discovery (16.06.2026)`
+- Add a summary covering:
+  - learned embeddings versus engineered descriptors,
+  - transferability across chemistry families,
+  - how hidden representations can reveal or obscure materials trends.

@@ -1,6 +1,20 @@
-# Materials Genomics Unit 2 — 50-Slide Scaffold Pack
+# Materials Genomics Unit 2 — 50-Slide Teaching Scaffold (book-backed)
 
-## Slide-by-slide scaffold
+## Book-backed content summary (for this unit)
+- Crystal structures become ML-ready only after careful choices about lattice, basis, coordinate systems, and periodic representation.
+- Symmetry reduces redundant degrees of freedom but also creates canonicalization and leakage challenges when equivalent structures appear multiple times.
+- CIF-like containers mix geometry, chemistry, and metadata; these fields must be parsed into structured representations without discarding provenance.
+- Low-dimensional organization of structural data helps students see why crystal families and prototypes cluster, but these projections are not substitutes for crystallographic reasoning.
+- The unit prepares students for descriptor and graph models by clarifying what information a crystal representation must preserve.
+
+## Source anchors used
+- Neuer 1.2.3, 1.2.7, 5.2
+- Sandfeld 3.3
+- McClarren Ch4
+- Bishop Ch12
+- Murphy Ch19
+
+## 50-slide scaffold
 
 1. **Title: Crystal Structure Fundamentals**
 - Unit scope and role.

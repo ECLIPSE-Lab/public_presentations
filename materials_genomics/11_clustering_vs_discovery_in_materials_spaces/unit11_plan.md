@@ -28,3 +28,37 @@ By the end of Unit 11, students can:
 - compare two methodological choices under identical split protocol
 - perform one structured failure analysis and mitigation proposal
 - produce a short report with claims, evidence, and limitations
+
+## Required chapter files
+- Neuer:
+  - `neuer-machine-learning-for-engineers/markdown/05-unsupervised-learning.qmd` (5.3, 5.4, 5.5.3)
+- Sandfeld:
+  - `sandfeld-materials-data-science/markdown/06-part-iii-classical-machine-learning.qmd` (clustering-related sections)
+- McClarren:
+  - `mcclarren-machine-learning-for-engineers/markdown/04-finding-structure-within-a-data-set-data-reduction-and-clustering.qmd`
+- Bishop:
+  - `bishop-pattern-recognition-and-machine-learning-2006/markdown/13-mixture-models-and-em.qmd`
+- Murphy:
+  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/18-mixture-models-and-the-em-algorithm.qmd`
+  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/32-clustering.qmd`
+
+## Cross-book summary target
+- Use Neuer and McClarren to explain objective-based clustering, low-dimensional embeddings, and outlier logic.
+- Use Bishop and Murphy to distinguish hard assignments, soft assignments, and mixture-model interpretations.
+- Keep the scientific message explicit: clustering can reveal structure, but discovery requires hypotheses, validation, and uncertainty-aware follow-up.
+- Emphasize artifact-driven clusters, source-driven clusters, and the difference between novelty and noise.
+- Exclude EM derivations and advanced density-estimation theory.
+
+## 50-slide strategy
+- Slides 1-10: clustering objectives versus discovery objectives.
+- Slides 11-22: k-means, hierarchical, density-based, and mixture-based clustering intuition.
+- Slides 23-34: raw descriptor space vs latent space, validity indices, artifact clusters.
+- Slides 35-44: outliers, novelty, candidate identification, discovery loop.
+- Slides 45-50: clustering-comparison exercise and summary.
+
+## Website summary update
+- Heading: `#### Week 12 – Clustering, uncertainty, and discovery logic`
+- Add a summary covering:
+  - clustering as an exploratory tool rather than a discovery proof,
+  - novelty/outlier logic,
+  - the need to connect latent-space structure to validation and uncertainty.
