@@ -39,3 +39,36 @@ By the end of this unit, students can:
 ## Assessment alignment
 - Written exam: conceptual precision (not coding trivia)
 - Students should be able to defend model/data choices scientifically.
+
+## Required chapter files
+- Neuer:
+  - `neuer-machine-learning-for-engineers/markdown/01-data-as-the-basis-of-models.qmd` (1.1-1.3)
+- Sandfeld:
+  - `sandfeld-materials-data-science/markdown/04-part-i-introduction-and-foundations.qmd` (2.1-2.3)
+- McClarren:
+  - `mcclarren-machine-learning-for-engineers/markdown/01-the-landscape-of-machine-learning-supervised-and-unsupervised-learning-optimization-and-other-topics.qmd`
+- Bishop:
+  - `bishop-pattern-recognition-and-machine-learning-2006/markdown/05-introduction.qmd`
+- Murphy:
+  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/08-introduction.qmd`
+
+## Cross-book summary target
+- Start from Neuer's distinction between white-box, grey-box, and black-box models and explain why materials genomics cannot treat screening as a pure black-box exercise.
+- Use Sandfeld to define materials data science as a domain-knowledge-guided workflow from data to information to knowledge.
+- Use McClarren, Bishop, and Murphy only to stabilize the ML vocabulary: task definition, model selection, validation, and scientific interpretation.
+- Keep the focus on databases, discovery loops, and validity criteria rather than on algorithm derivations.
+- Exclude detailed probability theory and optimization proofs; they belong to MFML.
+
+## 50-slide strategy
+- Slides 1-8: course position, genomics analogy, learning objectives, discovery bottleneck.
+- Slides 9-18: design-space framing, PSPP graph, targets, surrogate-model logic.
+- Slides 19-30: database landscape, data objects, provenance, bias, and leakage.
+- Slides 31-41: regression/classification/ranking tasks, grouped validation, uncertainty-aware decisions.
+- Slides 42-50: exercise handoff, reporting checklist, exam-relevant summary statements.
+
+## Website summary update
+- Heading: `#### Week 1 – What is Materials Genomics? (14.04.2026)`
+- Add a short summary emphasizing:
+  - materials genomes as searchable composition-structure spaces,
+  - databases plus simulations as the data substrate,
+  - the need for validation, uncertainty, and domain knowledge in discovery claims.

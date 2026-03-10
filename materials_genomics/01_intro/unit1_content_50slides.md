@@ -3,16 +3,23 @@
 ## Unit theme
 **Materials data as a design space: from datasets to discovery loops**
 
-## Core source mapping (book-priority aligned)
-- **Neuer (2024)**: model framing, explainability, criticism of pure black-box use.
-- **Sandfeld (2024)**: Ch. 2.1–2.3 (data science in materials, domain knowledge, data→information→knowledge).
-- **McClarren (2021)**: Ch. 1 (ML landscape; validation basics; Bayesian view).
-- **Murphy (2012)**: Ch. 1 (task definitions, model selection language).
-- **Bishop (2006)**: Ch. 1 (probabilistic framing and model-selection mindset).
+## Book-backed content summary (for this unit)
+- Materials genomics treats composition and crystal structure as a searchable design space rather than a fixed list of known compounds.
+- Databases and simulations provide candidate structures, target properties, and method metadata that together define the learning problem.
+- Model choice in scientific discovery must remain tied to domain knowledge, uncertainty, and explainability rather than pure benchmark accuracy.
+- Materials discovery tasks combine regression, ranking, classification, and screening logic within one validation-aware workflow.
+- Provenance, dataset bias, and leakage determine whether a discovery claim is scientifically defensible.
+
+## Source anchors used
+- Neuer 1.1-1.3
+- Sandfeld 2.1-2.3
+- McClarren Ch1
+- Murphy Ch1
+- Bishop Ch1
 
 ---
 
-## Slide-by-slide content (target: 50)
+## 50-slide scaffold
 
 ### Block A — Why materials genomics? (Slides 1–8)
 1. **Title + course role in program**
