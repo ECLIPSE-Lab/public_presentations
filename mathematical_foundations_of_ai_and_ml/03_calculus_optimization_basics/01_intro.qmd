@@ -1,0 +1,328 @@
+---
+title: |
+  Mathematical Foundations of AI & ML<br>Unit 5: Backpropagation and Gradient Flow
+bibliography: ref.bib
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation:
+      - FAU Erlangen-Nürnberg
+execute:
+  eval: false
+format:
+  revealjs:
+    width: 1920
+    height: 1080
+    template-partials:
+      - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: "eclipse_logo_small.png"
+    footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
+---
+
+## 01. Title: Backpropagation and Gradient Flow
+
+- **The Learning Engine**: How do we tell a million parameters which way to move to fix an error?
+- **Unit Role**: Mastering the algorithmic implementation of the chain rule.
+- **Goal**: Transition from "forward" prediction to "backward" learning.
+
+## 02. Learning outcomes
+
+By the end of this unit, students can:
+- Derive the **Backpropagation** equations for a multi-layer perceptron.
+- Represent neural networks as **Computational Graphs**.
+- Identify the root causes of **Vanishing and Exploding Gradients**.
+- Explain how different activation functions and architectures facilitate or hinder **Gradient Flow**.
+
+## 03. Recap from Unit 4
+
+- **Neurons & Activations**: We have a hierarchical structure of affine transforms and non-linearities.
+- **Forward Pass**: Data flows from input to output, layer by layer.
+- **Problem**: We have a loss $J$, but we need its partial derivatives with respect to weights deep inside the network ($\frac{\partial J}{\partial w_{ij}^{(l)}}$).
+
+## 04. The Credit Assignment Problem
+
+- If the network's prediction is wrong, which neuron is responsible?
+- Is it the output layer? The 5th hidden layer?
+- **Backpropagation** provides a mathematically rigorous way to assign "credit" (or blame) to every parameter in the system.
+
+## 05. The Chain Rule (Refresher)
+
+- If $y = f(u)$ and $u = g(x)$, then:
+  $$ \frac{dy}{dx} = \frac{dy}{du} \cdot \frac{du}{dx} $$
+- **In NNs**: The loss is a composition of dozens of functions. To find the gradient at the start, we must multiply the derivatives of every step in between.
+
+## 06. Computational Graphs
+
+- A network is a directed graph where nodes are **Operations** and edges are **Tensors**.
+- **Example**: $z = w \cdot x + b$ can be broken into a multiply node and an add node.
+- **Benefit**: This abstraction allows us to compute gradients by simply walking the graph backward.
+
+## 07. Local Gradients
+
+- Every node in the graph can compute its own "local" derivative.
+- If a node $f$ has input $x$ and output $y$, it knows $\frac{\partial y}{\partial x}$.
+- **Decoupling**: Nodes don't need to know the entire network; they only need to know their immediate neighbors [@murphy2012machine].
+
+## 08. The Forward Pass (Notation)
+
+- $\mathbf{a}^{(l-1)}$: Activation from previous layer.
+- $\mathbf{z}^{(l)} = \mathbf{W}^{(l)}\mathbf{a}^{(l-1)} + \mathbf{b}^{(l)}$: Pre-activation.
+- $\mathbf{a}^{(l)} = \sigma(\mathbf{z}^{(l)})$: Post-activation.
+- **Storage**: We must store ("cache") these values during the forward pass to use them in the backward pass.
+
+## 09. The Backward Pass (Intuition)
+
+- Start at the final loss $L$.
+- Compute the derivative of $L$ with respect to the output $\hat{y}$.
+- Work backward, multiplying by the local derivative of each layer.
+- **Flow**: The "error signal" flows in the opposite direction of the data.
+
+## 10. Defining Error Signals ($\delta$)
+
+- Let $\delta_j^{(l)} = \frac{\partial L}{\partial z_j^{(l)}}$ be the error of the $j$-th neuron in layer $l$.
+- This represents how much the total loss would change if we slightly nudged the pre-activation of that neuron.
+
+## 11. Step 1: Output Layer Error
+
+- For a squared error loss $L = \frac{1}{2}(\hat{y} - y)^2$ and identity activation:
+  $$ \delta^{(L)} = \hat{y} - y $$
+- If using Sigmoid + Cross-Entropy, the derivation simplifies beautifully to the same form! [@bishop2006pattern].
+
+## 12. Step 2: Propagating Backward
+
+- To find $\delta^{(l)}$ from $\delta^{(l+1)}$:
+  $$ \delta^{(l)} = ((\mathbf{W}^{(l+1)})^T \delta^{(l+1)}) \odot \sigma'(\mathbf{z}^{(l)}) $$
+- **Meaning**: The error is weighted by the connections and filtered through the derivative of the local activation.
+
+## 13. Step 3: Weight Gradients
+
+- Once we have the error signals $\delta^{(l)}$, the gradient for the weights is:
+  $$ \frac{\partial L}{\partial \mathbf{W}^{(l)}} = \delta^{(l)} (\mathbf{a}^{(l-1)})^T $$
+- **Intuition**: Gradient = (Error signal coming from above) $\times$ (Activation coming from below).
+
+## 14. Step 4: Bias Gradients
+
+- The gradient for the biases is simply the error signal:
+  $$ \frac{\partial L}{\partial \mathbf{b}^{(l)}} = \delta^{(l)} $$
+- This is because the derivative of $\mathbf{z} = \mathbf{Wx} + \mathbf{b}$ with respect to $\mathbf{b}$ is 1.
+
+## 15. Vectorized Backprop Summary
+
+1. **Output**: $\delta^{(L)} = \nabla_{\mathbf{a}^{(L)}} L \odot \sigma'(\mathbf{z}^{(L)})$
+2. **Hidden**: $\delta^{(l)} = ((\mathbf{W}^{(l+1)})^T \delta^{(l+1)}) \odot \sigma'(\mathbf{z}^{(l)})$
+3. **Weight Grad**: $\nabla_{\mathbf{W}^{(l)}} L = \delta^{(l)} (\mathbf{a}^{(l-1)})^T$
+4. **Bias Grad**: $\nabla_{\mathbf{b}^{(l)}} L = \delta^{(l)}$
+
+## 16. Computational Efficiency: $O(W)$
+
+- Backprop takes roughly the same amount of computation as the forward pass (usually about $2 \times$ more).
+- It visits each weight exactly once.
+- This efficiency is what makes training massive models (GPT, Llama) possible.
+
+## 17. Automatic Differentiation (Autograd)
+
+- **Manual**: Deriving $\delta$ by hand (prone to error).
+- **Numerical**: $\frac{f(x+\epsilon) - f(x)}{\epsilon}$ (slow, inaccurate).
+- **Automatic**: Build the graph and apply the chain rule rules to the primitives.
+- **Engine**: The core of PyTorch and TensorFlow.
+
+## 18. Symbolic vs. Reverse-Mode AD
+
+- **Symbolic**: Produces a massive mathematical formula (exponential growth).
+- **Reverse-Mode (Backprop)**: Propagates numerical values backward (linear growth).
+- Reverse-mode is much better for functions with many inputs and few outputs (like our Loss function).
+
+## 19. The Jacobian Matrix in Backprop
+
+- For a vector input and vector output, $\frac{\partial \mathbf{y}}{\partial \mathbf{x}}$ is a **Jacobian Matrix**.
+- Backprop is essentially a sequence of Jacobian-vector products.
+- **Memory**: We never store the full Jacobian (it's too big); we only compute its product with the incoming gradient vector.
+
+## 20. Gradient Flow Obstacles
+
+- The product of many numbers leads to stability issues.
+- If derivatives are $< 1 \to$ **Vanishing Gradient**.
+- If derivatives are $> 1 \to$ **Exploding Gradient**.
+
+## 21. Vanishing Gradients (Deep Dive)
+
+- **Cause**: Sigmoid/Tanh activations have derivatives $\le 0.25$.
+- In a 10-layer network, the signal is scaled by $(0.25)^{10} \approx 10^{-6}$.
+- **Effect**: Early layers stop learning; they receive no signal about the error at the output.
+
+## 22. Exploding Gradients (Deep Dive)
+
+- **Cause**: Large weights and linear/unbounded activations.
+- **Effect**: Gradients become massive, causing weights to oscillate wildly and hit `NaN`.
+- **Solution**: **Gradient Clipping** (limiting the norm of the gradient vector).
+
+## 23. Impact of ReLU on Gradient Flow
+
+- **Derivative**: 1 for $x>0$, 0 for $x<0$.
+- **Benefit**: Since the derivative is 1, there is no signal decay! The error signal can travel through 100s of layers without shrinking.
+- This is the primary reason ResNets and other deep architectures work.
+
+## 24. Dying ReLU and Gradient Flow
+
+- If a neuron always outputs negative values, its gradient is always 0.
+- It becomes a "dead" weight that no longer contributes to learning.
+- **Mitigation**: Leaky ReLU or ELU ensures a small gradient always flows back.
+
+## 25. Initialization and Gradient Flow
+
+- If weights are too small $\to$ Vanishing.
+- If weights are too large $\to$ Exploding.
+- **Xavier/He Initialization**: Carefully tuned to keep the variance of the gradient constant layer-by-layer [@neuer2024machine].
+
+## 26. Batch Normalization and Gradient Flow
+
+- Standardizes activations to mean 0, variance 1.
+- **Effect**: Ensures that inputs to the next activation function are in the "active" range, preventing saturation and aiding gradient flow.
+
+## 27. The Role of the Jacobian's Spectrum
+
+- If the singular values of the layer Jacobians are all $\approx 1$, the network has **Isometry**.
+- Isometry is the ideal state for gradient flow, allowing for extremely deep networks.
+
+## 28. Residual Connections (Preview)
+
+- $y = f(x) + x$.
+- **The Shortcut**: In the backward pass, $\frac{\partial y}{\partial x} = \frac{\partial f}{\partial x} + 1$.
+- Even if $f$ vanishes, the gradient can still flow through the $+1$ term. This enables training 1000+ layer networks.
+
+## 29. Learning as a "Leaky" Process
+
+- Information is lost in the forward pass (compression).
+- Error signal is lost in the backward pass (vanishing).
+- Designing architectures is essentially the art of **managing flow**.
+
+## 30. Checkpoint: The 4 Backprop Equations
+
+- [ ] Can you identify the "delta" rule?
+- [ ] Do you see where the activation derivative appears?
+- [ ] Why does the weight gradient depend on the previous activation?
+
+## 31. Hessian-Free Optimization (Light)
+
+- Backprop gives the gradient (1st order).
+- **Hessian** (2nd order) tells us about curvature.
+- While computing the full Hessian is $O(W^2)$, certain techniques allow us to approximate its effect using backprop-like passes.
+
+## 32. Second-Order effects in NNs
+
+- Areas of high curvature require small steps.
+- Areas of low curvature (plateaus) require large steps.
+- This motivates the **Adaptive Learning Rates** we will see in the next unit.
+
+## 33. Universal Approximation and Backprop
+
+- UAT says the solution exists.
+- Backprop is the mechanism that explores the weight space to find it.
+- **Failure**: If gradient flow is broken, the search becomes a blind walk.
+
+## 34. Non-differentiable Ops?
+
+- Max-pooling, indexing, absolute value.
+- **Sub-gradients**: We pick a derivative at the point of non-differentiability (e.g., 0 for ReLU).
+- Works well enough in practice for almost all ML tasks.
+
+## 35. Implementation Trick: Gradient Checking
+
+- To verify your backprop code: compare it to numerical differentiation for a few parameters.
+- If $|grad_{numeric} - grad_{backprop}| > 10^{-7}$, your chain rule implementation likely has a bug.
+
+## 36. Materials example: Grain Boundary Diffusion
+
+- Model: PINN (Unit 13) predicting concentration.
+- **Flow**: The error at the boundary must flow back to correct the diffusion parameters in the bulk.
+- If the network is too deep without residuals, the boundary constraints never reach the early layers.
+
+## 37. Materials example: Image Denoising
+
+- Forward: Noisy image $\to$ Clean image.
+- Backward: Pixel-wise MSE $\to$ Weights.
+- **Symmetry**: Gradients are often spatially correlated in image networks.
+
+## 38. Materials example: Multi-physics coupling
+
+- Linking stress (mechanical) and conductivity (electrical).
+- **Chain Rule**: $\frac{\partial Loss}{\partial Conductivity} \cdot \frac{\partial Conductivity}{\partial Stress}$.
+- Backprop naturally handles these coupled physical sensitivities [@sandfeld_materials_data_science].
+
+## 39. Common failure mode #1: Gradient Saturating
+
+- Using Sigmoid/Tanh in very deep networks without residuals.
+- **Diagnostic**: Plot the norm of the gradients per layer. If they drop to 0 for early layers, you have a problem.
+
+## 40. Common failure mode #2: Unstable Initialization
+
+- Using standard Gaussian instead of He/Xavier.
+- **Diagnostic**: Loss goes to `NaN` in the first 5 iterations.
+
+## 41. Common failure mode #3: Incorrect Graph Topology
+
+- Forgetting to detach a variable or accidentally creating a cycle.
+- **Diagnostic**: Gradients are consistently 0 or make no physical sense.
+
+## 42. Robustness Checklist
+
+- [ ] Use ReLU or variants for deep architectures.
+- [ ] Apply Gradient Clipping for RNNs.
+- [ ] Use proper initialization (He/Xavier).
+- [ ] Monitor gradient norms during training.
+
+## 43. Exercise scaffold: Manual Derivative
+
+- Take a 1-hidden layer MLP.
+- Write out the expression for the loss $J$.
+- Compute $\frac{\partial J}{\partial w_{11}^{(1)}}$ by hand using the chain rule.
+
+## 44. Exercise scaffold: NumPy Backprop
+
+- Extend the MLP class from Unit 4.
+- Implement the `backward()` method using the vectorized equations.
+- Verify that the loss decreases over time on a toy dataset.
+
+## 45. Exercise scaffold: Vanishing Gradient Demo
+
+- Train a 20-layer Sigmoid network vs a 20-layer ReLU network on MNIST.
+- Plot the gradient norms for the first layer vs. time.
+- Observe the Sigmoid network failing to learn.
+
+## 46. Higher-order Backprop
+
+- "Backprop through Backprop".
+- Used for calculating sensitivities of sensitivities (e.g., in Meta-Learning or calculating physical force constants).
+
+## 47. Exam-oriented key statements
+
+1. Backprop is an efficient implementation of the chain rule.
+2. Error signals $\delta$ are computed from output to input.
+3. Vanishing gradients are caused by small activation derivatives.
+4. ReLU facilitates gradient flow in deep networks.
+5. Storage of activations is required for the backward pass.
+
+## 48. Summary table
+
+| Component | Role in Forward Pass | Role in Backward Pass |
+| :--- | :--- | :--- |
+| **Weights** | Scaling inputs | Determining credit |
+| **Activations** | Feature extraction | Scaling gradients |
+| **Derivatives**| (Not used) | Filtering signal |
+| **Cache** | (Not used) | Bridge between passes |
+
+## 49. Unit summary
+
+- We have unlocked the ability to **Train** complex models.
+- The mathematical "pipe" of gradient flow is the most critical part of NN design.
+- If gradients don't flow, the model doesn't learn.
+
+## 50. References + transition
+
+- **Read**: Neuer Ch. 4.5.2, Murphy Ch. 16.5.
+- **Next Unit**: Loss Landscapes and Optimization - understanding the terrain we are navigating.
+
+::: {#refs}
+:::

@@ -1,0 +1,233 @@
+# Materials Genomics Unit 12 — 50-Slide Teaching Scaffold (book-backed)
+
+## Book-backed content summary (for this unit)
+- Aleatoric vs epistemic uncertainty in materials workflows
+- Why point predictions are insufficient for discovery
+- Uncertainty decomposition in practical pipelines
+- Calibration and reliability for regression outputs
+- Gaussian Process intuition: prior over functions
+- Kernel choice and materials similarity assumptions
+- Posterior mean and variance interpretation
+- Computational scaling limits of exact GPs
+- Sparse/approximate GP strategies (conceptual)
+- GP regression for small-to-medium materials datasets
+- NN ensembles and MC-dropout as uncertainty proxies
+- Comparing GP uncertainty to ensemble uncertainty
+
+## Source anchors used
+- Neuer 2.2
+- Neuer 6.4
+- McClarren Ch3
+- Murphy Ch15
+- Bishop Bayesian view
+
+## Essential equations / objects (lecture must-include)
+- $\hat{\theta}=\arg\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i),y_i)+\lambda\Omega(\theta)$
+- Train/validation/test with grouped split by chemistry/prototype
+- Generalization gap: $R_{test}-R_{train}$
+- Uncertainty decomposition: aleatoric + epistemic
+- Acquisition objective (conceptual): exploration vs exploitation
+
+## 50-slide scaffold
+
+1. **Title: Uncertainty-Aware Discovery and Gaussian Processes**
+- Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+2. **Learning objectives and expected outputs**
+- State measurable outcomes (what students can explain, implement, and critique by the end of the unit).
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+3. **Recap from previous unit and dependency map**
+- Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+4. **Why this unit matters for materials discovery**
+- Motivate with a realistic failure/success scenario from materials discovery practice.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+5. **Reading map and chapter anchors**
+- Map slide blocks to the key book chapters so students can pre-read and post-review effectively.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+6. **Aleatoric vs epistemic uncertainty in materials workflows**
+- Explain **aleatoric vs epistemic uncertainty in materials workflows** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+7. **Why point predictions are insufficient for discovery**
+- Compare **why point predictions are insufficient for discovery** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+8. **Uncertainty decomposition in practical pipelines**
+- Diagnose **uncertainty decomposition in practical pipelines** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+9. **Calibration and reliability for regression outputs**
+- Apply **calibration and reliability for regression outputs** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+10. **Gaussian Process intuition: prior over functions**
+- Define **gaussian process intuition: prior over functions** using one concrete materials example and one common failure mode.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+11. **Kernel choice and materials similarity assumptions**
+- Explain **kernel choice and materials similarity assumptions** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+12. **Posterior mean and variance interpretation**
+- Compare **posterior mean and variance interpretation** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+13. **Computational scaling limits of exact GPs**
+- Diagnose **computational scaling limits of exact gps** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+14. **Sparse/approximate GP strategies (conceptual)**
+- Apply **sparse/approximate gp strategies (conceptual)** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+15. **GP regression for small-to-medium materials datasets**
+- Define **gp regression for small-to-medium materials datasets** using one concrete materials example and one common failure mode.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+16. **NN ensembles and MC-dropout as uncertainty proxies**
+- Explain **nn ensembles and mc-dropout as uncertainty proxies** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+17. **Comparing GP uncertainty to ensemble uncertainty**
+- Compare **comparing gp uncertainty to ensemble uncertainty** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+18. **Exploration vs exploitation tradeoff in screening**
+- Diagnose **exploration vs exploitation tradeoff in screening** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+19. **Acquisition functions: UCB, EI, PI (conceptual)**
+- Apply **acquisition functions: ucb, ei, pi (conceptual)** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+20. **Batch acquisition under limited experimental budget**
+- Define **batch acquisition under limited experimental budget** using one concrete materials example and one common failure mode.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+21. **Constraint-aware candidate selection**
+- Explain **constraint-aware candidate selection** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+22. **Uncertainty under dataset shift and OOD inputs**
+- Compare **uncertainty under dataset shift and ood inputs** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+23. **Failure mode: overconfident wrong predictions**
+- Diagnose **failure mode: overconfident wrong predictions** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+24. **Failure mode: uncertainty miscalibration under shift**
+- Apply **failure mode: uncertainty miscalibration under shift** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+25. **Failure mode: acquisition over-exploits known chemistry**
+- Define **failure mode: acquisition over-exploits known chemistry** using one concrete materials example and one common failure mode.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+26. **Case: GP-driven candidate ranking for bandgap**
+- Explain **case: gp-driven candidate ranking for bandgap** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+27. **Case: uncertainty-guided stability screening**
+- Compare **case: uncertainty-guided stability screening** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+28. **Case: NN ensemble vs GP on same benchmark**
+- Diagnose **case: nn ensemble vs gp on same benchmark** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+29. **Decision thresholds with uncertainty and cost**
+- Apply **decision thresholds with uncertainty and cost** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+30. **Human review loop for high-uncertainty recommendations**
+- Define **human review loop for high-uncertainty recommendations** using one concrete materials example and one common failure mode.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+31. **Reporting uncertainty in scientific claims**
+- Explain **reporting uncertainty in scientific claims** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+32. **Connection to physics constraints in Unit 13**
+- Compare **connection to physics constraints in unit 13** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+33. **Connection to end-to-end discovery governance**
+- Diagnose **connection to end-to-end discovery governance** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+34. **Exercise: GP baseline and uncertainty plots**
+- Apply **exercise: gp baseline and uncertainty plots** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+35. **Exercise: acquisition simulation over iterations**
+- Define **exercise: acquisition simulation over iterations** using one concrete materials example and one common failure mode.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+36. **Exercise: calibration diagnostics and correction**
+- Explain **exercise: calibration diagnostics and correction** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+37. **Exam checklist: uncertainty-aware decision argument**
+- Compare **exam checklist: uncertainty-aware decision argument** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+38. **Advanced note: Uncertainty-Aware Discovery and Gaussian Processes concept extension 33**
+- Diagnose **advanced note: uncertainty-aware discovery and gaussian processes concept extension 33** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+39. **Advanced note: Uncertainty-Aware Discovery and Gaussian Processes concept extension 34**
+- Apply **advanced note: uncertainty-aware discovery and gaussian processes concept extension 34** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+40. **Advanced note: Uncertainty-Aware Discovery and Gaussian Processes concept extension 35**
+- Define **advanced note: uncertainty-aware discovery and gaussian processes concept extension 35** using one concrete materials example and one common failure mode.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+41. **Advanced note: Uncertainty-Aware Discovery and Gaussian Processes concept extension 36**
+- Explain **advanced note: uncertainty-aware discovery and gaussian processes concept extension 36** using one concrete materials example and one common failure mode.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+42. **Advanced note: Uncertainty-Aware Discovery and Gaussian Processes concept extension 37**
+- Compare **advanced note: uncertainty-aware discovery and gaussian processes concept extension 37** using one concrete materials example and one common failure mode.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+43. **Advanced note: Uncertainty-Aware Discovery and Gaussian Processes concept extension 38**
+- Diagnose **advanced note: uncertainty-aware discovery and gaussian processes concept extension 38** using one concrete materials example and one common failure mode.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+44. **Advanced note: Uncertainty-Aware Discovery and Gaussian Processes concept extension 39**
+- Apply **advanced note: uncertainty-aware discovery and gaussian processes concept extension 39** using one concrete materials example and one common failure mode.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+45. **Exercise setup and dataset definition**
+- Define dataset, split protocol, and expected deliverables before any coding begins.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+46. **Exercise task 1 (pipeline core)**
+- Implement the core pipeline component with reproducible settings and documented assumptions.
+- Applied anchor: GP posterior with confidence bands.
+- Book anchor: [Neuer 2.2].
+47. **Exercise task 2 (comparison/ablation)**
+- Run an ablation/comparison under identical validation protocol and interpret differences.
+- Applied anchor: acquisition simulation loop.
+- Book anchor: [Neuer 6.4].
+48. **Exercise task 3 (failure analysis)**
+- Perform structured failure analysis and propose one evidence-backed mitigation.
+- Applied anchor: ensemble uncertainty map.
+- Book anchor: [McClarren Ch3].
+49. **Exam-oriented key statements**
+- Summarize high-yield statements in concise written-exam style with definitions and caveats.
+- Applied anchor: calibration plot.
+- Book anchor: [Murphy Ch15].
+50. **Summary, next-unit bridge, and references**
+- Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
+- Applied anchor: uncertainty-ranked shortlist.
+- Book anchor: [Bishop Bayesian view].
+
