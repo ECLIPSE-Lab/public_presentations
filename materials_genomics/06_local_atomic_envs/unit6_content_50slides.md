@@ -1,232 +1,176 @@
-# Materials Genomics Unit 6 — 50-Slide Teaching Scaffold (book-backed)
+# Materials Genomics Unit 6 — Local Atomic Environments
 
-## Book-backed content summary (for this unit)
-- Local vs global representation of crystal information
-- Coordination number and neighbor shells
-- Bond-length and bond-angle distributions
-- Voronoi tessellation intuition for local structure
-- SOAP descriptor concept and kernel view
-- ACSF and related atom-centered features
-- Symmetry functions and rotational invariance
-- Environment fingerprints for phase discrimination
-- Aggregating local descriptors to material-level vectors
-- Histogram and moment summaries of environments
-- Local environments for defect characterization
-- Sensitivity to noise in atomic positions
+## Core teaching claim
+Many structure-property relations in materials are controlled locally: by the atoms around a site, their distances, their angular arrangement, and their chemistry. A good local descriptor compresses this neighborhood into a machine-readable object without discarding the physics that makes the neighborhood meaningful.
 
-## Source anchors used
-- Sandfeld 2.2
-- Neuer 6.2
-- Neuer 6.3
-- McClarren Ch4
-- Bishop kernels/feature maps
+## 1. Why local environments exist as a representation layer
 
-## Essential equations / objects (lecture must-include)
-- Coordination number $N_i(r_c)$ under a chosen cutoff radius
-- Local environment descriptor $\phi_i$ and pooled material vector $\Phi=\text{pool}(\{\phi_i\})$
-- SOAP-style similarity as a normalized kernel between local environments
-- Grouped train/validation/test split by chemistry or prototype family
-- Periodic-neighbor construction under minimum-image or cell-expansion logic
+Global descriptors often average away the very motif that matters. Two materials can have similar stoichiometry and symmetry labels but very different local polyhedra, and those local polyhedra can control migration barriers, magnetic exchange, catalytic activity, or defect formation energies. Local atomic environments therefore sit between simple hand-built descriptors and full learned graph representations.
 
-## 50-slide scaffold
+The representation goal is not to reproduce the entire crystal exactly. It is to preserve the part of structure that is predictive for a target property while keeping the representation stable enough for statistical learning.
 
-1. **Title: Local Atomic Environments**
-- Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-2. **Learning objectives and expected outputs**
-- State measurable outcomes (what students can explain, implement, and critique by the end of the unit).
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-3. **Recap from previous unit and dependency map**
-- Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-4. **Why this unit matters for materials discovery**
-- Motivate with a realistic failure/success scenario from materials discovery practice.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-5. **Reading map and chapter anchors**
-- Map slide blocks to the key book chapters so students can pre-read and post-review effectively.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-6. **Local vs global representation of crystal information**
-- Explain **local vs global representation of crystal information** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-7. **Coordination number and neighbor shells**
-- Compare **coordination number and neighbor shells** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-8. **Bond-length and bond-angle distributions**
-- Diagnose **bond-length and bond-angle distributions** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-9. **Voronoi tessellation intuition for local structure**
-- Apply **voronoi tessellation intuition for local structure** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-10. **SOAP descriptor concept and kernel view**
-- Define **soap descriptor concept and kernel view** using one concrete materials example and one common failure mode.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-11. **ACSF and related atom-centered features**
-- Explain **acsf and related atom-centered features** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-12. **Symmetry functions and rotational invariance**
-- Compare **symmetry functions and rotational invariance** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-13. **Environment fingerprints for phase discrimination**
-- Diagnose **environment fingerprints for phase discrimination** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-14. **Aggregating local descriptors to material-level vectors**
-- Apply **aggregating local descriptors to material-level vectors** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-15. **Histogram and moment summaries of environments**
-- Define **histogram and moment summaries of environments** using one concrete materials example and one common failure mode.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-16. **Local environments for defect characterization**
-- Explain **local environments for defect characterization** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-17. **Sensitivity to noise in atomic positions**
-- Compare **sensitivity to noise in atomic positions** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-18. **Preprocessing choices: normalization and cutoff selection**
-- Diagnose **preprocessing choices: normalization and cutoff selection** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-19. **Computational scaling of local descriptor extraction**
-- Apply **computational scaling of local descriptor extraction** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-20. **Interpretability benefits of local descriptors**
-- Define **interpretability benefits of local descriptors** using one concrete materials example and one common failure mode.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-21. **Comparing SOAP-like descriptors to graph embeddings**
-- Explain **comparing soap-like descriptors to graph embeddings** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-22. **Using local environments as hybrid model inputs**
-- Compare **using local environments as hybrid model inputs** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-23. **Kernel methods on local descriptors**
-- Diagnose **kernel methods on local descriptors** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-24. **Transferability across crystal families**
-- Apply **transferability across crystal families** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-25. **OOD detection via environment distribution shifts**
-- Define **ood detection via environment distribution shifts** using one concrete materials example and one common failure mode.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-26. **Failure mode: nonphysical neighborhoods from parser errors**
-- Explain **failure mode: nonphysical neighborhoods from parser errors** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-27. **Failure mode: aliasing environments across polymorphs**
-- Compare **failure mode: aliasing environments across polymorphs** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-28. **Descriptor compression and PCA for environment vectors**
-- Diagnose **descriptor compression and pca for environment vectors** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-29. **Clustering local motifs before supervised modeling**
-- Apply **clustering local motifs before supervised modeling** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-30. **Uncertainty estimates from environment variability**
-- Define **uncertainty estimates from environment variability** using one concrete materials example and one common failure mode.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-31. **Case: local motifs vs hardness proxy**
-- Explain **case: local motifs vs hardness proxy** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-32. **Case: identifying coordination-driven anomalies**
-- Compare **case: identifying coordination-driven anomalies** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-33. **Case: structure family separation in environment space**
-- Diagnose **case: structure family separation in environment space** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-34. **Cutoff radius as a scientific modeling choice**
-- Show how changing $r_c$ changes coordination counts, neighbor identity, and descriptor stability.
-- Applied anchor: coordination histogram under multiple cutoffs.
-- Book anchor: [Neuer 6.2].
-35. **Periodic images and minimum-image conventions**
-- Explain how periodic boundary handling changes local neighborhoods in crystals.
-- Applied anchor: neighbor list across cell boundaries.
-- Book anchor: [Sandfeld 2.2].
-36. **Defects, vacancies, and distorted local motifs**
-- Use a defect example to show where local descriptors are more sensitive than global summaries.
-- Applied anchor: vacancy-induced coordination change.
-- Book anchor: [Neuer 6.3].
-37. **When local descriptors fail**
-- Discuss long-range physics, charge transfer, and global topology as limits of strictly local fingerprints.
-- Applied anchor: same local motif, different bulk context.
-- Book anchor: [McClarren Ch4].
-38. **Choosing between coordination stats, ACSF, and SOAP**
-- Compare the three by interpretability, cost, and transferability.
-- Applied anchor: side-by-side descriptor choice table.
-- Book anchor: [Bishop kernels/feature maps].
-39. **Pooling local descriptors to one material vector**
-- Mean, histogram, and attention-like pooling as distinct scientific assumptions.
-- Applied anchor: pooled representation for a small crystal family.
-- Book anchor: [Sandfeld 2.2].
-40. **Environment-space visualization**
-- Use PCA or UMAP conceptually to inspect motif clusters without overselling the picture.
-- Applied anchor: motif cluster plot.
-- Book anchor: [Neuer 6.2].
-41. **Quality checklist for environment features**
-- Verify parser quality, periodicity, cutoff, normalization, and split strategy before modeling.
-- Applied anchor: pre-regression audit checklist.
-- Book anchor: [Neuer 6.3].
-42. **Bridge to Unit 7 regression**
-- Show how local-environment vectors become supervised learning inputs for property prediction.
-- Applied anchor: local descriptor to target table.
-- Book anchor: [McClarren Ch4].
-43. **Exercise setup and dataset definition**
-- Define dataset, split protocol, deliverables, and one explicit failure-analysis requirement.
-- Applied anchor: coordination-plus-SOAP exercise brief.
-- Book anchor: [Sandfeld 2.2].
-44. **Exercise task 1: build the neighborhood pipeline**
-- Construct neighbors, choose cutoffs, and compute one simple local descriptor family.
-- Applied anchor: coordination distribution.
-- Book anchor: [Neuer 6.2].
-45. **Exercise task 2: compute a richer fingerprint**
-- Add SOAP or ACSF-like features and document the computational tradeoff.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Bishop kernels/feature maps].
-46. **Exercise task 3: aggregate to material level**
-- Pool local environments to a single vector and justify the pooling rule.
-- Applied anchor: motif histogram aggregation.
-- Book anchor: [Sandfeld 2.2].
-47. **Exercise task 4: compare stable vs noisy structures**
-- Compare descriptor robustness under perturbation, relaxation noise, or a defect.
-- Applied anchor: noisy structure ablation.
-- Book anchor: [Neuer 6.3].
-48. **Exercise task 5: short failure analysis**
-- Identify one descriptor failure mode and propose an evidence-backed mitigation.
-- Applied anchor: aliasing across polymorphs.
-- Book anchor: [McClarren Ch4].
-49. **Exam-oriented key statements**
-- Summarize high-yield statements in concise written-exam style with definitions and caveats.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-50. **Summary, next-unit bridge, and references**
-- Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
+## 2. What is a local atomic environment
+
+For atom `i`, a local environment contains:
+- the central species `Z_i`
+- neighboring species `Z_j`
+- relative positions `r_ij`
+- optionally angles and higher-order relations among neighbors
+
+The neighborhood is usually defined either by a radial cutoff `r_c` or by a geometric partition such as a Voronoi tessellation. In periodic crystals, the environment must be built with periodic images, otherwise atoms near the unit-cell boundary receive an unphysical neighborhood.
+
+## 3. Descriptor requirements
+
+A useful local descriptor should satisfy:
+- translation invariance: shifting the whole crystal changes nothing
+- rotation invariance or equivariance: orientation in the simulation cell should not change the scientific meaning
+- permutation invariance: reordering identical neighbors must not change the descriptor
+- continuity: a small displacement in atomic positions should induce a small change in the descriptor
+- chemical sensitivity: the descriptor must distinguish species and local chemistry
+
+If one of these properties fails, learning becomes brittle. A model may then react to file ordering, cell orientation, or parser quirks instead of physical structure.
+
+## 4. Simple local descriptors
+
+### Coordination number
+The simplest environment summary is the coordination number
+
+`N_i(r_c) = sum_j 1[r_ij < r_c]`
+
+It counts how many neighbors surround atom `i` inside a chosen cutoff. This is useful because many motifs are already distinguished by coordination: tetrahedral, octahedral, square-planar, and so on.
+
+The weakness is equally clear: the count ignores how neighbors are arranged. A tetrahedral site and a distorted square-planar site may both have coordination four.
+
+### Bond-length statistics
+A stronger local summary keeps the list or histogram of distances `{r_ij}`. Mean distance, variance, and histogram peaks can distinguish compressed from expanded environments and reveal disorder or strain.
+
+### Bond-angle statistics
+Including angles `theta_jik` adds local geometry. Octahedral, tetrahedral, and close-packed motifs become much easier to separate once angle distributions are included.
+
+## 5. Voronoi environments
+
+Instead of fixing a radial cutoff, one can define neighbors geometrically through a Voronoi tessellation. Two atoms are neighbors if their Voronoi cells share a face. This approach adapts to local density and often reduces arbitrary cutoff decisions.
+
+The gain is robustness to moderate density variation. The cost is sensitivity in noisy or highly distorted structures, where very small Voronoi faces may create questionable neighbors. In practice, people often combine Voronoi logic with additional face-area or distance thresholds.
+
+## 6. Why invariance matters
+
+Suppose the same crystal is written in two CIF files with different axis conventions. If the descriptor changes strongly under rigid rotation, a model sees two different inputs for one physical structure. This is not data augmentation; it is representation failure.
+
+This is why raw Cartesian coordinates are rarely used directly in classical pipelines. The descriptor must encode structure, not coordinate-system accidents.
+
+## 7. ACSF idea
+
+Atom-centered symmetry functions (ACSF) build local descriptors from carefully designed radial and angular basis functions. A typical radial term has the form
+
+`G_i^rad = sum_j exp[-eta (r_ij - R_s)^2] f_c(r_ij)`
+
+with a cutoff function `f_c` that smoothly goes to zero at `r_c`.
+
+Angular terms add neighbor triplets and therefore carry shape information. By evaluating many such functions with different hyperparameters, one obtains a descriptor vector that is invariant and differentiable.
+
+ACSF is attractive because each feature has a clear design purpose. The drawback is that feature design is manual and parameter choices can be tedious.
+
+## 8. SOAP idea
+
+SOAP, short for Smooth Overlap of Atomic Positions, replaces discrete neighbor lists by a smooth local density around each atom:
+
+`rho_i(r) = sum_j exp(-|r - r_ij|^2 / (2 sigma^2))`
+
+This density is expanded in radial basis functions and spherical harmonics. Instead of comparing raw coefficients, SOAP uses rotationally invariant combinations known as the power spectrum. The similarity between two environments is then computed through a normalized kernel.
+
+Conceptually, SOAP says: two environments are similar if their smeared neighbor densities overlap strongly after accounting for rotation. This usually yields a smooth and expressive descriptor, especially for subtle distortions.
+
+## 9. SOAP versus ACSF
+
+ACSF is explicit, hand-designed, and often easier to interpret feature by feature. SOAP is more systematic and usually better at capturing fine geometric similarity, but it is more abstract and can be computationally heavier.
+
+A practical rule:
+- start with simpler descriptors if interpretability and speed matter most
+- prefer SOAP-like descriptors when small geometric distortions matter scientifically
+
+## 10. Pooling from atoms to materials
+
+Local descriptors are atom-level objects `phi_i`. Many supervised tasks, however, predict one target per material, not per atom. We therefore need a pooling rule that turns `{phi_i}` into one material-level vector `Phi`.
+
+Common choices:
+- mean pooling: represents the average environment
+- histograms or moments: preserve some distributional information
+- species-resolved pooling: keep separate summaries per element
+
+Pooling is not a technical afterthought. It encodes a scientific assumption about whether a property depends on a typical site, a rare motif, or the full environment distribution.
+
+## 11. Defects and rare motifs
+
+Local descriptors are especially useful when a property depends on a defect or on a rare local motif. A vacancy changes the coordination and bond geometry only near a few sites; a global stoichiometric descriptor may barely notice. A local representation can isolate the changed environments directly.
+
+This is why defect classification, local phase discrimination, and atom-wise property models benefit so much from environment-based features.
+
+## 12. Cutoff radius as a modeling choice
+
+The cutoff `r_c` decides what the model is allowed to see. If it is too small, chemically relevant neighbors disappear. If it is too large, the descriptor becomes expensive and may mix local chemistry with weak long-range clutter.
+
+This means `r_c` is part of the scientific model, not just a preprocessing hyperparameter. It should be chosen with chemistry and target property in mind.
+
+## 13. Periodic images and parser failure
+
+In crystals, atoms near a cell boundary interact with image atoms across the boundary. If the neighbor construction ignores periodic images, the computed coordination can be catastrophically wrong. This creates fake low-coordination sites and injects structured noise into the dataset.
+
+One of the first audits for any local-descriptor pipeline is therefore simple: inspect a few boundary atoms and verify that their neighbors are physically plausible.
+
+## 14. Transferability and aliasing
+
+A local descriptor is transferable only if similar descriptor values correspond to genuinely similar chemistry across structure families. Problems arise when very different materials share nearly identical local motifs. This is descriptor aliasing.
+
+For example, a local octahedral environment may appear in compounds with very different long-range connectivity. If the target depends on band dispersion or framework connectivity, a purely local descriptor can overstate similarity.
+
+## 15. Long-range limits
+
+Not every materials property is local. Band topology, extended magnetic order, charge transport pathways, and elastic anisotropy may depend on crystal-wide structure. In those cases, local descriptors are still useful but incomplete. They must be augmented by global descriptors or replaced by richer graph or field-based models.
+
+This is a useful teaching boundary: local environments are powerful because they are physically meaningful, not because they are universally sufficient.
+
+## 16. Worked example: distinguishing tetrahedral and octahedral chemistry
+
+Consider a mixed oxide dataset. If we only record composition, two compounds may look similar. If we compute local descriptors, tetrahedrally coordinated cations separate from octahedrally coordinated ones almost immediately. Bond-angle features or SOAP similarities sharpen that separation further.
+
+A downstream classifier can then use the local motif distribution to distinguish structure families or to predict a property correlated with local coordination.
+
+## 17. Worked example: defect-sensitive hardness proxy
+
+Suppose we build a simple hardness proxy from local bond density and coordination statistics. A vacancy locally stretches bonds and reduces coordination. The pooled material vector changes only slightly, but the tail of the environment distribution changes a lot. This tells us that average pooling may hide defect information, while histogram-based pooling can preserve it.
+
+That example motivates an important modeling lesson: the pooling strategy should match the scientific mechanism.
+
+## 18. Comparison with graph representations
+
+Graph neural networks also start from local neighborhoods, but they learn how to aggregate them rather than fixing the descriptor by hand. Classical local descriptors therefore remain valuable for three reasons:
+- they are interpretable
+- they work well in small-data regimes
+- they provide strong baselines and hybrid inputs
+
+In practice, local descriptors are often the baseline a learned representation must beat.
+
+## 19. Quality checklist before downstream learning
+
+Before using local descriptors in regression or classification, check:
+- are periodic images handled correctly?
+- is the cutoff scientifically justified?
+- do distortions or relaxation noise change the descriptor smoothly?
+- does the pooling rule preserve the relevant motif statistics?
+- does the split strategy prevent similar structures from leaking across train and test?
+
+These checks matter as much as the choice between ACSF and SOAP.
+
+## 20. Unit summary
+
+The central message of Unit 6 is:
+- local descriptors compress the neighborhood of an atom into a physically meaningful feature vector
+- good descriptors respect invariance, continuity, and chemistry
+- ACSF and SOAP are principled ways to move beyond simple counts and histograms
+- pooling converts atom-level information into material-level inputs
+- failure often comes from preprocessing and scientific mismatch, not only from model choice
+
+## 21. Bridge to Unit 7
+
+Once each material is represented by a vector, the question changes. We no longer ask how to encode structure, but whether a predictive model actually generalizes. Unit 7 therefore turns from representation to evaluation: baselines, split design, leakage, out-of-distribution behavior, and trust.

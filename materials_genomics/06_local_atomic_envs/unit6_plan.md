@@ -3,62 +3,42 @@
 ## Unit title
 Local Atomic Environments
 
-## Unit focus
-Use local environment descriptors to bridge interpretable chemistry and modern representation learning.
+## Lecture arc
+- Why materials ML needs atom-centered structure information instead of only one global fingerprint.
+- What a valid local descriptor must preserve: translation, rotation, permutation, continuity, and chemical identity.
+- Simple environment summaries: coordination number, bond lengths, bond angles, and Voronoi coordination.
+- Richer descriptors: ACSF and SOAP as systematic encodings of local neighborhoods.
+- Pooling local environments into material-level features for supervised learning.
+- Failure modes: cutoff sensitivity, periodic-image mistakes, polymorph aliasing, defects, and long-range physics.
+- Bridge to Unit 7: once a material is represented as a vector, regression quality depends on split design and generalization logic.
 
-## Book-chapter anchors used for scaffold design
-- Sandfeld 2.2; Neuer 6.2; Neuer 6.3; McClarren Ch4; Bishop kernels/feature maps
+## Timing guide for 90 minutes
+- 0-10 min: motivation and recap from graph-based representations
+- 10-25 min: what counts as a local environment and why invariances matter
+- 25-45 min: geometric descriptors and Voronoi ideas
+- 45-65 min: ACSF and SOAP intuition
+- 65-80 min: pooling, transferability, and defect examples
+- 80-90 min: summary and handoff to regression/generalization
 
-## Learning objectives
-By the end of Unit 6, students can:
-1. Explain why local atomic environments are a natural compromise between global crystal descriptors and full graph models.
-2. Compare coordination features, Voronoi descriptors, ACSF-style fingerprints, and SOAP-like descriptors at a conceptual level.
-3. Explain how cutoff choice, periodic images, and aggregation affect the final material representation.
-4. Identify failure modes such as parser errors, aliasing across polymorphs, and noise sensitivity in relaxed structures.
-5. Build a simple local-environment pipeline suitable for downstream regression.
+## Must-cover concepts
+- Local versus global structural representation
+- Neighbor construction under periodic boundary conditions
+- Descriptor invariances and continuity
+- Coordination and bond-geometry features
+- SOAP and ACSF at conceptual-operational level
+- Pooling local descriptors to a material-level vector
+- Failure modes caused by cutoffs, parser errors, and missing long-range physics
 
-## 90-minute lecture structure
-- 0–10 min: dependency recap + notation alignment
-- 10–35 min: concepts and methods (book-backed foundations)
-- 35–60 min: materials-domain translation and modeling choices
-- 60–80 min: validation, uncertainty, and failure analysis
-- 80–90 min: summary + exercise handoff
+## Optional cuts if time runs short
+- Keep SOAP as a conceptual descriptor and skip the finer basis-expansion discussion.
+- Shorten the comparison between Voronoi and radial-cutoff neighborhoods.
+- Collapse the final worked example into the summary slide.
 
-## Exercise (90 min)
-- construct local neighborhoods for a small crystal dataset
-- compute coordination statistics and one richer local descriptor
-- aggregate local environments to a material-level vector
-- compare descriptor behavior for one stable structure and one defective/noisy structure
+## Exercise handoff
+- Build local environments for a small crystal set.
+- Compare coordination statistics with one richer descriptor family.
+- Pool local descriptors into a material-level vector.
+- Document one failure mode and one mitigation.
 
-## Required chapter files
-- Neuer:
-  - `neuer-machine-learning-for-engineers/markdown/06-physics-informed-learning.qmd` (6.2, 6.3)
-- Sandfeld:
-  - `sandfeld-materials-data-science/markdown/04-part-i-introduction-and-foundations.qmd` (2.2, 3.3)
-- McClarren:
-  - `mcclarren-machine-learning-for-engineers/markdown/02-linear-models-for-regression-and-classification.qmd`
-- Bishop:
-  - `bishop-pattern-recognition-and-machine-learning-2006/markdown/10-kernel-methods.qmd`
-- Murphy:
-  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/21-kernels.qmd`
-
-## Cross-book summary target
-- Use Neuer and Sandfeld to stress that local-environment features are a form of domain-guided data enrichment rather than arbitrary preprocessing.
-- Use Bishop and Murphy to motivate kernel and similarity language for SOAP-like descriptors.
-- Keep the materials content on coordination numbers, Voronoi views, atom-centered descriptors, and aggregation from local to material-level features.
-- Show local descriptors as the bridge between interpretable classical features and learned graph representations.
-- Exclude full kernel derivations and spherical-harmonic details; keep the treatment conceptual and operational.
-
-## 50-slide strategy
-- Slides 1-10: local vs global structure, neighbor shells, coordination environments.
-- Slides 11-22: bond-length/bond-angle views, Voronoi tessellations, atom-centered features.
-- Slides 23-34: SOAP/ACSF intuition, kernel similarity, aggregation to material-level vectors.
-- Slides 35-44: cutoff choice, periodic neighborhoods, defects, noise sensitivity, and transfer limits.
-- Slides 45-50: descriptor computation exercise and recap.
-
-## Website summary update
-- Heading: `#### Week 7 – Local atomic environments (26.05.2026)`
-- Add a summary covering:
-  - local descriptors as ML-ready fingerprints,
-  - Voronoi/SOAP intuition,
-  - the bridge from interpretable environments to richer learned representations.
+## Bridge to Unit 7
+Unit 7 starts where this unit ends: after choosing a representation, the central question becomes whether a regression result reflects genuine structure-property learning or an artifact of split design, leakage, or narrow chemistry coverage.
