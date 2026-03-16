@@ -1,0 +1,424 @@
+---
+title: |
+  Mathematical Foundations of AI & ML<br>Unit 7: Generalization, Bias-Variance, and Regularization
+bibliography: ref.bib
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation:
+      - FAU Erlangen-Nürnberg
+execute:
+  eval: false
+format:
+  revealjs:
+    width: 1920
+    height: 1080
+    template-partials:
+      - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: "eclipse_logo_small.png"
+    footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
+---
+
+## 01. Title + Unit 7 positioning
+
+- Units 1–6 built the machinery: loss functions, architectures, backprop, optimization.
+- Unit 7 asks the fundamental question: **does the model work on data it has never seen?**
+- Generalization is the central goal of machine learning — everything else is in service of it.
+
+## 02. Learning outcomes for Unit 7
+
+By the end of this lecture, students can:
+
+- derive and interpret the bias-variance decomposition of expected prediction error,
+- diagnose overfitting vs underfitting from training/validation loss curves,
+- formulate Ridge (L2) and Lasso (L1) regularization and explain their geometric effects,
+- design a k-fold cross-validation procedure for model selection and hyperparameter tuning.
+
+## 03. Recall: ERM from Unit 1
+
+- Empirical Risk Minimization: \\(\hat{\theta} = \arg\min_\theta \frac{1}{N}\sum_{i=1}^{N} L(f_\theta(x_i), y_i)\\).
+- We minimize **empirical** risk (training loss), but we care about **population** risk (expected loss on new data).
+- The gap between these two is the core challenge of learning.
+
+## 04. The generalization gap
+
+- **Generalization gap** = test error − training error.
+- A small gap means the model has learned the true pattern.
+- A large gap means the model has memorized the training data.
+- The gap is not observable during training — we need held-out data to estimate it.
+
+## 05. Why generalization is the central goal
+
+- A model that perfectly fits training data but fails on new data is useless in deployment.
+- In engineering applications (materials, manufacturing), deployment failure can be costly and dangerous.
+- Every design choice — architecture, regularization, optimizer — should be evaluated by its effect on generalization.
+
+## 06. Overfitting — definition and visual example
+
+- **Overfitting**: the model captures noise and idiosyncrasies of the training data instead of the underlying signal.
+- Symptom: training error is very low, test error is high.
+- Visual: a high-degree polynomial passes through every training point but oscillates wildly between them.
+
+## 07. Underfitting — definition and visual example
+
+- **Underfitting**: the model is too simple to capture the structure in the data.
+- Symptom: both training and test error are high.
+- Visual: a straight line fit to clearly nonlinear data misses the pattern entirely.
+
+## 08. The complexity spectrum
+
+- **Low complexity** (few parameters, simple model): high bias, low variance → underfitting.
+- **High complexity** (many parameters, flexible model): low bias, high variance → overfitting.
+- The **sweet spot**: enough complexity to capture the signal, not so much that it captures noise.
+
+## 09. Detecting overfitting in practice
+
+- Plot training loss and validation loss over training epochs.
+- **Healthy**: both decrease and converge.
+- **Overfitting**: training loss continues to decrease while validation loss starts increasing.
+- The divergence point suggests when to stop training (early stopping) [@neuer2024machine].
+
+## 10. Engineering consequence: false confidence
+
+- A model with 99% training accuracy may have 60% test accuracy.
+- In materials science: a property-prediction model that overfits may suggest alloy compositions that fail experimentally.
+- Perfect training fit can mask catastrophic deployment failure — always validate on held-out data.
+
+## 11. Setup: expected prediction error
+
+- Consider the expected loss over both the training data \\(\mathcal{D}\\) and a new test point \\((x, y)\\):
+
+$$
+\text{EPE}(x) = \mathbb{E}_{\mathcal{D}} \mathbb{E}_{y|x} \big[ (y - \hat{f}_{\mathcal{D}}(x))^2 \big]
+$$
+
+- This averages over all possible training sets and all possible true outputs at \\(x\\).
+
+## 12. Decomposing squared error — step 1
+
+- Add and subtract the expected prediction \\(\mathbb{E}_{\mathcal{D}}[\hat{f}(x)]\\):
+
+$$
+y - \hat{f}(x) = \underbrace{(y - f(x))}_{\text{noise}} + \underbrace{(f(x) - \mathbb{E}_{\mathcal{D}}[\hat{f}(x)])}_{\text{bias}} + \underbrace{(\mathbb{E}_{\mathcal{D}}[\hat{f}(x)] - \hat{f}(x))}_{\text{variance term}}
+$$
+
+## 13. Decomposing squared error — step 2
+
+- Square the expression and take expectations.
+- Cross-terms vanish because noise is independent of the model and \\(\mathbb{E}_{\mathcal{D}}[\hat{f}(x) - \mathbb{E}_{\mathcal{D}}[\hat{f}(x)]] = 0\\).
+- The three surviving terms give us the decomposition.
+
+## 14. The three components
+
+$$
+\text{EPE}(x) = \underbrace{\sigma^2_{\text{noise}}}_{\text{irreducible}} + \underbrace{\big(\mathbb{E}_{\mathcal{D}}[\hat{f}(x)] - f(x)\big)^2}_{\text{Bias}^2} + \underbrace{\mathbb{E}_{\mathcal{D}}\big[(\hat{f}(x) - \mathbb{E}_{\mathcal{D}}[\hat{f}(x)])^2\big]}_{\text{Variance}}
+$$
+
+- **Bias²**: systematic error from model assumptions.
+- **Variance**: sensitivity to the specific training set.
+- **Noise**: irreducible — the Bayes error [@bishop2006pattern].
+
+## 15. Bias — interpretation
+
+- Bias measures how far the **average** prediction (over all possible training sets) is from the truth.
+- High bias means the model class cannot represent the true function.
+- Example: fitting a linear model to quadratic data — no amount of data will fix the systematic error.
+- Bias is a property of the **model family**, not the specific training set.
+
+## 16. Variance — interpretation
+
+- Variance measures how much the prediction **changes** when we draw a different training set.
+- High variance means the model is too sensitive to the particular data it was trained on.
+- Example: a degree-15 polynomial changes dramatically with each new training sample.
+- Variance is controlled by model complexity and training set size.
+
+## 17. Intrinsic noise / Bayes error
+
+- The noise term \\(\sigma^2\\) represents inherent randomness in the data-generating process.
+- No model — no matter how complex — can reduce the error below this floor.
+- In materials science: measurement noise, batch-to-batch variability, uncontrolled environmental factors.
+- Estimating \\(\sigma^2\\) helps set realistic performance expectations.
+
+## 18. The bias-variance tradeoff
+
+- **Increasing complexity**: bias decreases (model can fit more patterns), variance increases (model fits noise too).
+- **Decreasing complexity**: variance decreases (model is stable), bias increases (model misses structure).
+- Optimal complexity minimizes the **sum** Bias² + Variance.
+- This is the most fundamental tradeoff in machine learning [@murphy2012machine].
+
+## 19. Visual: U-shaped total error curve
+
+- Plot Bias², Variance, and total error against model complexity.
+- Bias² decreases monotonically with complexity.
+- Variance increases monotonically with complexity.
+- Total error = Bias² + Variance + noise: a **U-shaped** curve with a minimum at optimal complexity.
+
+## 20. Example: polynomial regression
+
+- **Degree 1**: high bias (line cannot capture curvature), low variance → underfitting.
+- **Degree 3–5**: moderate bias and variance → good fit.
+- **Degree 15**: low bias (passes through training points), high variance (oscillates wildly) → overfitting.
+- The optimal degree depends on the data: amount of noise, sample size, true function complexity.
+
+## 21. Example: Ridge regression and the tradeoff
+
+- Ridge regression with regularization parameter \\(\lambda\\):
+  - High \\(\lambda\\): heavy shrinkage → high bias, low variance.
+  - Low \\(\lambda\\): minimal shrinkage → low bias, high variance.
+- \\(\lambda\\) acts as a **complexity knob** that traces out the bias-variance tradeoff.
+- Optimal \\(\lambda\\) minimizes total MSE, not training error [@murphy2012machine].
+
+## 22. Checkpoint: why is the MLE not always best?
+
+- Maximum Likelihood Estimation is **unbiased** but can have high variance.
+- A biased estimator (MAP / regularized) can achieve lower total MSE.
+- The key insight: introducing a small bias can yield a large variance reduction.
+- This is the mathematical justification for regularization.
+
+## 23. Regularization — the key idea
+
+- Add a **penalty** to the loss function that discourages unnecessary complexity:
+
+$$
+J_{\text{reg}}(\theta) = \underbrace{\frac{1}{N}\sum_{i=1}^{N} L(\hat{y}_i, y_i)}_{\text{data fit}} + \underbrace{\lambda \cdot \Omega(\theta)}_{\text{complexity penalty}}
+$$
+
+- The penalty \\(\Omega(\theta)\\) grows with model complexity.
+- \\(\lambda > 0\\) controls the strength of regularization.
+
+## 24. Regularized ERM
+
+- The regularized optimization problem:
+
+$$
+\hat{\theta} = \arg\min_\theta \left[ R_N(\theta) + \lambda \, \Omega(\theta) \right]
+$$
+
+- \\(\lambda = 0\\): no regularization (pure ERM).
+- \\(\lambda \to \infty\\): penalty dominates — model collapses to the simplest possible solution.
+- Choosing \\(\lambda\\) is a **model selection** problem, not a parameter estimation problem.
+
+## 25. Ridge regression (L2 penalty)
+
+- Penalty: \\(\Omega(\theta) = \|\mathbf{w}\|_2^2 = \sum_j w_j^2\\).
+- Loss:
+
+$$
+L_{\text{ridge}} = \sum_{i=1}^{N}(\hat{y}_i - y_i)^2 + \lambda \|\mathbf{w}\|_2^2
+$$
+
+- Effect: shrinks all coefficients toward zero, but none exactly to zero.
+- Equivalent to a Gaussian prior on weights in Bayesian interpretation.
+
+## 26. Ridge regression — closed-form solution
+
+$$
+\hat{\mathbf{w}}_{\text{ridge}} = (\mathbf{X}^\top\mathbf{X} + \lambda\mathbf{I})^{-1}\mathbf{X}^\top\mathbf{y}
+$$
+
+- Adding \\(\lambda\mathbf{I}\\) makes the matrix **always invertible** (even if \\(\mathbf{X}^\top\mathbf{X}\\) is singular).
+- This stabilizes the solution when features are correlated or \\(p > N\\).
+- The closed form connects regularization directly to linear algebra [@mcclarren2021machine].
+
+## 27. Ridge regression — geometric view
+
+- The unconstrained optimum lies at the OLS solution.
+- Ridge constrains the solution to lie within a **sphere** \\(\|\mathbf{w}\|_2^2 \leq t\\).
+- The regularized solution is the point on the sphere closest to the OLS solution.
+- Contour plot: elliptical loss contours intersect the circular constraint region.
+
+## 28. Lasso regression (L1 penalty)
+
+- Penalty: \\(\Omega(\theta) = \|\mathbf{w}\|_1 = \sum_j |w_j|\\).
+- Loss:
+
+$$
+L_{\text{lasso}} = \sum_{i=1}^{N}(\hat{y}_i - y_i)^2 + \lambda \|\mathbf{w}\|_1
+$$
+
+- Key property: Lasso can set coefficients **exactly to zero** — it performs **variable selection**.
+
+## 29. Lasso — geometric view and sparsity
+
+- The L1 constraint region is a **diamond** (in 2D) or cross-polytope (in higher dimensions).
+- The diamond has **corners** that lie on coordinate axes.
+- Loss contours are more likely to intersect a corner → some coefficients become exactly zero.
+- This geometric property is why L1 promotes sparsity while L2 does not [@mcclarren2021machine].
+
+## 30. Ridge vs Lasso — side-by-side comparison
+
+| Property | Ridge (L2) | Lasso (L1) |
+|----------|:----------:|:----------:|
+| Penalty | \\(\sum w_j^2\\) | \\(\sum \|w_j\|\\) |
+| Sparsity | No (shrinks all) | Yes (zeroes some) |
+| Closed form | Yes | No (requires optimization) |
+| Correlated features | Keeps all, shrinks equally | Selects one arbitrarily |
+| Best for | Many relevant features | Few relevant features |
+
+## 31. Elastic net (brief)
+
+- Combines L1 and L2 penalties:
+
+$$
+\Omega(\theta) = \alpha \|\mathbf{w}\|_1 + (1 - \alpha) \|\mathbf{w}\|_2^2
+$$
+
+- Gets sparsity from L1 and stability from L2.
+- Handles correlated feature groups better than pure Lasso.
+- \\(\alpha\\) interpolates between Ridge (\\(\alpha = 0\\)) and Lasso (\\(\alpha = 1\\)).
+
+## 32. Normalization requirement
+
+- Regularization penalizes coefficient **magnitude**.
+- If features have different scales, the penalty is inconsistent: large-scale features get penalized more.
+- **Always normalize/standardize features before applying regularization.**
+- Standard approach: zero mean, unit variance for each feature [@mcclarren2021machine].
+
+## 33. Dropout as regularization (neural networks)
+
+- During training, randomly set each neuron's output to zero with probability \\(p\\).
+- Effect: the network cannot rely on any single neuron → prevents **co-adaptation**.
+- At test time, scale activations by \\((1-p)\\) to compensate.
+- Dropout is equivalent to training an ensemble of \\(2^H\\) sub-networks (where \\(H\\) = number of hidden units).
+
+## 34. Choosing lambda — preview of cross-validation
+
+- \\(\lambda\\) is a **hyperparameter** — it controls model complexity but is not a model parameter.
+- It cannot be learned from training data alone (that would just lead to \\(\lambda = 0\\)).
+- We need a principled method to select \\(\lambda\\): **cross-validation**.
+
+## 35. Train / validation / test — the three roles
+
+- **Training set**: used to fit model parameters \\(\theta\\).
+- **Validation set**: used to tune hyperparameters (\\(\lambda\\), architecture, learning rate).
+- **Test set**: used **once** for final performance evaluation — never used during development.
+- Typical split: 60% train / 20% validation / 20% test.
+
+## 36. Why we need three sets, not two
+
+- If we use the test set to select \\(\lambda\\), the reported test performance is **optimistically biased**.
+- The test set must remain untouched until the very end.
+- The validation set absorbs the selection bias instead.
+- Violation of this principle is one of the most common mistakes in applied ML.
+
+## 37. k-fold cross-validation — procedure
+
+1. Split data into \\(k\\) equal folds.
+2. For each fold \\(j = 1, \dots, k\\):
+   - Train on all folds except fold \\(j\\).
+   - Evaluate on fold \\(j\\).
+3. Average the \\(k\\) performance estimates:
+
+$$
+\text{CV}(k) = \frac{1}{k} \sum_{j=1}^{k} R_{\text{test}}^{(j)}
+$$
+
+- Common choice: \\(k = 5\\) or \\(k = 10\\) [@neuer2024machine].
+
+## 38. k-fold cross-validation — variance reduction
+
+- Every data point is used for both training and evaluation (in different folds).
+- More efficient use of limited data compared to a single train/validation split.
+- The averaged estimate has lower variance than a single hold-out estimate.
+- Tradeoff: \\(k\\) times more expensive computationally.
+
+## 39. Leave-one-out CV
+
+- Special case: \\(k = N\\) (each fold contains exactly one sample).
+- Nearly unbiased estimate of generalization error.
+- Very high computational cost: \\(N\\) models must be trained.
+- High variance: each estimate is based on a single test point.
+- Useful for very small datasets where data cannot be wasted.
+
+## 40. Choosing lambda via CV
+
+- For each candidate \\(\lambda\\), compute the CV error \\(\text{CV}(\lambda)\\).
+- Plot \\(\text{CV}(\lambda)\\) vs \\(\log(\lambda)\\).
+- Select \\(\lambda^*\\) at the minimum of the CV curve.
+- Alternative: the **one-standard-error rule** [@murphy2012machine].
+
+## 41. The one-standard-error rule
+
+- Compute the standard error of the CV estimate at each \\(\lambda\\).
+- Instead of the absolute minimum, select the **simplest model** (largest \\(\lambda\\)) within one SE of the minimum.
+- Rationale: if two models have statistically indistinguishable performance, prefer the simpler one.
+- This implements Occam's razor in a principled, data-driven way.
+
+## 42. Model selection: complexity vs performance
+
+- Cross-validation is not limited to tuning \\(\lambda\\).
+- Compare entirely different model families: linear, polynomial, neural network, random forest.
+- For each model, tune its hyperparameters via inner CV loop.
+- Select the model family with the best outer CV performance.
+
+## 43. Grouped / stratified CV for materials data
+
+- Standard k-fold assumes **IID** data — often violated in engineering applications.
+- **Grouped CV**: ensure all measurements from the same sample/batch are in the same fold.
+- **Stratified CV**: ensure each fold has a representative class distribution.
+- Ignoring data structure leads to over-optimistic CV estimates.
+
+## 44. Checkpoint MCQ slide
+
+- **Scenario**: A student uses the test set to tune \\(\lambda\\), then reports test set accuracy as the model's generalization performance. What goes wrong?
+
+- A) Nothing — this is standard practice.
+- B) The reported accuracy is pessimistically biased.
+- C) The reported accuracy is optimistically biased.
+- D) The model will underfit.
+
+- **Answer**: C — the test set was used for selection, so it no longer provides an unbiased estimate.
+
+## 45. Materials example: overfitting in alloy property prediction
+
+- Setting: predicting hardness from 50 compositional features using only 200 samples.
+- Without regularization: the model memorizes training data and predicts poorly on new alloys.
+- With Ridge regularization (\\(\lambda\\) selected via 5-fold CV): test error drops by 40%.
+- Lesson: when \\(p/N\\) is large, regularization is not optional — it is essential.
+
+## 46. Materials example: Lasso for identifying governing features
+
+- Starting from 100 candidate features (composition, processing, microstructure).
+- Lasso with increasing \\(\lambda\\) progressively zeros out irrelevant features.
+- The surviving features align with known physical mechanisms (grain size, carbon content, cooling rate).
+- Lasso provides both prediction and **interpretability**.
+
+## 47. Materials example: polynomial models for process-property curves
+
+- A high-degree polynomial captures batch-to-batch noise in sintering temperature vs density data.
+- A low-degree polynomial misses the genuine nonlinearity (plateau near full density).
+- Cross-validation identifies degree 3 as the sweet spot for this dataset.
+- This is the bias-variance tradeoff in action on real engineering data.
+
+## 48. Lecture-essential vs exercise content split
+
+- **Lecture**: bias-variance decomposition derivation, regularization formulation, geometric interpretation, CV design, model selection principles.
+- **Exercise**: polynomial overfitting demo, \\(\lambda\\) sweeps for Ridge vs Lasso, CV implementation in Python, materials feature selection.
+
+## 49. Exam-aligned summary: 10 must-know statements
+
+1. Generalization gap = test error − training error.
+2. Overfitting: the model learns noise, not signal.
+3. MSE = Bias² + Variance + irreducible noise.
+4. Bias decreases and variance increases with model complexity.
+5. Ridge (L2) shrinks all weights; Lasso (L1) sets some to zero.
+6. Regularization strength \\(\lambda\\) must be tuned, not learned from training data.
+7. Cross-validation provides an unbiased estimate of generalization error.
+8. Train / validation / test roles must never be mixed.
+9. Feature normalization is mandatory before regularization.
+10. Model selection balances complexity against validated performance.
+
+## 50. References + reading assignment for next unit
+
+- **Required reading before Unit 8:**
+  - Neuer: Ch. 4.5.9 (overfitting and cross-validation)
+  - McClarren: Ch. 2.4 (Ridge, Lasso, elastic net)
+- **Optional depth:**
+  - Murphy: Ch. 6.4.4, 6.5.3 (bias-variance, CV for lambda selection)
+  - Bishop: Ch. 3.2 (bias-variance decomposition)
+- Next unit: **Probabilistic View of Learning** — connecting optimization to statistical inference.
+
+::: {#refs}
+:::

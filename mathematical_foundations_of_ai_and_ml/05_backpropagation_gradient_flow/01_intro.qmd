@@ -1,0 +1,453 @@
+---
+title: |
+  Mathematical Foundations of AI & ML<br>Unit 5: Backpropagation and Gradient Flow
+bibliography: ref.bib
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation:
+      - FAU Erlangen-Nürnberg
+execute:
+  eval: false
+format:
+  revealjs:
+    width: 1920
+    height: 1080
+    template-partials:
+      - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: "eclipse_logo_small.png"
+    footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
+---
+
+## 01. Title + Unit 5 positioning
+
+- Backpropagation is the engine that makes neural network training feasible.
+- Unit 4 defined the architecture; Unit 5 answers: **how does the network actually learn?**
+- We derive the algorithm that computes gradients for millions of parameters efficiently.
+
+## 02. Recap: what we know so far
+
+- **Unit 1**: Learning as risk minimization, gradient descent.
+- **Unit 3**: Loss functions for regression and classification.
+- **Unit 4**: Neural network architecture — layers, activations, forward computation.
+- Open question: how do we efficiently compute \\(\nabla_\theta J(\theta)\\) for all weights?
+
+## 03. The central question of Unit 5
+
+- A neural network with \\(W\\) parameters defines \\(J(\theta)\\) as a deeply nested composition.
+- How do we compute **all** \\(W\\) partial derivatives without evaluating \\(J\\) separately for each?
+- Answer: the **backpropagation algorithm** — reverse-mode automatic differentiation.
+
+## 04. Learning outcomes for Unit 5
+
+By the end of this lecture, students can:
+
+- derive the chain rule for composite functions and apply it to layered architectures,
+- trace forward and backward passes through a small network and compute all partial derivatives,
+- explain why backpropagation achieves \\(O(W)\\) cost and why this matters for scalability,
+- diagnose vanishing and exploding gradient problems from activation functions and weight matrices.
+
+## 05. Why not just finite differences?
+
+- Finite differences: perturb each weight by \\(\epsilon\\), evaluate \\(J\\) — requires \\(W+1\\) forward passes.
+- For a network with \\(W = 10^6\\) parameters, this means \\(10^6\\) evaluations per gradient step.
+- Backpropagation: **one** forward pass + **one** backward pass = all \\(W\\) gradients.
+- Speedup factor: \\(\sim W\\) — the difference between feasible and impossible.
+
+## 06. Historical context
+
+- Backpropagation was popularized by Rumelhart, Hinton & Williams (1986).
+- The core idea (reverse-mode differentiation) appeared earlier in control theory.
+- This algorithm is the single most important enabler of modern deep learning.
+
+## 07. Computational graph intuition
+
+- Any computation can be represented as a **directed acyclic graph** (DAG) of elementary operations.
+- Nodes: variables (inputs, intermediates, outputs). Edges: operations (add, multiply, activate).
+- The chain rule follows the graph structure — derivatives propagate along edges.
+
+## 08. Roadmap of today's 90 min
+
+- **10–25 min**: Chain rule review, computational graphs, forward pass mechanics.
+- **25–45 min**: Backpropagation derivation — output layer, hidden layers, delta recursion.
+- **45–60 min**: Gradient flow analysis — vanishing and exploding gradients.
+- **60–75 min**: ReLU revolution, initialization strategies, Jacobian perspective.
+- **75–85 min**: Materials/engineering examples and practical diagnostics.
+
+## 09. Univariate chain rule review
+
+- If \\(y = f(g(x))\\), then:
+
+$$
+\frac{dy}{dx} = f'(g(x)) \cdot g'(x)
+$$
+
+- Compose derivatives by multiplying along the chain of functions.
+- This is the foundation of everything that follows.
+
+## 10. Multivariate chain rule
+
+- If \\(J\\) depends on \\(x\\) through multiple intermediate variables \\(u_1, \dots, u_k\\):
+
+$$
+\frac{\partial J}{\partial x} = \sum_{i=1}^{k} \frac{\partial J}{\partial u_i} \frac{\partial u_i}{\partial x}
+$$
+
+- Each path from \\(x\\) to \\(J\\) in the computational graph contributes one term.
+
+## 11. Chain rule in matrix form
+
+- For vector-valued functions, derivatives become **Jacobian matrices**.
+- If \\(\mathbf{y} = f(\mathbf{x})\\), the Jacobian is \\(J_{ij} = \partial y_i / \partial x_j\\).
+- Chain rule becomes matrix multiplication: \\(\frac{\partial J}{\partial \mathbf{x}} = \frac{\partial J}{\partial \mathbf{y}} \cdot \frac{\partial \mathbf{y}}{\partial \mathbf{x}}\\).
+
+## 12. Forward pass: layer-by-layer computation
+
+- Input \\(\mathbf{x}\\) enters the network.
+- Each layer applies: linear transform \\(\rightarrow\\) activation function \\(\rightarrow\\) output to next layer.
+- The forward pass computes the prediction \\(\hat{y}\\) and stores all intermediate values.
+
+## 13. Forward pass notation
+
+- Pre-activation: \\(z^{(\ell)} = W^{(\ell)} a^{(\ell-1)} + b^{(\ell)}\\)
+- Activation: \\(a^{(\ell)} = \sigma(z^{(\ell)})\\)
+- Input layer: \\(a^{(0)} = \mathbf{x}\\)
+- Output: \\(\hat{y} = a^{(L)}\\) after \\(L\\) layers.
+
+## 14. Worked example: 2-layer network forward pass
+
+- Architecture: 2 inputs, 2 hidden units, 1 output.
+- Given: \\(\mathbf{x} = [1, 2]^T\\), weights \\(W^{(1)}, W^{(2)}\\), biases \\(b^{(1)}, b^{(2)}\\).
+- Step 1: \\(z^{(1)} = W^{(1)}\mathbf{x} + b^{(1)}\\), \\(a^{(1)} = \sigma(z^{(1)})\\).
+- Step 2: \\(z^{(2)} = W^{(2)}a^{(1)} + b^{(2)}\\), \\(\hat{y} = a^{(2)}\\).
+- All intermediate values \\(z^{(\ell)}, a^{(\ell)}\\) are stored for the backward pass.
+
+## 15. Why store intermediate activations?
+
+- The backward pass requires \\(a^{(\ell-1)}\\) and \\(\sigma'(z^{(\ell)})\\) at every layer.
+- Without stored values, we would need to recompute the forward pass for each gradient.
+- This is the fundamental **memory-compute tradeoff** of backpropagation.
+- Gradient checkpointing: a technique to trade recomputation for memory in very deep networks.
+
+## 16. Cost function at the output
+
+- After the forward pass, the loss is computed:
+
+$$
+J = \frac{1}{N} \sum_{i=1}^{N} L(\hat{y}_i, y_i)
+$$
+
+- Everything before the loss is a composition of differentiable functions.
+- The chain rule will let us differentiate through this entire composition.
+
+## 17. Mini-checkpoint question
+
+- "How many multiplications does the forward pass require for an \\(L\\)-layer network with \\(W\\) total weights?"
+- Answer: \\(O(W)\\) — each weight participates in exactly one multiply-add operation.
+- Key insight: the backward pass will have the **same** computational cost.
+
+## 18. The key insight: reverse-mode differentiation
+
+- **Forward mode**: propagate derivatives from input to output — efficient for few inputs, many outputs.
+- **Reverse mode**: propagate derivatives from output to input — efficient for many inputs, few outputs.
+- Neural network training: many parameters (inputs to \\(J\\)), one scalar output (\\(J\\)).
+- Reverse mode (= backpropagation) is the natural choice.
+
+## 19. Output layer gradient
+
+- Start at the output layer. For squared error loss with one output:
+
+$$
+\delta_o = (\hat{y} - y) \cdot \sigma'(z_o)
+$$
+
+$$
+\frac{\partial J}{\partial w_{ok}} = \delta_o \cdot a_k^{(L-1)}
+$$
+
+- The "delta" \\(\delta_o\\) captures the error signal at the output [@neuer2024machine].
+
+## 20. Hidden layer gradient via chain rule
+
+- For a hidden unit \\(k\\) in layer \\(\ell\\):
+
+$$
+\frac{\partial J}{\partial w_{kj}} = \delta_k \cdot a_j^{(\ell-1)}
+$$
+
+where:
+
+$$
+\delta_k = \sigma'(z_k) \cdot \sum_m w_{mk}^{(\ell+1)} \delta_m^{(\ell+1)}
+$$
+
+- The delta at layer \\(\ell\\) depends on deltas at layer \\(\ell+1\\) — **backward** propagation.
+
+## 21. The delta recursion (general form)
+
+- General delta recursion for unit \\(i\\) in layer \\(\ell\\):
+
+$$
+\delta_i^{(\ell)} = \sigma'(z_i^{(\ell)}) \sum_j w_{ji}^{(\ell \to \ell+1)} \delta_j^{(\ell+1)}
+$$
+
+- This recursion starts at the output layer and propagates backward to layer 1.
+- Each delta combines the local activation derivative with weighted downstream deltas.
+
+## 22. Bias gradient
+
+- The gradient with respect to biases is simply the delta itself:
+
+$$
+\frac{\partial J}{\partial b_k^{(\ell)}} = \delta_k^{(\ell)}
+$$
+
+- This follows because \\(\partial z_k / \partial b_k = 1\\).
+- Bias gradients require no additional computation beyond the delta calculation.
+
+## 23. Backpropagation algorithm: pseudocode
+
+1. **Forward pass**: compute and store all \\(z^{(\ell)}, a^{(\ell)}\\) for \\(\ell = 1, \dots, L\\).
+2. **Output delta**: \\(\delta^{(L)} = \nabla_a L \odot \sigma'(z^{(L)})\\).
+3. **Backward loop**: for \\(\ell = L-1, \dots, 1\\):
+   - \\(\delta^{(\ell)} = \sigma'(z^{(\ell)}) \odot \big((W^{(\ell+1)})^T \delta^{(\ell+1)}\big)\\)
+4. **Gradient accumulation**: \\(\nabla_{W^{(\ell)}} J = \delta^{(\ell)} (a^{(\ell-1)})^T\\), \\(\nabla_{b^{(\ell)}} J = \delta^{(\ell)}\\).
+
+## 24. Worked example: backward pass
+
+- Using the same 2-layer network from slide 14.
+- Compute \\(\delta^{(2)}\\) from the loss and output activation derivative.
+- Propagate to \\(\delta^{(1)}\\) using the hidden-to-output weights and hidden activation derivatives.
+- Compute all weight and bias gradients numerically.
+- Verify: these match finite-difference approximations (up to numerical precision).
+
+## 25. Weight update rule
+
+- Once gradients are computed, update all parameters:
+
+$$
+w \leftarrow w - \eta \frac{\partial J}{\partial w}
+$$
+
+- This is the gradient descent step from Unit 1, now applied to **all** network parameters.
+- One forward pass + one backward pass = one complete parameter update [@mcclarren2021machine].
+
+## 26. Batch vs stochastic gradient computation
+
+- **Full batch**: compute gradient using all \\(N\\) training samples — exact but expensive.
+- **Mini-batch**: use a random subset of \\(B\\) samples — noisy but faster per step.
+- **SGD** (\\(B=1\\)): maximum noise, cheapest per step.
+- Noise from mini-batches can actually help generalization (see Unit 6).
+
+## 27. Computational cost analysis
+
+- Forward pass: \\(O(W)\\) — each weight used once.
+- Backward pass: \\(O(W)\\) — each weight used once in the delta recursion.
+- Total gradient computation: \\(O(W)\\), **not** \\(O(W^2)\\).
+- This linear scaling is what makes training networks with millions of parameters feasible.
+
+## 28. Backprop vs finite differences
+
+| Method | Forward passes | Backward passes | Total cost |
+|--------|:--------------:|:---------------:|:----------:|
+| Finite differences | \\(W + 1\\) | 0 | \\(O(W^2)\\) |
+| Backpropagation | 1 | 1 | \\(O(W)\\) |
+
+- For \\(W = 10^6\\): backprop is \\(\sim 10^6\\times\\) faster.
+- This efficiency gap is the reason deep learning is practical [@bishop2006pattern].
+
+## 29. Multiple outputs and loss functions
+
+- For cross-entropy loss with softmax output:
+
+$$
+\delta_k^{(L)} = \hat{y}_k - y_k \quad \text{(softmax + cross-entropy)}
+$$
+
+- The delta formula changes with the loss function, but the backward recursion structure is identical.
+- Modular design: swap loss functions without changing the backprop algorithm.
+
+## 30. Recap: the backpropagation pipeline
+
+The complete training loop:
+
+1. **Forward**: input \\(\to\\) layers \\(\to\\) prediction \\(\to\\) loss.
+2. **Store**: all intermediate activations and pre-activations.
+3. **Output delta**: error signal at the final layer.
+4. **Backward**: propagate deltas layer by layer toward the input.
+5. **Accumulate**: compute weight and bias gradients from deltas and stored activations.
+6. **Update**: adjust all parameters using the gradient.
+
+## 31. Gradient flow through deep networks
+
+- The gradient at layer \\(\ell\\) involves a **product** of \\(L - \ell\\) terms:
+
+$$
+\frac{\partial J}{\partial a^{(\ell)}} = \prod_{m=\ell}^{L} \text{diag}(\sigma'(z^{(m)})) \cdot W^{(m+1)} \cdot \frac{\partial J}{\partial a^{(L+1)}}
+$$
+
+- Depth amplifies or attenuates the gradient signal through this product.
+- The stability of this product determines whether deep networks can train.
+
+## 32. Vanishing gradients explained
+
+- **Sigmoid** derivative: \\(\sigma'(z) = \sigma(z)(1 - \sigma(z))\\), maximum value = 0.25.
+- Product of many factors \\(< 1\\) shrinks exponentially:
+
+$$
+\prod_{m=1}^{L} 0.25 = 0.25^L \to 0 \quad \text{as } L \to \infty
+$$
+
+- Early-layer gradients become negligibly small in deep networks.
+
+## 33. Vanishing gradients: consequences
+
+- Early layers stop learning — their weights barely change.
+- The network effectively behaves as if it were shallow.
+- Training stalls even though the loss remains high.
+- Deeper networks perform **worse** than shallow ones (before ReLU and residual connections).
+
+## 34. Exploding gradients explained
+
+- If \\(\|W^{(\ell)}\|\\) is large, the gradient product grows exponentially:
+
+$$
+\prod_{m=1}^{L} \|W^{(m)}\| \cdot \|\sigma'(z^{(m)})\| \to \infty
+$$
+
+- Weight updates become enormous — the loss diverges or oscillates wildly.
+- Often manifests as NaN values during training.
+
+## 35. Exploding gradients: mitigation
+
+- **Gradient clipping**: cap \\(\|\nabla J\|\\) at a threshold \\(\tau\\):
+
+$$
+\nabla J \leftarrow \frac{\tau}{\|\nabla J\|} \nabla J \quad \text{if } \|\nabla J\| > \tau
+$$
+
+- **Careful initialization**: control weight magnitudes at the start.
+- **Architectural choices**: residual connections, normalization layers.
+
+## 36. ReLU and gradient flow
+
+- ReLU: \\(\sigma(z) = \max(0, z)\\), derivative:
+
+$$
+\sigma'(z) = \begin{cases} 1 & \text{if } z > 0 \\ 0 & \text{if } z \leq 0 \end{cases}
+$$
+
+- No saturation for positive inputs — gradient flows through without attenuation.
+- This property enabled training networks with 10+ layers, launching the deep learning era.
+
+## 37. ReLU variants and dead neurons
+
+- **Dead neuron problem**: if \\(z \leq 0\\) for all training samples, the gradient is permanently zero.
+- **Leaky ReLU**: \\(\sigma(z) = \max(\alpha z, z)\\) with small \\(\alpha > 0\\) — prevents complete death.
+- **ELU**: smooth for \\(z < 0\\), helps with negative inputs.
+- **GELU**: used in Transformers — smooth approximation to ReLU with probabilistic interpretation.
+
+## 38. Weight initialization strategies
+
+- **Xavier/Glorot initialization**: \\(W_{ij} \sim \mathcal{N}(0, 2/(n_{\text{in}} + n_{\text{out}}))\\).
+  - Preserves variance for symmetric activations (tanh, sigmoid).
+- **He initialization**: \\(W_{ij} \sim \mathcal{N}(0, 2/n_{\text{in}})\\).
+  - Designed for ReLU — accounts for the factor-of-2 from zeroing negative inputs.
+- Correct initialization prevents both vanishing and exploding gradients at the start of training.
+
+## 39. The Jacobian matrix perspective
+
+- The Jacobian of layer \\(\ell\\): \\(J^{(\ell)} = \frac{\partial a^{(\ell)}}{\partial a^{(\ell-1)}}\\).
+- **Singular values** of \\(J^{(\ell)}\\) control gradient magnitude:
+  - All singular values \\(\approx 1\\): gradient flows stably (ideal).
+  - Singular values \\(\ll 1\\): vanishing gradient.
+  - Singular values \\(\gg 1\\): exploding gradient.
+- Initialization and activation choices aim to keep singular values near 1.
+
+## 40. Checkpoint MCQ slide
+
+- **Question**: A 10-layer network uses sigmoid activations and weights initialized with \\(\|W^{(\ell)}\| \approx 1\\). What happens to the gradient at layer 1?
+
+- A) Gradient grows exponentially.
+- B) Gradient stays approximately constant.
+- C) Gradient shrinks exponentially.
+- D) Gradient oscillates unpredictably.
+
+- **Answer**: C — sigmoid derivative \\(\leq 0.25\\), so \\(0.25^{10} \approx 10^{-6}\\).
+
+## 41. Materials example 1: training a property-prediction network
+
+- Task: predict tensile strength from alloy composition and processing parameters.
+- Monitoring per-layer gradient norms during training reveals whether learning propagates to all layers.
+- If early-layer gradients are \\(10^{-8}\\) while output-layer gradients are \\(10^{-2}\\): vanishing gradient problem.
+
+## 42. Materials example 2: deep vs shallow for spectral classification
+
+- A 10-layer sigmoid network fails on IR spectral classification — training loss plateaus at a high value.
+- A 4-layer ReLU network succeeds — gradient flows through all layers.
+- **Lesson**: depth alone is not enough; activation function choice determines trainability.
+
+## 43. Materials example 3: process optimization as computational graph
+
+- A multi-step manufacturing pipeline (mixing \\(\to\\) sintering \\(\to\\) testing) can be viewed as a computational graph.
+- Backpropagation through the process model computes how each process parameter affects the final product quality.
+- Gradient flow through process stages mirrors gradient flow through network layers.
+
+## 44. Practical diagnostic: gradient norm plots
+
+- During training, plot \\(\|\nabla_{W^{(\ell)}} J\|\\) for each layer \\(\ell\\) over epochs.
+- **Healthy training**: gradient norms are comparable across layers.
+- **Vanishing**: early-layer norms orders of magnitude smaller than late layers.
+- **Exploding**: norms grow rapidly, often preceding NaN losses.
+
+## 45. Automatic differentiation vs manual backprop
+
+- Modern frameworks (PyTorch, JAX, TensorFlow) implement backprop automatically.
+- You define the forward computation; the framework builds the computational graph and computes gradients.
+- Understanding the internals is still essential for debugging, architecture design, and efficiency.
+
+## 46. Lecture-essential vs exercise content split
+
+- **Lecture**: chain rule derivation, delta recursion, gradient flow theory, vanishing/exploding analysis, Jacobian interpretation.
+- **Exercise**: manual gradient computation on paper, NumPy forward/backward implementation, gradient magnitude visualization, activation function comparison.
+
+## 47. Exercise setup: manual backprop for a 2-layer network
+
+- **Pen-and-paper**: derive all partial derivatives for a network with 2 inputs, 2 hidden (sigmoid), 1 output.
+- **NumPy**: implement the forward and backward pass from scratch (no autograd).
+- **Verification**: compare your gradients against PyTorch's `autograd` or finite differences.
+
+## 48. Exercise extension: sigmoid vs ReLU gradient visualization
+
+- Train identical 5-layer architectures with sigmoid vs ReLU activation.
+- Plot per-layer gradient norms over 100 training epochs.
+- Observe the vanishing gradient effect directly.
+- Repeat with He initialization and compare.
+
+## 49. Exam-aligned summary: 10 must-know statements
+
+1. Backpropagation is the efficient application of the chain rule in reverse order.
+2. The forward pass computes and stores all intermediate activations.
+3. The backward pass propagates delta signals from output to input.
+4. Computational cost of backprop is \\(O(W)\\), same order as the forward pass.
+5. Vanishing gradients arise from repeated multiplication by values \\(< 1\\).
+6. Exploding gradients arise from repeated multiplication by values \\(> 1\\).
+7. ReLU enables gradient flow by providing constant derivative of 1 for positive inputs.
+8. Xavier/He initialization preserves variance across layers.
+9. The Jacobian matrix describes sensitivity of one layer to perturbations in the previous.
+10. Gradient diagnostics (norm plots, loss curves) are essential engineering practice.
+
+## 50. References + reading assignment for next unit
+
+- **Required reading before Unit 6:**
+  - Neuer: Ch. 4.5.4–4.5.5
+  - McClarren: Ch. 5.2–5.3.2
+- **Optional depth:**
+  - Bishop: Ch. 5.3 (error backpropagation)
+  - Goodfellow et al.: Ch. 6.5 (computational graphs, backpropagation)
+- Next unit: **Loss Landscapes and Optimization Behavior** — what does the surface we are descending on actually look like?
+
+::: {#refs}
+:::
