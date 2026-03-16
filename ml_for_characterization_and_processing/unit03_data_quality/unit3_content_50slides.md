@@ -1,154 +1,65 @@
-# ML-PC Unit 3 — 50-Slide Scaffold Pack
+# Unit 3: Data Quality, Preprocessing, and Robust Validation (Content)
 
-## Slide-by-slide scaffold
+## 1. Introduction to Data Quality
+1. **Slide 1**: Title: Unit 3 - Data Quality, Preprocessing, and Robust Validation. Subtitle: Ensuring the Integrity of ML in Materials Science.
+2. **Slide 2**: Objective: Why care about data quality? "Garbage In, Garbage Out" (GIGO). Model performance is fundamentally limited by input quality.
+3. **Slide 3**: The ML Workflow: Collection → Preprocessing → Modeling → Learning → Error Analysis → Results. Unit 3 focuses on Preprocessing and Error Analysis.
+4. **Slide 4**: The Role of Preprocessing: Transforming raw, potentially messy data into a structured format suitable for algorithms.
 
-1. **Title: Preprocessing and Denoising**
-- Unit role in ML-PC progression.
-- From raw signals to trustworthy inputs.
-2. **Learning objectives**
-- What students should master today.
-- Exercise deliverables and criteria.
-3. **Recap from Units 1–2**
-- Data formation + baseline validity.
-- Now operational preprocessing choices.
-4. **Why preprocessing is model-critical**
-- Preprocessing defines the information budget.
-- Can improve or destroy physical signal.
-5. **Raw data inspection first**
-- Always inspect before transforming.
-- Understand instrument and acquisition context.
-6. **Noise taxonomy refresher**
-- Shot/readout/background/drift components.
-- Different noise types need different tools.
-7. **Artifact taxonomy refresher**
-- Blur, charging, stripe, dead-pixel examples.
-- Artifacts can become shortcut features.
-8. **Preprocessing design principles**
-- Minimal necessary intervention.
-- Preserve physically meaningful variation.
-9. **Pipeline modularity**
-- Reproducible ordered transform blocks.
-- Easier debugging and ablation.
-10. **Spatial denoising basics**
-- Median/Gaussian/bilateral intuition.
-- Tradeoff between smoothing and detail.
-11. **Frequency-domain denoising**
-- Band-pass/notch ideas.
-- Useful for periodic noise suppression.
-12. **Baseline correction for spectra**
-- Background subtraction concepts.
-- Peak integrity constraints.
-13. **Normalization strategies**
-- Global vs local normalization.
-- Comparability across batches/instruments.
-14. **Contrast enhancement caution**
-- Can help visibility but alter statistics.
-- Evaluate downstream effect explicitly.
-15. **Registration/alignment needs**
-- Spatial consistency for comparisons.
-- Avoid alignment leakage with labels.
-16. **Resampling and interpolation**
-- Resolution harmonization issues.
-- Interpolation artifacts risk.
-17. **Segmentation preprocessing**
-- Thresholding and morphology prep.
-- Error propagation to labels.
-18. **Patch extraction strategies**
-- Local context vs sample independence.
-- Patch leakage pitfalls.
-19. **Data augmentation basics**
-- Physically plausible transforms only.
-- Augmentation can regularize models.
-20. **Augmentation failure modes**
-- Unrealistic transforms hurt generalization.
-- Validate augmentation assumptions.
-21. **Time-series preprocessing**
-- Smoothing, detrending, windowing.
-- Preserve causal structure.
-22. **Spectral preprocessing chain**
-- Denoise -> baseline -> normalize pipeline.
-- Order matters for outcomes.
-23. **Feature engineering after preprocessing**
-- Hand-crafted and learned feature options.
-- Preprocessing affects both.
-24. **Leakage through preprocessing**
-- Fit transforms on training only.
-- No global statistics from full dataset.
-25. **Split-aware pipeline implementation**
-- Use pipeline objects to enforce separation.
-- Prevents accidental contamination.
-26. **Metrics for preprocessing comparison**
-- Task-level metrics, not visual quality only.
-- Include calibration when probabilistic.
-27. **A/B preprocessing experiments**
-- Compare two pipelines systematically.
-- Use same model/splits for fairness.
-28. **Bias-variance effect of denoising**
-- Over-smoothing induces bias.
-- Under-denoising increases variance.
-29. **Uncertainty-aware preprocessing choices**
-- Track confidence impact after transforms.
-- Avoid overconfident cleaned outputs.
-30. **Computational throughput considerations**
-- Real-time constraints in lab workflows.
-- Balance speed and fidelity.
-31. **Robustness across instruments**
-- Pipeline transferability checks.
-- Need source-aware validation.
-32. **Case sketch: microscopy defect task**
-- Pipeline variants and outcome differences.
-- Highlight artifact-driven errors.
-33. **Case sketch: spectral classification**
-- Baseline correction impact on labels.
-- Show metric sensitivity.
-34. **Case sketch: process signal denoising**
-- Windowing and lag effects.
-- Temporal split evaluation.
-35. **Failure mode #1**
-- Pipeline amplifies artifact signal.
-- Mitigation via targeted filtering.
-36. **Failure mode #2**
-- Normalization leaks test statistics.
-- Mitigation with train-only fit.
-37. **Failure mode #3**
-- Over-aggressive denoising removes class cues.
-- Mitigation via ablation.
-38. **Diagnostics dashboard idea**
-- Visual + quantitative checkpoints.
-- Standard report fields.
-39. **Documentation template**
-- Record parameters and rationale.
-- Ensure reproducibility.
-40. **Preprocessing checklist**
-- Order, splits, assumptions, diagnostics.
-- Use before model training.
-41. **Mini concept quiz**
-- Choose correct preprocessing for scenario.
-- Explain tradeoffs briefly.
-42. **MFML dependency map**
-- Risk/validation/optimization concepts reused.
-- Notation consistency reminder.
-43. **Link to Unit 4 classical ML tasks**
-- Preprocessed inputs feed downstream models.
-- Quality here sets upper bound later.
-44. **Exercise setup**
-- Choose dataset and define target.
-- Set grouped/temporal split.
-45. **Exercise task 1 scaffold**
-- Implement pipeline A and pipeline B.
-- Document all parameters.
-46. **Exercise task 2 scaffold**
-- Train baseline model on both pipelines.
-- Compare metrics and calibration.
-47. **Exercise task 3 scaffold**
-- Perform failure analysis on one error cluster.
-- Propose mitigation.
-48. **Summary slide**
-- Key preprocessing principles to retain.
-- Bridge to next unit.
-49. **References + reading assignment**
-- Prepare for Unit 4 tasks.
-- Suggested chapters/notes.
-50. **Next-unit preview**
-- Transition from preprocessing to classical ML task models.
-- Preview of model selection under experimental constraints.
+## 2. Data Cleaning
+5. **Slide 5**: Common Data Issues: Structural problems (typos, units), Duplicates, Irrelevant observations, Missing values (NaNs), Outliers.
+6. **Slide 6**: Missing Values: Sources: Sensor failure, transmission drops, or "out-of-range" readings.
+7. **Slide 7**: Handling NaNs: Source correction is best (e.g., hardware fix). If not possible, digital repair: Interpolation (linear, mean-based), or removal (risk of bias).
+8. **Slide 8**: Numerical Markers: Using "impossible" values (e.g., -1000°C) to track NaNs without losing record count.
+9. **Slide 9**: Outlier Detection: Point Outlier (global), Contextual (noise relative to neighbors), and Collective (group behaves differently).
+10. **Slide 10**: To Remove or Not? Is it a sensor artifact? Or a "rare event" physically significant (e.g., crack initiation)?
+11. **Slide 11**: Duplicate Tracking: Redundant data points can bias training (over-weighting certain conditions) and inflate validation scores (leakage).
+
+## 3. Data Transformation and Scaling
+12. **Slide 12**: Why Transform? To linearize trends, align features, and ensure equal weighting across variables.
+13. **Slide 13**: Shifting and Centering: Subtracting the mean to center data at zero. Useful for covariance-based methods (e.g., PCA).
+14. **Slide 14**: Linear Scaling and Normalization: Rescaling features to [0,1] or [-1,1]. Essential for algorithms using Euclidean distance (e.g., kNN).
+15. **Slide 15**: Standardization (Z-score): Scaling by mean and standard deviation (mean 0, std 1). Robust to scale differences across features.
+16. **Slide 16**: Log-Transforms: Useful for variables spanning several orders of magnitude (e.g., grain sizes, dislocation densities). Linearizes exponential trends.
+17. **Slide 17**: Differentiation: $f'(x)$ highlights changes and removes constant offsets (e.g., baseline drift). Useful for anomaly detection.
+18. **Slide 18**: Frequency Domain (FFT): Fast Fourier Transform. Switching from time space to frequency space to detect oscillations.
+19. **Slide 19**: Time-Frequency Analysis (Wavelet): Localizing features that are both temporal and periodic. Useful for transient phenomena (e.g., acoustic emissions).
+20. **Slide 20**: Triggering: Isolating relevant sequences from long time series (e.g., periodic loading cycles in fatigue tests).
+
+## 4. Labeling and Uncertainty
+21. **Slide 21**: Labeling Challenges: Often manual ("hand-labeling"). Subjective and time-consuming.
+22. **Slide 22**: Inter-Annotator Variance: Different experts might provide different labels/masks for the same TEM image. No single "unique" truth.
+23. **Slide 23**: Quantifying Uncertainty: Models shouldn't just output a label; they should output confidence (Probabilities via Softmax).
+24. **Slide 24**: Bayesian Perspective: Treating model parameters as distributions. Prior (what we think before data) + Likelihood (data) = Posterior (updated knowledge).
+
+## 5. Robust Validation and Model Selection
+25. **Slide 25**: Overfitting vs. Underfitting: The Bias-Variance Tradeoff.
+26. **Slide 26**: Underfitting: Model is too stiff (High Bias). Fails to capture the trend.
+27. **Slide 27**: Overfitting: Model is too flexible (High Variance). Captures noise as if it were a trend. Fails to generalize.
+28. **Slide 28**: Parsimony (Occam's Razor): Prefer the simplest model that explains the data. "Entities must not be multiplied beyond necessity."
+29. **Slide 29**: Regularization: Lasso (L1) can force redundant parameters to zero, yielding simpler models.
+30. **Slide 30**: Train-Test Split (Holdout): Dividing data into independent sets. Training sets model parameters; Test set evaluates performance.
+31. **Slide 31**: The Risk of Holdout: Small datasets might lead to unrepresentative splits (e.g., all "hard" cases in the test set).
+32. **Slide 32**: K-Fold Cross-Validation: Split data into $k$ folds. Iteratively use $k-1$ for training and 1 for testing. Average the results.
+33. **Slide 33**: Leave-One-Out (LOOCV): $k$ equals total number of samples. Most robust but computationally expensive for large datasets.
+34. **Slide 34**: Stratified Splitting: Ensuring each fold has the same class distribution as the original dataset (crucial for imbalanced data).
+35. **Slide 35**: Data Leakage: When information from the test set "leaks" into training, giving overly optimistic results.
+36. **Slide 36**: Temporal Leakage: In time series, you cannot use future data to predict the past. Validation must follow the arrow of time.
+37. **Slide 37**: Spatial/Group Leakage: If multiple data points come from the same specimen, random splitting can leak information. Need "Group-based" splitting.
+
+## 6. Error Measures
+38. **Slide 38**: Measuring Success: How do we quantify "accuracy"? Different measures for different tasks.
+39. **Slide 39**: Regression - MAE (L1): Mean Absolute Error. Direct units, less sensitive to outliers.
+40. **Slide 40**: Regression - MSE (L2) & RMSE: Mean Squared Error. Penalizes large errors disproportionately. RMSE returns to original units.
+41. **Slide 41**: Coefficient of Determination ($R^2$): Fraction of variance explained by the model. 1 = perfect fit.
+42. **Slide 42**: Classification - Confusion Matrix: TP (True Pos), TN (True Neg), FP (False Pos/Type I), FN (False Neg/Type II).
+43. **Slide 43**: Precision: "Of all predicted positive, how many were actually positive?" (Avoids FP).
+44. **Slide 44**: Recall (Sensitivity): "Of all actually positive, how many did we find?" (Avoids FN).
+45. **Slide 45**: F1-Score (Dice Coefficient): Harmonic mean of Precision and Recall. Balances both metrics.
+46. **Slide 46**: Jaccard Similarity (IoU): Intersection over Union. Essential for image segmentation/object detection tasks.
+47. **Slide 47**: Categorical Cross-Entropy: Loss function for training multi-class classification models. Penalizes incorrect high-confidence predictions.
+
+## 7. Summary and Key Takeaways
+48. **Slide 48**: Summary: Data quality starts with cleaning. Transformation and Scaling ensure model stability.
+49. **Slide 49**: Summary: Robust validation (K-Fold, Group-based splitting) is the only guard against overfitting and leakage.
+50. **Slide 50**: Takeaway: Always visualize your residuals and understand your error metrics. A high $R^2$ doesn't always mean a useful model.

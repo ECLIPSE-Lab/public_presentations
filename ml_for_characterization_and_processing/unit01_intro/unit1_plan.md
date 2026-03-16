@@ -5,36 +5,46 @@
 - Prior knowledge: 2 semesters math, 1 physics, some chemistry
 - Assumed: undergrad math, SVD familiarity, very basic Python
 - Lecture: 90 minutes + 90-minute exercise
-- Language: English (German translation later)
+- Language: English
 
 ## Learning objectives (Unit 1)
 By the end of this unit, students can:
-1. Explain why characterization and process data are ML-hard in practice.
-2. Classify typical data modalities (micrographs, spectra, logs, maps) and pitfalls.
-3. Use the PSPP graph (processing→structure→property→performance) as modeling scaffold.
-4. Define a baseline ML pipeline with proper splits and metrics for experimental data.
-5. Recognize where physical priors are necessary to avoid spurious learning.
+1. Explain the historical transition from descriptive to data-driven explanatory models in science.
+2. Define Materials Data Science at the intersection of ML, statistics, and domain knowledge.
+3. Identify unique challenges of materials data: small data, high cost, noise, multi-modality, and the "Curse of Dimensionality".
+4. Classify models into White-Box, Grey-Box, and Black-Box categories based on traceability.
+5. Apply the CRISP-DM process to structure an experimental materials data project.
+6. Differentiate between correlation and causality in materials systems (using the PSPP paradigm).
 
 ## Book-aligned content mapping
-1. Neuer (2024): explainable/physics-aware engineering ML framing.
-2. Sandfeld: materials-data workflow and domain examples.
-3. McClarren (2021): physical systems constraints + model trust.
-4. Murphy/Bishop: risk, likelihood, and validation language.
+1. **Sandfeld (2024)**: History of data (Sumerians to Kepler), definition of Materials Data Science, Curse of Dimensionality, feature engineering (Ashby maps).
+2. **Neuer (2024)**: Model categories (White/Grey/Black), CRISP-DM for engineering, data scales (Nominal to Ratio), Correlation vs. Causality.
+3. **McClarren (2021)**: Supervised/Unsupervised task types, Loss functions (MSE, Cross-entropy), Parsimony/Occam's Razor, Overfitting, R^2.
 
 ## 90-minute structure
-- 0–10 min: Course mission and relation to MFML/MG
-- 10–30 min: Data modalities in characterization and processing
-- 30–45 min: Why naive ML fails (noise, artifacts, drift, leakage)
-- 45–65 min: PSPP graph and supervised task definitions
-- 65–80 min: Baseline pipeline template for lab data
-- 80–88 min: Failure case post-mortem (realistic)
-- 88–90 min: Summary + exercise handoff
+- **0–15 min: The Long History of Data**
+  - From Sumerian cuneiform (metadata) to Kepler (the first data analyst).
+  - Transition from physics-only to data-driven discovery.
+- **15–30 min: What is Materials Data Science?**
+  - Definition and the role of Domain Knowledge.
+  - Examples: Ashby maps as early "feature engineering".
+- **30–50 min: Challenges: Why Materials ML is Hard**
+  - Small data/High cost, Measurement noise, Multi-modality.
+  - The Curse of Dimensionality (parameter studies).
+- **50–70 min: Modeling Frameworks**
+  - Supervised vs. Unsupervised (Toy box analogy).
+  - White-Box vs. Black-Box models.
+  - Loss functions and Parsimony (Occam's Razor).
+- **70–85 min: The Workflow: CRISP-DM adapted for Labs**
+  - Business/Scientific Understanding to Deployment.
+  - Correlation vs. Causality (Ice cream & Crime).
+- **85–90 min: Summary + exercise handoff**
 
 ## Exercise (90 min)
-- Build a simple baseline on a small materials dataset
-- Compare random split vs grouped split to reveal leakage
-- Compute confusion matrix / MAE and explain failure causes
-- Add one physics-aware feature and evaluate impact
+- **Data Exploration**: Inspect real materials datasets (e.g., MDS-1 tensile test).
+- **Scaling & Normalization**: Practice transforming between Nominal/Ordinal/Ratio scales.
+- **Baseline Modeling**: Build a simple regressor, evaluate R^2, and discuss overfitting vs. parsimony.
+- **Causality Check**: Analyze the PSPP graph for a given dataset and identify potential spurious correlations.
 
 ## Assessment alignment
-- Written exam emphasizes modeling judgement, error analysis, and trust.
+- Exam questions on: Model classification (White/Grey/Black), Data scales, CRISP-DM phases, and identifying data leakage/overfitting in materials contexts.

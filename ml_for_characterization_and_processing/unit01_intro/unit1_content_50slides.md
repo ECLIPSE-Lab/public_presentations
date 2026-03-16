@@ -1,91 +1,81 @@
 # ML-PC Unit 1 — 50-Slide Content Pack (English)
 
 ## Unit theme
-**Why characterization and processing data challenge ML — and how to build trustworthy baselines**
+**What makes materials data special? From History to Modern Workflow**
 
 ## Core source mapping (book-priority aligned)
-- **Neuer (2024)**: model categories, explainability, practical process orientation.
-- **Sandfeld (2024)**: domain knowledge and workflow coupling in materials data science.
-- **McClarren (2021)**: Ch. 1 (supervised task types, Bayesian probability, cross-validation, ML vs simulation).
-- **Murphy (2012)**: Ch. 1 (task framing, overfitting, model selection).
-- **Bishop (2006)**: Ch. 1 (probabilistic modeling and decision framing).
+- **Sandfeld (2024)**: Historical roots (Sumerians to Kepler), Definition of Materials Data Science, Curse of Dimensionality, Feature engineering (Ashby maps).
+- **Neuer (2024)**: Model categories (White/Grey/Black), CRISP-DM for engineering, data scales (Nominal to Ratio), Correlation vs. Causality.
+- **McClarren (2021)**: Ch. 1 (supervised/unsupervised task types, Loss functions, Parsimony/Occam's Razor, Overfitting, R^2, Bayesian probability).
 
 ---
 
 ## Slide-by-slide content (target: 50)
 
-### Block A — Context and objectives (Slides 1–8)
-1. **Title + course positioning**
-2. **Why experimental materials data is uniquely hard**
-3. **Unit 1 learning outcomes**
-4. **Data modalities in this course**
-5. **What students bring from prerequisites**
-6. **How this course uses MFML foundations**
-7. **90-minute lecture roadmap**
-8. **Initial discussion prompt (failure story)**
+### Block A — Introduction and History (Slides 1–10)
+1. **Title + course positioning**: "Machine Learning in Materials Processing & Characterization"
+2. **Learning outcomes**: What will students know by the end of Unit 1?
+3. **The "Hype Cycle" vs. Lab Reality**: Moving from "textbook AI" to "lab-ready AI".
+4. **Historical roots of data science (I)**: Sumerians (3400 BCE), Cuneiform, and the first "metadata" (symbols for sheep/units).
+5. **Historical roots of data science (II)**: Ancient Astronomy. From gods to crystal spheres.
+6. **Kepler: The First Data Analyst**: Analyzing 25 years of Mars data to find simple laws. Transition to data-driven discovery.
+7. **J. Tobias Mayer**: Moon libration study (1750). The first "modern" use of overdetermined data systems.
+8. **Defining Materials Data Science**: The interface of ML, statistics, computer science, and Domain Knowledge.
+9. **Domain Knowledge is Key**: Why "off-the-shelf" ML often fails in materials.
+10. **The Ashby Map**: A classic example of "feature engineering" without explicit ML.
 
-### Block B — Data modalities and physics of measurement (Slides 9–19)
-9. **Micrographs: signal sources + artifacts**
-10. **Spectra: resolution/noise/background effects**
-11. **Process logs: temporal correlation and drift**
-12. **Label quality and annotation variance**
-13. **Instrument dependence and domain shift**
-14. **Calibration and uncertainty metadata**
-15. **Heteroscedastic noise in experiments**
-16. **Why IID assumptions often break**
-17. **Physics priors as regularization intuition**
-18. **Mini-case: same sample, different instrument bias**
-19. **Checkpoint question**
+### Block B — Modeling Frameworks (Slides 11–22)
+11. **White-Box vs. Black-Box Models**: Traceability and trust in engineering.
+12. **White-Box (First-Principle)**: Bottom-up, physical axioms (Navier-Stokes, Schrödinger).
+13. **Black-Box (Data-driven)**: Top-down, extracted from observation (standard neural networks).
+14. **Grey-Box (Hybrid)**: The middle ground (Monte Carlo, Physics-Informed ML).
+15. **Supervised vs. Unsupervised Learning**: The "Toy Box" analogy.
+16. **Supervised Tasks**: Labels as "answers". Regression (numerical) and Classification (categorical).
+17. **Regression Goals**: Mapping independent (X) to dependent (Y) variables.
+18. **Classification Goals**: Mapping to finite sets (groups/classes).
+19. **Unsupervised Tasks**: Finding structure in unlabeled data. Clustering, Embedding, Association rules.
+20. **Loss Functions**: How we "score" our model (MSE, Cross-entropy).
+21. **Parsimony and Occam's Razor**: Why the simplest explanation is best.
+22. **Overfitting**: When accuracy on training data is a trap.
 
-### Block C — ML framing for PSPP tasks (Slides 20–31)
-20. **PSPP graph recap (processing→structure→property→performance)**
-21. **Task mapping onto PSPP edges**
-22. **Regression tasks in process modeling**
-23. **Classification tasks in defect detection**
-24. **Structured outputs (segmentation, spectra decomposition)**
-25. **Baseline-before-complexity principle**
-26. **Objective functions linked to deployment goals**
-27. **Model selection under limited labels**
-28. **Cross-validation with grouped/temporal splits**
-29. **Leakage examples specific to lab data**
-30. **Metrics and cost asymmetry**
-31. **Recap of pipeline skeleton**
+### Block C — What makes materials data special? (Slides 23–34)
+23. **The PSPP Paradigm**: Processing–Structure–Property–Performance as a data graph.
+24. **Multi-scale Challenge**: From atoms to airplane wings (10 orders of magnitude).
+25. **Multi-modal Challenge**: Fusing micrographs, spectra, and process logs.
+26. **High Acquisition Cost**: Why materials data is "Small Data".
+27. **Measurement Noise and Uncertainty**: Aleatoric vs. Epistemic uncertainty.
+28. **The Curse of Dimensionality (I)**: Parameter study case. Why 35 experiments are not enough for 3 parameters.
+29. **The Curse of Dimensionality (II)**: Sparse data in high-dimensional space.
+30. **Data Scales (I)**: Nominal (names) and Ordinal (ordered names).
+31. **Data Scales (II)**: Cardinal/Interval (Celsius) and Ratio (Kelvin/Absolute zero).
+32. **Units and Metadata**: Why a number is worthless without its unit (Sandfeld Sumerian connection).
+33. **Metadata in Labs**: Recording resolution, drift, and calibration history.
+34. **The "Failure Story"**: Learning the serial number instead of the physics (Data Leakage).
 
-### Block D — Trustworthy evaluation and uncertainty (Slides 32–43)
-32. **Generalization under domain shift**
-33. **Overfitting patterns in small lab datasets**
-34. **Bias–variance in experimental ML practice**
-35. **Aleatoric vs epistemic uncertainty (engineering interpretation)**
-36. **Calibration concept for classification**
-37. **Uncertainty-aware decision thresholds**
-38. **When to reject predictions**
-39. **Explainability expectations by stakeholder**
-40. **Failure analysis template for lab projects**
-41. **Reproducibility checklist (data, code, split, metrics)**
-42. **Scientific claim checklist**
-43. **Checkpoint MCQ slide**
+### Block D — The Workflow: CRISP-DM for Materials (Slides 35–45)
+35. **The CRISP-DM Standard**: Adapting industrial standards for lab discovery.
+36. **Phase 1: Business (Scientific) Understanding**: Defining the ROI (Return on Insight).
+37. **Phase 2: Data Understanding**: Visualizing raw data, checking for artifacts.
+38. **Phase 3: Data Preprocessing**: Cleaning, Scaling, Normalization.
+39. **Phase 4: Modeling**: Selecting and training the algorithm.
+40. **Phase 5: Evaluation**: Does it generalize? (The R^2 metric and its pitfalls).
+41. **Phase 6: Deployment**: Integrating ML into the microscope or furnace control.
+42. **Phase 7: Monitoring**: Detecting model drift and out-of-distribution cases.
+43. **Correlation vs. Causality (I)**: The "Ice Cream and Crime" case study.
+44. **Correlation vs. Causality (II)**: Materials example (Hardness vs. Cooling rate vs. Microstructure).
+45. **Scientific Trust**: Why explainability matters for peer review.
 
-### Block E — Exercise bridge + execution plan (Slides 44–50)
-44. **Exercise objective: baseline on real-ish materials data**
-45. **Step 1: clean + split with leakage control**
-46. **Step 2: baseline model and metric selection**
-47. **Step 3: error analysis by subgroup/source**
-48. **Step 4: add one physics-aware feature/constraint**
-49. **Unit summary: 10 must-know statements**
-50. **References + reading assignment**
+### Block E — Exercise bridge + execution plan (Slides 46–50)
+46. **Exercise Objective**: Identifying failures and scales in materials data.
+47. **Preview: MDS-1 Tensile Test**: A dataset for regression with parameter uncertainty.
+48. **Checklist for trustworthy materials ML**: Baseline-before-complexity, Leakage check, Unit consistency.
+49. **Unit Summary**: Top 10 takeaways.
+50. **References + Reading assignments**: McClarren Ch 1, Neuer Ch 1, Sandfeld Ch 1, 2, 4.
 
 ---
 
-## Book-derived points to include verbatim-style (adapted)
-- ML in engineering should be motivated by **physical-system questions**, not benchmark-only framing (McClarren preface + Ch. 1).
-- Data-science success in materials requires **domain knowledge integration**, not isolated algorithm use (Sandfeld Ch. 2.1).
-- Explainability and traceability concerns are valid in technical environments and must be addressed explicitly (Neuer Ch. 1.1.2–1.1.3).
-
-## Lecture vs exercise split
-- **Lecture**: modality physics, problem framing, evaluation validity, uncertainty and trust.
-- **Exercise**: implement baseline, compare split strategies, diagnose failures, add one domain-aware improvement.
-
-## Reading assignment after Unit 1
-- McClarren Ch. 1.1–1.5
-- Neuer Ch. 1.1 + 1.3 (CRISP-DM perspective)
-- Murphy Ch. 1.4 (overfitting/model selection)
+## Book-derived points included verbatim-style
+- "Materials Data Science is the application of data science approaches to materials science problems, combined with domain knowledge" (Sandfeld).
+- "Models are imitations of reality at a lower level of detail" (Neuer).
+- "Overfitting: trading accuracy on training data for failure on new data" (McClarren).
+- "Data is symbols of objects, events, and their environment. Information is data with context" (Sandfeld).

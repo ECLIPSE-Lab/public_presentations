@@ -1,37 +1,62 @@
-# Unit 2 Plan — ML for Characterization and Processing
+# Unit 2: Physics of Data Formation - Lecture Plan
 
-## Unit title
-Image Formation and Physics of Data
+## Objective
+Synthesize the connection between physical measurements (image/signal formation) and mathematical representations (data matrix, PCA/SVD) as the foundation for Machine Learning in materials science.
 
-## Audience/profile
-- 5th semester undergrad
-- Depends on MFML Unit 1 (risk/validation/uncertainty)
-- Goal: connect measurement physics to ML preprocessing/model choices
+## Slide Structure (approx. 50 slides)
 
-## Learning objectives
-By the end of Unit 2 students can:
-1. Explain how measurement physics shapes image/signal statistics.
-2. Identify common artifacts and how they induce ML failure.
-3. Connect sampling, resolution, noise, and aliasing to pipeline design.
-4. Choose basic preprocessing steps with explicit assumptions.
-5. Build a leakage-aware baseline for image/signal tasks.
+### Part 1: Signal & Image Formation (12 slides)
+- **Introduction (2 slides):** Bridging measurement and ML.
+- **Physical Sensing (2 slides):** Sensors as transducers ($\xi(t) \to x$).
+- **Spatial/Temporal Sampling (3 slides):**
+  - Continuous to discrete mapping.
+  - Nyquist-Shannon Theorem ($\nu_S \ge 2\nu_{max}$).
+  - Aliasing: When resolution fails (Moiré patterns in microscopy).
+- **Physical Priors (3 slides):**
+  - Jitter ($\delta t$) and Resolution limits.
+  - Finite Rate of Innovation: Sampling below Nyquist with prior info.
+- **Noise (2 slides):** Sensors as stochastic processes ($x_i = \xi_i + u_x$).
 
-## 90-min structure
-- 0–10: recap + why data formation matters
-- 10–35: signal/image formation basics and artifact taxonomy
-- 35–55: sampling, resolution, Fourier intuition, denoising rationale
-- 55–75: preprocessing-to-model pipeline and failure patterns
-- 75–85: case sketch + split/metric discussion
-- 85–90: summary + exercise handoff
+### Part 2: Mathematical Representation of Data (10 slides)
+- **Notation (2 slides):** Scalars, Vectors, Matrices (Sandfeld conventions).
+- **The Data Matrix (3 slides):**
+  - Features (columns) vs. Observations (rows).
+  - Feature matrix $X$, Target matrix $Y$.
+- **Python Implementation (2 slides):** Numpy/Pandas structures.
+- **Statistical Moments (3 slides):**
+  - Mean, Variance, Skewness, Kurtosis as noise characterization.
+  - Covariance and Correlation matrices (similarity).
 
-## Exercise (90 min)
-- inspect raw/processed image or spectrum pairs
-- compare two preprocessing pipelines
-- train one baseline model and compare split strategies
-- document one artifact-induced failure and mitigation
+### Part 3: Uncertainty & Stochasticity (8 slides)
+- **Aleatory vs. Epistemic Uncertainty (3 slides):**
+  - Inherent randomness (thermal noise) vs. lack of knowledge (model bias).
+- **Physical Noise Models (3 slides):**
+  - Gaussian (thermal/electronic noise).
+  - Poisson (photon/shot noise in EM).
+  - Weibull (failure/defect statistics).
+- **Bayes' Theorem in Sensing (2 slides):** $P(\text{Physical State} | \text{Sensor Output})$.
 
-## Book mapping (priority)
-1. Neuer: explainability and model trust in technical workflows
-2. Sandfeld: domain knowledge integration in data science
-3. McClarren: practical ML framing for physical systems
-4. Murphy/Bishop: overfitting/model-selection language
+### Part 4: Dimensionality Reduction (15 slides)
+- **The Curse of Dimensionality (2 slides):** High-dim experimental data (pixels/spectra).
+- **SVD Theory (3 slides):**
+  - $X = USV^T$ decomposition.
+  - Rank and Independent variables.
+- **PCA as Eigendecomposition (3 slides):**
+  - Maximizing variance along principal directions.
+  - Connecting Covariance Matrix to SVD.
+- **Variance Explained (2 slides):** Scree plots and "Fraction of Variation Explained".
+- **Case Studies (5 slides):**
+  - Time series reduction (McClarren Hohlraum case).
+  - Hyperspectral Foliage analysis (McClarren).
+  - Eigenfaces/Eigenmicrostructures (Sandfeld MNIST).
+
+### Part 5: Clustering & Visualization (5 slides)
+- **K-means Clustering (2 slides):** Finding natural groupings in PC space.
+- **t-SNE (3 slides):**
+  - Visualizing high-dim clusters (Normal vs. Cauchy tails).
+  - Fashion MNIST example.
+
+## Materials Sources
+- **Neuer (2024):** Ch 2 (Sampling, Nyquist, Uncertainty types, Moments, Bayes).
+- **Sandfeld (2024):** Ch 3 (Data Matrix, Notation), Ch 15 (PCA, Eigenvectors, Images).
+- **McClarren (2021):** Ch 4 (SVD, K-means, t-SNE, Case studies).
