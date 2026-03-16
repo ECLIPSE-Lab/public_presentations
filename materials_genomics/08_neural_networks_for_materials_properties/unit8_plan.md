@@ -3,61 +3,41 @@
 ## Unit title
 Neural Networks for Materials Properties
 
-## Unit focus
-Use neural surrogates responsibly for structure–property prediction, with attention to training dynamics and robustness.
+## Lecture arc
+- Motivate MLP surrogates as one model class among several benchmark baselines for fixed materials features.
+- Focus on when descriptor-based materials problems actually justify a neural surrogate.
+- Compare composition-only, descriptor-based, and structure-enriched fixed-feature settings.
+- Cover practical design choices for limited-data materials tasks: architecture scale, single-target versus multi-target outputs, and benchmark fairness.
+- Center the unit on materials-specific failure modes: weak splits, domain shift, extrapolation, false confidence, and overclaiming.
+- End with explicit criteria for when an NN is not the right tool and bridge into Unit 9, where representations become learned.
 
-## Book-chapter anchors used for scaffold design
-- Neuer 4.5.1/4.5.3/4.5.4/4.5.5; McClarren Ch8; Bishop 5.1–5.3; Murphy deep model caveats; Sandfeld domain context
+## Timing guide for 90 minutes
+- 0-10 min: recap from Unit 7 and why another model class enters the benchmark stack
+- 10-25 min: where MLP surrogates fit in materials workflows
+- 25-45 min: dataset regimes, architecture choices, and target setups
+- 45-65 min: fair benchmark design and comparison to ridge/RF
+- 65-80 min: failure modes, extrapolation, domain shift, and trust
+- 80-90 min: summary and transition to representation learning
 
-## Learning objectives
-By the end of Unit 8, students can:
-1. Explain the main modeling and data concepts behind **Neural Networks for Materials Properties**.
-2. Map these concepts to materials-discovery decisions and failure modes.
-3. Apply leakage-aware validation logic in practical workflows.
-4. Distinguish what is lecture-essential vs what belongs in exercise implementation.
+## Must-cover concepts
+- Fixed-representation neural surrogates versus learned-representation models
+- When nonlinear surrogates are justified over simpler baselines
+- Effective sample size in materials datasets with many near-neighbors
+- Single-target and multi-target materials property prediction
+- Grouped evaluation and fair baseline comparison
+- Domain shift across chemistry families and databases
+- Limits of calibration and trust for neural surrogates
 
-## 90-minute lecture structure
-- 0–10 min: dependency recap + notation alignment
-- 10–35 min: concepts and methods (book-backed foundations)
-- 35–60 min: materials-domain translation and modeling choices
-- 60–80 min: validation, uncertainty, and failure analysis
-- 80–90 min: summary + exercise handoff
+## Optional cuts if time runs short
+- Keep multi-target learning to one concise slide.
+- Collapse cross-database shift and unseen-chemistry shift into one broader failure slide.
+- Shorten the detailed comparison between multiple materials workflow types.
 
-## Exercise (90 min)
-- implement a minimal reproducible pipeline for the unit topic
-- compare two methodological choices under identical split protocol
-- perform one structured failure analysis and mitigation proposal
-- produce a short report with claims, evidence, and limitations
+## Exercise handoff
+- Build one descriptor-based neural surrogate benchmark.
+- Compare it fairly to ridge and random forest on the same grouped split.
+- Report not only scalar metrics but also one failure pattern under shift.
+- Conclude whether the NN is justified for that task.
 
-## Required chapter files
-- Neuer:
-  - `neuer-machine-learning-for-engineers/markdown/04-supervised-learning.qmd` (4.5.1-4.5.5, 4.5.9)
-- Sandfeld:
-  - `sandfeld-materials-data-science/markdown/07-part-iv-artificial-neural-networks-and-deep-learning.qmd`
-- McClarren:
-  - `mcclarren-machine-learning-for-engineers/markdown/05-feed-forward-neural-networks.qmd`
-- Bishop:
-  - `bishop-pattern-recognition-and-machine-learning-2006/markdown/09-neural-networks.qmd`
-- Murphy:
-  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/35-deep-learning.qmd`
-
-## Cross-book summary target
-- Use Neuer as the primary source for neuron models, activations, training, optimization, and overfitting control.
-- Use Sandfeld and McClarren to keep the narrative tied to engineering surrogate models rather than generic AI examples.
-- Use Bishop and Murphy selectively for backpropagation intuition and depth/capacity trade-offs.
-- Keep the materials focus on property prediction under limited data, regularization, and extrapolation risk.
-- Exclude advanced architecture variants and theory-heavy universal approximation arguments.
-
-## 50-slide strategy
-- Slides 1-10: why nonlinear surrogates are needed for materials properties.
-- Slides 11-22: neurons, activations, network depth/width, loss functions.
-- Slides 23-34: optimization, batch size, regularization, early stopping, diagnostics.
-- Slides 35-44: multitask learning, data scarcity, extrapolation, interpretability limits.
-- Slides 45-50: small-network training exercise and summary.
-
-## Website summary update
-- Heading: `#### Week 9 – Neural networks for materials properties (09.06.2026)`
-- Add a summary covering:
-  - neural networks as DFT-surrogate models,
-  - training stability and regularization,
-  - extrapolation and leakage as the main scientific risks.
+## Bridge to Unit 9
+Unit 8 still assumes that the representation is fixed before training. Unit 9 changes the focus: the model is no longer only learning a predictor, but also learning or refining the representation itself.

@@ -1,71 +1,72 @@
 # Unit 2 Plan — Materials Genomics
 
 ## Unit title
-Crystal Structure Fundamentals for Data-Driven Materials Discovery
+Simulation Methods as Data Generators
 
 ## Audience/profile
 - 5th semester undergrad
 - Depends on MFML Unit 1 language (task/risk/validation)
-- Goal: make structure representations and symmetry constraints concrete
+- Goal: make simulation outputs, scales, and biases concrete before later representation units
 
 ## Learning objectives
 By the end of Unit 2 students can:
-1. Describe crystal structures as ML-ready data objects.
-2. Explain symmetry, lattices, and Wyckoff-style constraints conceptually.
-3. Relate structure representation choices to model performance and validity.
-4. Identify leakage/bias risks specific to crystal datasets.
-5. Prepare a minimal structure-feature pipeline for exercises.
+1. Explain why simulation methods are the main generators of modern materials datasets.
+2. Compare FEM, MD, MC, and DFT by scale, output type, cost, and dominant bias.
+3. Relate simulation assumptions to downstream ML targets and dataset limitations.
+4. Identify hidden confounders caused by numerical settings, approximations, and post-processing.
+5. Choose a plausible simulation route for a given materials-property question.
 
 ## 90-min structure
-- 0–10: recap + role of structure in MG
-- 10–30: lattices, unit cells, symmetry concepts
-- 30–50: structure encodings and invariances
-- 50–70: data quality + split strategy for crystal datasets
-- 70–85: practical pipeline sketch (CIF -> features -> baseline)
+- 0–10: recap + why simulations dominate materials data generation
+- 10–30: scales and outputs of FEM, MD, MC, and DFT
+- 30–50: assumptions, approximations, and cost-accuracy tradeoffs
+- 50–70: what simulation outputs become ML targets, labels, or descriptors
+- 70–85: method-selection case studies and failure modes
 - 85–90: summary + exercise handoff
 
 ## Exercise (90 min)
-- parse CIF files and basic descriptors
-- run a first grouped split by composition/structure family
-- train simple baseline and inspect one failure mode
-- report one data-quality caveat
+- choose suitable simulation methods for several target properties
+- inspect example database fields and infer which method produced them
+- compare one high-fidelity and one low-fidelity route for the same screening task
+- report one bias source and one mitigation strategy
 
 ## Book mapping (priority)
-1. Neuer: model trust and explainability framing
-2. Sandfeld: materials data science + domain integration
-3. McClarren: practical ML task structure
-4. Murphy/Bishop: validation and probabilistic interpretation
+1. Sandfeld: materials-data and simulation context
+2. Neuer: task framing, targets, and validation logic
+3. McClarren: practical ML workflow framing
+4. Murphy/Bishop: optional probabilistic depth only when needed
 
 ## Required chapter files
 - Neuer:
-  - `neuer-machine-learning-for-engineers/markdown/01-data-as-the-basis-of-models.qmd` (1.2.3, 1.2.7)
-  - `neuer-machine-learning-for-engineers/markdown/05-unsupervised-learning.qmd` (5.2)
+  - `neuer-machine-learning-for-engineers/markdown/01-data-as-the-basis-of-models.qmd` (1.2.3, 1.3)
+  - `neuer-machine-learning-for-engineers/markdown/04-supervised-learning.qmd` (4.2.2, 4.4.1)
 - Sandfeld:
-  - `sandfeld-materials-data-science/markdown/04-part-i-introduction-and-foundations.qmd` (3.3, structured/tabular data)
+  - `sandfeld-materials-data-science/markdown/04-part-i-introduction-and-foundations.qmd` (2.2, 4.5)
 - McClarren:
-  - `mcclarren-machine-learning-for-engineers/markdown/04-finding-structure-within-a-data-set-data-reduction-and-clustering.qmd`
+  - `mcclarren-machine-learning-for-engineers/markdown/01-the-landscape-of-machine-learning-supervised-and-unsupervised-learning-optimization-and-other-topics.qmd`
 - Bishop:
-  - `bishop-pattern-recognition-and-machine-learning-2006/markdown/16-continuous-latent-variables.qmd`
+  - `bishop-pattern-recognition-and-machine-learning-2006/markdown/07-linear-models-for-regression.qmd`
 - Murphy:
-  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/19-latent-linear-models.qmd`
+  - `murphy-machine-learning-a-probabilistic-perspective-2012/markdown/14-linear-regression.qmd`
 
 ## Cross-book summary target
-- Use Sandfeld and Neuer to explain how crystal structures must be represented as structured data objects before any ML method can act on them.
-- Use McClarren, Murphy, and Bishop only to motivate low-dimensional structure, covariance views, and representation choices, not to teach crystallography itself.
-- Keep the domain core on lattice, basis, periodicity, symmetry, and invariance requirements for ML-ready crystal data.
-- Explain why representation choices change both model accuracy and leakage risk.
-- Exclude formal derivations of PCA and latent-variable models; students already meet the mathematics in MFML.
+- Use Sandfeld to explain why simulations are not just computational tools but controlled data generators with scale-specific outputs.
+- Use Neuer to frame those outputs as supervised-learning targets and to highlight how assumptions and preprocessing shape generalization.
+- Use McClarren, Bishop, and Murphy only to support language about targets, residuals, and validation; do not turn this unit into a generic regression lecture.
+- Keep the domain core on FEM, MD, MC, DFT, their outputs, and their systematic biases.
+- Exclude crystallographic detail and deep derivations; those belong in later representation and modeling units.
 
 ## 50-slide strategy
-- Slides 1-10: structural vocabulary, lattices, bases, unit cells, coordinate systems.
-- Slides 11-22: primitive vs conventional cells, symmetry, periodicity, invariances.
-- Slides 23-34: CIF/POSCAR-style encodings, tabularization, low-dimensional structure intuition.
-- Slides 35-44: data-quality risks, polymorph/prototype leakage, grouped splits.
-- Slides 45-50: CIF-to-feature exercise setup and exam checklist.
+- Slides 1-10: why simulations generate materials data and what decision problems they support.
+- Slides 11-22: FEM, MD, MC, and DFT across scales, outputs, and assumptions.
+- Slides 23-34: cost-accuracy tradeoffs, hidden confounders, and metadata requirements.
+- Slides 35-44: simulation outputs as labels, descriptors, or constraints in ML pipelines.
+- Slides 45-50: method-selection exercise and exam checklist.
 
 ## Website summary update
 - Heading: `#### Week 2 – Simulation methods as data generators (21.04.2026)`
-- Add or revise the summary so Week 2 bridges simulation outputs to ML-ready crystal representations:
-  - structures as data objects with periodic constraints,
-  - symmetry and coordinate choices,
-  - low-dimensional organization of crystal data.
+- Add or revise the summary so Week 2 emphasizes:
+  - simulations as controlled data generators,
+  - differences between FEM, MD, MC, and DFT outputs,
+  - tradeoffs between scale, accuracy, and bias,
+  - why metadata matters before any ML model is trained.
