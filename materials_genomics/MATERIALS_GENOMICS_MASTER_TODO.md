@@ -172,7 +172,7 @@ Status: `done`
 - [x] Update the corresponding teaching-site summary block in `/home/philipp/projects/_teaching/MaterialsGenomics/index.qmd`.
 - [x] Mark this unit done and record notes.
 
-Notes: Updated `unit11_plan.md` and Week 12 summary.
+Notes: Updated `unit11_plan.md`, Week 12 summary, and implemented "full-content" slides in `01_intro.qmd` following MFML style.
 
 ## Unit 12: Uncertainty-aware discovery and Gaussian Processes
 

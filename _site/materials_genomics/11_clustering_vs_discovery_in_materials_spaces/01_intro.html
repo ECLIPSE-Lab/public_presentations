@@ -32,6 +32,7 @@
     div.csl-bib-body { }
     div.csl-entry {
       clear: both;
+      margin-bottom: 0em;
     }
     .hanging-indent div.csl-entry {
       margin-left:2em;
@@ -171,404 +172,447 @@
 <section id="title-clustering-vs-discovery-in-materials-spaces" class="slide level2">
 <h2>01. Title: Clustering vs Discovery in Materials Spaces</h2>
 <ul>
-<li>Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li><strong>Goal</strong>: Transition from exploratory data grouping to actionable materials discovery logic.</li>
+<li><strong>Scientific Claim</strong>: Clustering reveals structural organization; Discovery requires physical hypothesis validation.</li>
+<li><strong>Role in Workflow</strong>: Coarse-graining the vast materials design space into manageable prototype families.</li>
+<li>“Clustering is a powerful tool, but it is not a discovery proof in itself.”</li>
 </ul>
 </section>
-<section id="learning-objectives-and-expected-outputs" class="slide level2">
-<h2>02. Learning objectives and expected outputs</h2>
+<section id="learning-outcomes-for-unit-11" class="slide level2">
+<h2>02. Learning outcomes for Unit 11</h2>
+<p>By the end of this unit, students can: - explain the <strong>hard vs.&nbsp;soft assignment</strong> logic in K-Means and GMM, - implement <strong>density-based</strong> clustering (DBSCAN) to find “islands of stability,” - evaluate cluster validity using <strong>Adjusted Rand Index (ARI)</strong> and Purity, - diagnose <strong>artifact clusters</strong> (source-bias and scaling issues), - connect <strong>outliers and novelties</strong> to potential materials discovery candidates.</p>
+</section>
+<section id="recap-from-units-9-10-representation-latent-spaces" class="slide level2">
+<h2>03. Recap: From Units 9 &amp; 10 (Representation &amp; Latent Spaces)</h2>
 <ul>
-<li>State measurable outcomes (what students can explain, implement, and critique by the end of the unit).</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li><strong>Unit 9</strong>: How to learn the representation <span class="math inline">\(\mathcal{E}(x) = z\)</span>.</li>
+<li><strong>Unit 10</strong>: The geometry of the continuous latent space <span class="math inline">\(\mathbb{L}\)</span>.</li>
+<li><strong>Unit 11 (Today)</strong>: How to <em>partition</em> <span class="math inline">\(\mathbb{L}\)</span> or raw space <span class="math inline">\(\mathbb{R}^D\)</span> into discrete, searchable groups.</li>
+<li>Clustering is the bridge between continuous manifold talk and discrete prototype classification.</li>
 </ul>
 </section>
-<section id="recap-from-previous-unit-and-dependency-map" class="slide level2">
-<h2>03. Recap from previous unit and dependency map</h2>
+<section id="similarity-and-dissimilarity-the-choice-of-metric" class="slide level2">
+<h2>04. Similarity and Dissimilarity: The Choice of Metric</h2>
 <ul>
-<li>Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li><strong>Similarity-based</strong>: Input is an <span class="math inline">\(N \times N\)</span> dissimilarity matrix <span class="math inline">\(\mathbf{D}\)</span>.</li>
+<li><strong>Feature-based</strong>: Input is an <span class="math inline">\(N \times D\)</span> design matrix <span class="math inline">\(\mathbf{X}\)</span> <span class="citation" data-cites="murphy2012machine">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Murphy 2012</a>)</span>.</li>
+<li>Common Metrics:
+<ul>
+<li><strong>Euclidean</strong>: <span class="math inline">\(\|\mathbf{x}_i - \mathbf{x}_j\|_2\)</span>. Standard for lattice constants.</li>
+<li><strong>Hamming</strong>: <span class="math inline">\(\sum [x_{ik} \neq x_{jk}]\)</span>. Standard for categorical symmetry labels.</li>
+<li><strong>Mahalanobis</strong>: Accounts for feature correlations using the covariance matrix.</li>
+</ul></li>
 </ul>
 </section>
-<section id="why-this-unit-matters-for-materials-discovery" class="slide level2">
-<h2>04. Why this unit matters for materials discovery</h2>
+<section id="why-the-metric-is-the-most-important-choice" class="slide level2">
+<h2>05. Why the Metric is the Most Important Choice</h2>
 <ul>
-<li>Motivate with a realistic failure/success scenario from materials discovery practice.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li><strong>Scaling Sensitivity</strong>: If density is in <span class="math inline">\(g/cm^3\)</span> (order 1) and volume is in <span class="math inline">\(\text{\AA}^3\)</span> (order 100), volume will dominate the Euclidean distance.</li>
+<li><strong>Feature Weighting</strong>: Implicitly decides which physical property “matters” more for family definition.</li>
+<li><strong>Rule</strong>: Clustering is only as meaningful as the metric space it operates in.</li>
 </ul>
 </section>
-<section id="reading-map-and-chapter-anchors" class="slide level2">
-<h2>05. Reading map and chapter anchors</h2>
+<section id="k-means-the-hard-assignment-baseline" class="slide level2">
+<h2>06. K-Means: The “Hard Assignment” Baseline</h2>
 <ul>
-<li>Map slide blocks to the key book chapters so students can pre-read and post-review effectively.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li>Partitions <span class="math inline">\(N\)</span> materials into <span class="math inline">\(K\)</span> disjoint sets by minimizing distortion <span class="math inline">\(J\)</span>: <span class="math display">\[
+J = \sum_{n=1}^N \sum_{k=1}^K r_{nk} \|\mathbf{x}_n - \boldsymbol{\mu}_k\|^2
+\]</span></li>
+<li><span class="math inline">\(r_{nk} \in \{0, 1\}\)</span> is a “hard” 1-of-K indicator variable.</li>
+<li><strong>Scientific Role</strong>: Each cluster center <span class="math inline">\(\boldsymbol{\mu}_k\)</span> represents a structural <strong>prototype</strong> <span class="citation" data-cites="bishop2006pattern">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Bishop 2006</a>)</span>.</li>
 </ul>
 </section>
-<section id="clustering-objectives-vs-discovery-objectives" class="slide level2">
-<h2>06. Clustering objectives vs discovery objectives</h2>
+<section id="the-em-algorithm-for-k-means-e-step-assignment" class="slide level2">
+<h2>07. The EM Algorithm for K-Means: E-step (Assignment)</h2>
 <ul>
-<li>Explain <strong>clustering objectives vs discovery objectives</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>Fix prototypes <span class="math inline">\(\boldsymbol{\mu}_k\)</span>.</li>
+<li>Assign each data point <span class="math inline">\(x_n\)</span> to the nearest prototype: <span class="math display">\[
+r_{nk} = \begin{cases} 1 &amp; \text{if } k = \arg\min_j \|\mathbf{x}_n - \boldsymbol{\mu}_j\|^2 \\ 0 &amp; \text{otherwise} \end{cases}
+\]</span></li>
+<li>Geometrically, this creates a <strong>Voronoi partitioning</strong> of the materials space.</li>
 </ul>
 </section>
-<section id="k-means-objective-and-centroid-interpretation" class="slide level2">
-<h2>07. K-means objective and centroid interpretation</h2>
+<section id="the-em-algorithm-for-k-means-m-step-update" class="slide level2">
+<h2>08. The EM Algorithm for K-Means: M-step (Update)</h2>
 <ul>
-<li>Compare <strong>k-means objective and centroid interpretation</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li>Fix assignments <span class="math inline">\(r_{nk}\)</span>.</li>
+<li>Update prototypes to be the mean of their assigned points: <span class="math display">\[
+\boldsymbol{\mu}_k = \frac{\sum_n r_{nk} \mathbf{x}_n}{\sum_n r_{nk}}
+\]</span></li>
+<li>Guaranteed to decrease <span class="math inline">\(J\)</span> at every step until a local minimum is reached <span class="citation" data-cites="bishop2006pattern">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Bishop 2006</a>)</span>.</li>
 </ul>
 </section>
-<section id="distance-metrics-and-scaling-sensitivity" class="slide level2">
-<h2>08. Distance metrics and scaling sensitivity</h2>
+<section id="k-means-limitations-in-materials-space" class="slide level2">
+<h2>09. K-Means Limitations in Materials Space</h2>
 <ul>
-<li>Diagnose <strong>distance metrics and scaling sensitivity</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li><strong>Spherical Bias</strong>: Assumes clusters are roughly equal-sized and isotropic. Chemical families are often elongated.</li>
+<li><strong>Sensitivity to Outliers</strong>: One “extreme” structure (e.g., a massive unit cell) can pull the cluster center away from the family core.</li>
+<li><strong>Fixed <span class="math inline">\(K\)</span></strong>: Requires knowing the number of families in advance, which is rarely true in discovery.</li>
 </ul>
 </section>
-<section id="cluster-validity-indices-and-their-limitations" class="slide level2">
-<h2>09. Cluster validity indices and their limitations</h2>
+<section id="choosing-k-the-elbow-and-silhouette-score" class="slide level2">
+<h2>10. Choosing <span class="math inline">\(K\)</span>: The Elbow and Silhouette Score</h2>
 <ul>
-<li>Apply <strong>cluster validity indices and their limitations</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li><strong>Elbow Method</strong>: Plot <span class="math inline">\(J\)</span> vs.&nbsp;<span class="math inline">\(K\)</span>. Look for the “kink” where adding clusters gives diminishing returns.</li>
+<li><strong>Silhouette Score</strong>: Measures how well-separated and cohesive clusters are. <span class="math display">\[
+s(i) = \frac{b(i) - a(i)}{\max\{a(i), b(i)\}}
+\]</span></li>
+<li>In MG, <span class="math inline">\(K\)</span> is often guided by known crystal structure archetypes (e.g., perovskites, garnets).</li>
 </ul>
 </section>
-<section id="gaussian-mixture-models-and-soft-assignments" class="slide level2">
-<h2>10. Gaussian mixture models and soft assignments</h2>
+<section id="mixture-models-the-probabilistic-view" class="slide level2">
+<h2>11. Mixture Models: The Probabilistic View</h2>
 <ul>
-<li>Define <strong>gaussian mixture models and soft assignments</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li><strong>Gaussian Mixture Model (GMM)</strong> assumes data follows <span class="math inline">\(K\)</span> Gaussians: <span class="math display">\[
+p(\mathbf{x}) = \sum_{k=1}^K \pi_k \mathcal{N}(\mathbf{x} | \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)
+\]</span></li>
+<li><span class="math inline">\(\pi_k\)</span>: Prior probability of belonging to cluster <span class="math inline">\(k\)</span>.</li>
+<li><strong>Soft Assignment</strong>: Instead of a hard label, we compute the <strong>responsibility</strong> <span class="math inline">\(\gamma(z_{nk})\)</span> that material <span class="math inline">\(n\)</span> belongs to cluster <span class="math inline">\(k\)</span> <span class="citation" data-cites="bishop2006pattern">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Bishop 2006</a>)</span>.</li>
 </ul>
 </section>
-<section id="hierarchical-clustering-and-dendrogram-interpretation" class="slide level2">
-<h2>11. Hierarchical clustering and dendrogram interpretation</h2>
+<section id="soft-assignments-and-phase-boundaries" class="slide level2">
+<h2>12. Soft Assignments and Phase Boundaries</h2>
 <ul>
-<li>Explain <strong>hierarchical clustering and dendrogram interpretation</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>A material with <span class="math inline">\(\gamma(\text{Cluster 1}) = 0.51\)</span> and <span class="math inline">\(\gamma(\text{Cluster 2}) = 0.49\)</span> sits on a “manifold boundary.”</li>
+<li><strong>Materials Context</strong>: This characterizes materials near phase transitions or those with ambiguous symmetry.</li>
+<li>Soft assignments are more physically honest for discovery than hard K-Means boundaries.</li>
 </ul>
 </section>
-<section id="density-based-clustering-for-irregular-structures" class="slide level2">
-<h2>12. Density-based clustering for irregular structures</h2>
+<section id="hierarchical-clustering-materials-taxonomies" class="slide level2">
+<h2>13. Hierarchical Clustering: Materials Taxonomies</h2>
 <ul>
-<li>Compare <strong>density-based clustering for irregular structures</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li>Creates a nested tree (<strong>dendrogram</strong>) of partitions.</li>
+<li><strong>Agglomerative (Bottom-up)</strong>: Start with each material as its own cluster, merge the most similar pairs.</li>
+<li><strong>Linkage criteria</strong>: Single (min distance), Complete (max distance), Average.</li>
+<li><strong>Benefit</strong>: Reveals “taxonomies” of materials, mirroring the hierarchical nature of chemistry <span class="citation" data-cites="murphy2012machine">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Murphy 2012</a>)</span>.</li>
 </ul>
 </section>
-<section id="clustering-in-raw-descriptor-vs-latent-spaces" class="slide level2">
-<h2>13. Clustering in raw descriptor vs latent spaces</h2>
+<section id="dendrogram-cutting-and-discovery-strategy" class="slide level2">
+<h2>14. Dendrogram Cutting and Discovery Strategy</h2>
 <ul>
-<li>Diagnose <strong>clustering in raw descriptor vs latent spaces</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li><strong>Cutting High</strong>: Broad material classes (e.g., Halides vs.&nbsp;Chalcogenides).</li>
+<li><strong>Cutting Low</strong>: Fine-grained structural nuances (e.g., different tilting patterns in the same prototype).</li>
+<li>Hierarchical clustering is deterministic and doesn’t require pre-specifying <span class="math inline">\(K\)</span>—you choose the “discovery resolution” post-hoc.</li>
 </ul>
 </section>
-<section id="when-clusters-align-with-known-material-families" class="slide level2">
-<h2>14. When clusters align with known material families</h2>
+<section id="density-based-clustering-dbscan" class="slide level2">
+<h2>15. Density-Based Clustering: DBSCAN</h2>
 <ul>
-<li>Apply <strong>when clusters align with known material families</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li><strong>Idea</strong>: Clusters are continuous high-density regions separated by low-density noise <span class="citation" data-cites="neuer2024machine">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Neuer et al. 2024</a>)</span>.</li>
+<li><strong>Hyperparameters</strong>: <span class="math inline">\(\epsilon\)</span> (distance radius) and <code>min_samples</code>.</li>
+<li><strong>DBSCAN Pros</strong>:
+<ul>
+<li>Finds clusters of arbitrary shape (elongated chemical trends).</li>
+<li>Robust to outliers.</li>
+<li>Automatically identifies “noise” (atypical materials).</li>
+</ul></li>
 </ul>
 </section>
-<section id="when-clusters-reflect-artifacts-instead-of-science" class="slide level2">
-<h2>15. When clusters reflect artifacts instead of science</h2>
+<section id="dbscan-finding-islands-of-stability" class="slide level2">
+<h2>16. DBSCAN: Finding “Islands of Stability”</h2>
 <ul>
-<li>Define <strong>when clusters reflect artifacts instead of science</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li><strong>High Density</strong>: Regions where many structural variants exist <span class="math inline">\(\approx\)</span> stable chemical prototypes.</li>
+<li><strong>Low Density</strong>: Regions of structural instability or unexplored chemistry.</li>
+<li>Identifying “valleys” in the chemical manifold helps target regions for high-throughput screening.</li>
 </ul>
 </section>
-<section id="outlier-and-novelty-detection-distinction" class="slide level2">
-<h2>16. Outlier and novelty detection distinction</h2>
+<section id="svd-and-pca-as-clustering-preprocessors" class="slide level2">
+<h2>17. SVD and PCA as Clustering Preprocessors</h2>
 <ul>
-<li>Explain <strong>outlier and novelty detection distinction</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>High-dimensional clustering fails because distances “concentrate” (all points look equidistant).</li>
+<li><strong>Workflow</strong>:
+<ol type="1">
+<li>Perform SVD/PCA on raw descriptors (Unit 4).</li>
+<li>Retain top <span class="math inline">\(L\)</span> components covering <span class="math inline">\(&gt;95\%\)</span> variance.</li>
+<li>Cluster in this reduced space <span class="citation" data-cites="ryan2021machine">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">McClarren 2021</a>)</span>.</li>
+</ol></li>
+<li>This focuses the algorithm on the physical drivers of variation, not the high-dimensional noise.</li>
 </ul>
 </section>
-<section id="discovery-requires-hypothesis-validation-loop" class="slide level2">
-<h2>17. Discovery requires hypothesis + validation loop</h2>
+<section id="variance-explained-vs.-clustering-resolution" class="slide level2">
+<h2>18. Variance Explained vs.&nbsp;Clustering Resolution</h2>
 <ul>
-<li>Compare <strong>discovery requires hypothesis + validation loop</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li><strong>Tradeoff</strong>: Dropping PCA components removes noise but may smooth over the subtle structural detail that defines a new family.</li>
+<li><strong>Diagnostic</strong>: Plot cluster stability as a function of retained PCA variance.</li>
+<li>If clusters change drastically with one more PC, the discovery claim is unstable.</li>
 </ul>
 </section>
-<section id="cluster-stability-under-resampling-and-perturbation" class="slide level2">
-<h2>18. Cluster stability under resampling and perturbation</h2>
+<section id="t-sne-preserving-local-neighborhoods" class="slide level2">
+<h2>19. t-SNE: Preserving Local Neighborhoods</h2>
 <ul>
-<li>Diagnose <strong>cluster stability under resampling and perturbation</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li>Mapping high-D to 2D by preserving neighborhood probabilities <span class="math inline">\(p(i|j)\)</span> <span class="citation" data-cites="neuer2024machine">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Neuer et al. 2024</a>)</span>.</li>
+<li><strong>KL-divergence minimization</strong>: <span class="math display">\[
+\text{KL}(p||\tilde{p}) = \sum p(i|j) \log \frac{p(i|j)}{\tilde{p}(i|j)}
+\]</span></li>
+<li><strong>Warning</strong>: t-SNE distances are not physical; local density in the plot is not local density in the data.</li>
 </ul>
 </section>
-<section id="cluster-drift-across-datasets-and-domains" class="slide level2">
-<h2>19. Cluster drift across datasets and domains</h2>
+<section id="umap-the-current-discovery-standard" class="slide level2">
+<h2>20. UMAP: The Current Discovery Standard</h2>
 <ul>
-<li>Apply <strong>cluster drift across datasets and domains</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li><strong>UMAP</strong> (Uniform Manifold Approximation and Projection).</li>
+<li>Generally faster than t-SNE and better at preserving global structure (the relative positions of distant families).</li>
+<li><strong>Standard</strong>: Used to map the entire Materials Project (150k+ compounds) to see the “periodic table of structure families.”</li>
 </ul>
 </section>
-<section id="human-in-the-loop-interpretation-of-cluster-semantics" class="slide level2">
-<h2>20. Human-in-the-loop interpretation of cluster semantics</h2>
+<section id="artifact-clusters-the-source-bias-problem" class="slide level2">
+<h2>21. Artifact Clusters: The Source Bias Problem</h2>
 <ul>
-<li>Define <strong>human-in-the-loop interpretation of cluster semantics</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li><strong>Case Study</strong>: Clustering a dataset combining VASP/PBE and Quantum Espresso/SCAN calculations.</li>
+<li><strong>Failure</strong>: The algorithm finds two giant clusters corresponding to the software used, not the chemistry.</li>
+<li><strong>Rule</strong>: Normalization must be done per-source to remove simulation artifacts before discovery.</li>
 </ul>
 </section>
-<section id="linking-clusters-to-target-properties-and-uncertainty" class="slide level2">
-<h2>21. Linking clusters to target properties and uncertainty</h2>
+<section id="scaling-artifacts-the-unit-trap" class="slide level2">
+<h2>22. Scaling Artifacts: The “Unit” Trap</h2>
 <ul>
-<li>Explain <strong>linking clusters to target properties and uncertainty</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>Formation Energy: <span class="math inline">\(-10\)</span> to <span class="math inline">\(0\)</span> eV.</li>
+<li>Unit Cell Volume: <span class="math inline">\(50\)</span> to <span class="math inline">\(500\)</span> <span class="math inline">\(\text{\AA}^3\)</span>.</li>
+<li>Without Z-score standardization (<span class="math inline">\(x' = \frac{x - \mu}{\sigma}\)</span>), Volume will completely define the distance metric.</li>
+<li><strong>Lesson</strong>: Feature engineering (Unit 4) is the prerequisite for unsupervised discovery.</li>
 </ul>
 </section>
-<section id="semi-supervised-refinement-after-unsupervised-grouping" class="slide level2">
-<h2>22. Semi-supervised refinement after unsupervised grouping</h2>
+<section id="raw-descriptors-unit-4-vs.-latent-codes-unit-10" class="slide level2">
+<h2>23. Raw Descriptors (Unit 4) vs.&nbsp;Latent Codes (Unit 10)</h2>
 <ul>
-<li>Compare <strong>semi-supervised refinement after unsupervised grouping</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li><strong>Raw Space</strong>: Interpretable, but biased by human selection of what “matters.”</li>
+<li><strong>Latent Space</strong>: Captures “deep” structural relationships descriptors miss, but harder to explain.</li>
+<li><strong>Validation</strong>: Compare Adjusted Rand Index (ARI) of both cluster sets against known crystal systems.</li>
 </ul>
 </section>
-<section id="failure-mode-equating-compactness-with-scientific-novelty" class="slide level2">
-<h2>23. Failure mode: equating compactness with scientific novelty</h2>
+<section id="visualization-hallucinations" class="slide level2">
+<h2>24. Visualization Hallucinations</h2>
 <ul>
-<li>Diagnose <strong>failure mode: equating compactness with scientific novelty</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li>t-SNE/UMAP can show clusters even in perfectly random noise if hyperparameters are pushed.</li>
+<li><strong>Visual inspection is the beginning of discovery, not the proof.</strong></li>
+<li>Claims of “new families” must be backed by property correlation metrics, not just “clean” plots <span class="citation" data-cites="neuer2024machine">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Neuer et al. 2024</a>)</span>.</li>
 </ul>
 </section>
-<section id="failure-mode-over-trusting-2d-visualizations" class="slide level2">
-<h2>24. Failure mode: over-trusting 2D visualizations</h2>
+<section id="external-validation-purity-and-rand-index" class="slide level2">
+<h2>25. External Validation: Purity and Rand Index</h2>
 <ul>
-<li>Apply <strong>failure mode: over-trusting 2d visualizations</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li><strong>Purity</strong>: Average proportion of the majority class in each cluster.</li>
+<li><strong>Adjusted Rand Index (ARI)</strong>: <span class="math display">\[
+\text{ARI} = \frac{\text{Index} - \text{Expected Index}}{\text{Max Index} - \text{Expected Index}}
+\]</span></li>
+<li>High ARI against space groups/prototypes validates that the model has “learned” crystallography <span class="citation" data-cites="murphy2012machine">(<a href="#/exam-checklist-evidence-backed-discovery" role="doc-biblioref" onclick="">Murphy 2012</a>)</span>.</li>
 </ul>
 </section>
-<section id="failure-mode-tuning-clustering-to-desired-story" class="slide level2">
-<h2>25. Failure mode: tuning clustering to desired story</h2>
+<section id="case-study-discovery-in-the-materials-project" class="slide level2">
+<h2>26. Case Study: Discovery in the Materials Project</h2>
 <ul>
-<li>Define <strong>failure mode: tuning clustering to desired story</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li><strong>Objective</strong>: Find rare coordination environments in 150,000 materials.</li>
+<li><strong>Method</strong>: SOAP descriptors (Unit 6) + UMAP + DBSCAN.</li>
+<li><strong>Outcome</strong>: Identification of 50+ previously unlabeled structure archetypes.</li>
+<li><strong>Success</strong>: The “clusters” led directly to new entries in the inorganic structure database.</li>
 </ul>
 </section>
-<section id="case-k-means-vs-gmm-on-latent-embeddings" class="slide level2">
-<h2>26. Case: k-means vs GMM on latent embeddings</h2>
+<section id="case-study-clustering-2004-cars-murphy-12.2" class="slide level2">
+<h2>27. Case Study: Clustering 2004 Cars (Murphy 12.2)</h2>
 <ul>
-<li>Explain <strong>case: k-means vs gmm on latent embeddings</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>Intuition building: Axes of Price, MPG, and Weight.</li>
+<li>Discovery: “The Economy/SUV/Luxury” triad.</li>
+<li><strong>Analogy</strong>: In Materials Genomics, we replace these with “Conductivity/Stability/Stiffness” to find our “Luxury” materials.</li>
 </ul>
 </section>
-<section id="case-cluster-to-property-enrichment-analysis" class="slide level2">
-<h2>27. Case: cluster-to-property enrichment analysis</h2>
+<section id="case-study-spectral-clustering-mcclarren-4.2" class="slide level2">
+<h2>28. Case Study: Spectral Clustering (McClarren 4.2)</h2>
 <ul>
-<li>Compare <strong>case: cluster-to-property enrichment analysis</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li>Clustering plant species from hyperspectral leaf images.</li>
+<li>Latent factors = Chlorophyll + Water content.</li>
+<li><strong>MG Bridge</strong>: We cluster XRD or EELS spectra to find structural phases in high-throughput experimental data.</li>
 </ul>
 </section>
-<section id="case-anomaly-candidates-from-low-density-regions" class="slide level2">
-<h2>28. Case: anomaly candidates from low-density regions</h2>
+<section id="the-discovery-objective-selecting-the-golden-cluster" class="slide level2">
+<h2>29. The Discovery Objective: Selecting the “Golden Cluster”</h2>
 <ul>
-<li>Diagnose <strong>case: anomaly candidates from low-density regions</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li>Once clusters are found, we overlay properties:
+<ul>
+<li>Which cluster has the highest mean bandgap?</li>
+<li>Which cluster is the most stable (<span class="math inline">\(E_{hull} \to 0\)</span>)?</li>
+</ul></li>
+<li><strong>Discovery</strong>: The “Golden Cluster” represents a structural family with a high probability of yielding high-performance materials.</li>
 </ul>
 </section>
-<section id="experimental-follow-up-design-from-cluster-hypotheses" class="slide level2">
-<h2>29. Experimental follow-up design from cluster hypotheses</h2>
+<section id="outlier-detection-the-black-swan-search" class="slide level2">
+<h2>30. Outlier Detection: The “Black Swan” Search</h2>
 <ul>
-<li>Apply <strong>experimental follow-up design from cluster hypotheses</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li>Discovery often happens at the fringe, not the mean.</li>
+<li>An outlier in a stability cluster might be a <strong>metastable phase</strong> with extraordinary properties (e.g., diamond).</li>
+<li><strong>Strategy</strong>: Systematically screen the DBSCAN “noise” points as candidates for novel synthesis.</li>
 </ul>
 </section>
-<section id="reproducible-clustering-protocol-and-reporting" class="slide level2">
-<h2>30. Reproducible clustering protocol and reporting</h2>
+<section id="uncertainty-in-cluster-assignments" class="slide level2">
+<h2>31. Uncertainty in Cluster Assignments</h2>
 <ul>
-<li>Define <strong>reproducible clustering protocol and reporting</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li>Use GMM “responsibilities” as a proxy for assignment uncertainty.</li>
+<li>If a material has no dominant cluster, it lives in a “structurally ambiguous” region.</li>
+<li><strong>Risk</strong>: Discovery claims in high-uncertainty regions require the most validation.</li>
 </ul>
 </section>
-<section id="statistical-significance-of-discovered-groups" class="slide level2">
-<h2>31. Statistical significance of discovered groups</h2>
+<section id="robustness-the-bootstrap-check" class="slide level2">
+<h2>32. Robustness: The Bootstrap Check</h2>
 <ul>
-<li>Explain <strong>statistical significance of discovered groups</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>Run clustering on different 90% subsets of the data.</li>
+<li>Do the same materials always end up together?</li>
+<li><strong>Stability</strong>: If clusters are unstable, the “discovery” is likely a sampling artifact.</li>
 </ul>
 </section>
-<section id="connection-to-uncertainty-aware-acquisition-in-unit-12" class="slide level2">
-<h2>32. Connection to uncertainty-aware acquisition in Unit 12</h2>
+<section id="the-silhouette-score-trap" class="slide level2">
+<h2>33. The Silhouette Score Trap</h2>
 <ul>
-<li>Compare <strong>connection to uncertainty-aware acquisition in unit 12</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li>High Silhouette <span class="math inline">\(\neq\)</span> Physical Meaning.</li>
+<li>You can get a perfect Silhouette score on clusters that only represent “Database Source” (Slide 21).</li>
+<li><strong>Rule</strong>: Silhouette score is an internal metric; discovery requires external physical validation.</li>
 </ul>
 </section>
-<section id="connection-to-constraintstrust-in-unit-13" class="slide level2">
-<h2>33. Connection to constraints/trust in Unit 13</h2>
+<section id="feature-importance-for-clustering" class="slide level2">
+<h2>34. Feature Importance for Clustering</h2>
 <ul>
-<li>Diagnose <strong>connection to constraints/trust in unit 13</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li>Which descriptor (Unit 4) drives the cluster separation?</li>
+<li><strong>Method</strong>: Train a Random Forest classifier to predict “Cluster ID” from raw features.</li>
+<li>High importance for “Atomic Volume” means your discovery is likely driven by size effects.</li>
 </ul>
 </section>
-<section id="exercise-compare-clustering-objectives-on-same-dataset" class="slide level2">
-<h2>34. Exercise: compare clustering objectives on same dataset</h2>
+<section id="over-clustering-structure-from-noise" class="slide level2">
+<h2>35. Over-Clustering: Structure from Noise</h2>
 <ul>
-<li>Apply <strong>exercise: compare clustering objectives on same dataset</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li>Clustering algorithms <em>will</em> find structure in random data if forced.</li>
+<li><strong>Permutation Test</strong>: Cluster shuffled data. If you still see “structure,” your original discovery is invalid.</li>
+<li>Discovery must be “statistically significant” compared to the null hypothesis.</li>
 </ul>
 </section>
-<section id="exercise-quantify-cluster-stability" class="slide level2">
-<h2>35. Exercise: quantify cluster stability</h2>
+<section id="interpreting-prototypes-centroids-vs.-medoids" class="slide level2">
+<h2>36. Interpreting Prototypes: Centroids vs.&nbsp;Medoids</h2>
 <ul>
-<li>Define <strong>exercise: quantify cluster stability</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li><strong>Centroid</strong>: The mathematical mean <span class="math inline">\(\boldsymbol{\mu}_k\)</span>. May not be a real material.</li>
+<li><strong>Medoid</strong>: The actual material in the dataset closest to the center.</li>
+<li><strong>Discovery Step</strong>: Use the Medoid as the “representative” candidate of the newly discovered family.</li>
 </ul>
 </section>
-<section id="exercise-propose-one-experimentally-testable-discovery-hypothesis" class="slide level2">
-<h2>36. Exercise: propose one experimentally testable discovery hypothesis</h2>
+<section id="bridging-to-latent-traversals-unit-10" class="slide level2">
+<h2>37. Bridging to Latent Traversals (Unit 10)</h2>
 <ul>
-<li>Explain <strong>exercise: propose one experimentally testable discovery hypothesis</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>Cluster <span class="math inline">\(\to\)</span> Medoid <span class="math inline">\(\to\)</span> Traversal.</li>
+<li>Once a cluster of interest is identified, explore its neighborhood by “morphing” the Medoid structure.</li>
+<li><strong>Local Discovery</strong>: Unsupervised grouping defines the “where,” traversal explores the “how.”</li>
 </ul>
 </section>
-<section id="exam-checklist-clustering-claim-vs-discovery-claim" class="slide level2">
-<h2>37. Exam checklist: clustering claim vs discovery claim</h2>
+<section id="cluster-target-correlation" class="slide level2">
+<h2>38. Cluster-Target Correlation</h2>
 <ul>
-<li>Compare <strong>exam checklist: clustering claim vs discovery claim</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li>Measure the <span class="math inline">\(R^2\)</span> of property <span class="math inline">\(y\)</span> explained by Cluster ID.</li>
+<li>If Cluster ID explains 80% of <span class="math inline">\(y\)</span> variation, the structural grouping is a <strong>physically valid discovery lead.</strong></li>
 </ul>
 </section>
-<section id="advanced-note-clustering-vs-discovery-in-materials-spaces-concept-extension-33" class="slide level2">
-<h2>38. Advanced note: Clustering vs Discovery in Materials Spaces concept extension 33</h2>
+<section id="handling-categorical-descriptors" class="slide level2">
+<h2>39. Handling Categorical Descriptors</h2>
 <ul>
-<li>Diagnose <strong>advanced note: clustering vs discovery in materials spaces concept extension 33</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li>Mixing atomic radius (continuous) and crystal system (categorical).</li>
+<li>Use <strong>Gower’s distance</strong> or MCA (Multiple Correspondence Analysis).</li>
+<li>Prevents categorical “bins” from drowning out subtle structural signals.</li>
 </ul>
 </section>
-<section id="advanced-note-clustering-vs-discovery-in-materials-spaces-concept-extension-34" class="slide level2">
-<h2>39. Advanced note: Clustering vs Discovery in Materials Spaces concept extension 34</h2>
+<section id="the-role-of-whitening-and-decoupling" class="slide level2">
+<h2>40. The Role of Whitening and Decoupling</h2>
 <ul>
-<li>Apply <strong>advanced note: clustering vs discovery in materials spaces concept extension 34</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li>Features are often highly correlated (e.g., atomic volume and radius).</li>
+<li><strong>Whitening</strong>: Transforming features to have zero correlation and unit variance.</li>
+<li>Prevents the same physical signal from being “double-counted” in the distance metric.</li>
 </ul>
 </section>
-<section id="advanced-note-clustering-vs-discovery-in-materials-spaces-concept-extension-35" class="slide level2">
-<h2>40. Advanced note: Clustering vs Discovery in Materials Spaces concept extension 35</h2>
+<section id="anomaly-vs.-novelty-detection-neuer-5.5.3" class="slide level2">
+<h2>41. Anomaly vs.&nbsp;Novelty Detection (Neuer 5.5.3)</h2>
 <ul>
-<li>Define <strong>advanced note: clustering vs discovery in materials spaces concept extension 35</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li><strong>Anomaly</strong>: Likely a simulation or measurement error.</li>
+<li><strong>Novelty</strong>: A physically plausible but “unusual” structure type.</li>
+<li><strong>Filter</strong>: Unit 9 Autoencoders filter anomalies; Unit 11 Clustering identifies novelties.</li>
 </ul>
 </section>
-<section id="advanced-note-clustering-vs-discovery-in-materials-spaces-concept-extension-36" class="slide level2">
-<h2>41. Advanced note: Clustering vs Discovery in Materials Spaces concept extension 36</h2>
+<section id="domain-aware-outlier-filtering" class="slide level2">
+<h2>42. Domain-Aware Outlier Filtering</h2>
 <ul>
-<li>Explain <strong>advanced note: clustering vs discovery in materials spaces concept extension 36</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>Is the outlier just a material with a massive unit cell?</li>
+<li><strong>Normalization</strong>: Ensure outliers are chemically/structurally novel, not just computationally complex or large.</li>
 </ul>
 </section>
-<section id="advanced-note-clustering-vs-discovery-in-materials-spaces-concept-extension-37" class="slide level2">
-<h2>42. Advanced note: Clustering vs Discovery in Materials Spaces concept extension 37</h2>
+<section id="failure-mode-stoichiometry-shortcut" class="slide level2">
+<h2>43. Failure Mode: Stoichiometry Shortcut</h2>
 <ul>
-<li>Compare <strong>advanced note: clustering vs discovery in materials spaces concept extension 37</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li>If composition is included in features, clusters often just recreate the Periodic Table.</li>
+<li><strong>Goal</strong>: Find clusters driven by <em>bonding</em> and <em>symmetry</em>, even when stoichiometry is identical.</li>
 </ul>
 </section>
-<section id="advanced-note-clustering-vs-discovery-in-materials-spaces-concept-extension-38" class="slide level2">
-<h2>43. Advanced note: Clustering vs Discovery in Materials Spaces concept extension 38</h2>
+<section id="failure-mode-feature-saturation" class="slide level2">
+<h2>44. Failure Mode: Feature Saturation</h2>
 <ul>
-<li>Diagnose <strong>advanced note: clustering vs discovery in materials spaces concept extension 38</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li>Using 1,000+ descriptors (Unit 4) makes every material look unique.</li>
+<li>The “Curse of Dimensionality” leads to a single giant cluster or <span class="math inline">\(N\)</span> single-point clusters.</li>
+<li><strong>Solution</strong>: Rigorous dimensionality reduction before clustering.</li>
 </ul>
 </section>
-<section id="advanced-note-clustering-vs-discovery-in-materials-spaces-concept-extension-39" class="slide level2">
-<h2>44. Advanced note: Clustering vs Discovery in Materials Spaces concept extension 39</h2>
+<section id="summary-of-the-discovery-logic" class="slide level2">
+<h2>45. Summary of the Discovery Logic</h2>
 <ul>
-<li>Apply <strong>advanced note: clustering vs discovery in materials spaces concept extension 39</strong> using one concrete materials example and one common failure mode.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<li><strong>Clustering</strong>: Organizes the structure backlog.</li>
+<li><strong>Prototypes</strong>: Define the “average” of a new family.</li>
+<li><strong>Outliers</strong>: Signal structural novelty.</li>
+<li><strong>Metrics</strong>: Validate physical consistency.</li>
 </ul>
 </section>
-<section id="exercise-setup-and-dataset-definition" class="slide level2">
-<h2>45. Exercise setup and dataset definition</h2>
+<section id="next-unit-bridge-uncertainty-aware-discovery" class="slide level2">
+<h2>46. Next Unit Bridge: Uncertainty-Aware Discovery</h2>
 <ul>
-<li>Define dataset, split protocol, and expected deliverables before any coding begins.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
+<li>Unit 11 used “hard” or “soft” boundaries.</li>
+<li>Unit 12 replaces boundaries with continuous <strong>Uncertainty Maps</strong>.</li>
+<li><strong>Rule</strong>: Cluster for exploration, model uncertainty for exploitation.</li>
 </ul>
 </section>
-<section id="exercise-task-1-pipeline-core" class="slide level2">
-<h2>46. Exercise task 1 (pipeline core)</h2>
+<section id="exercise-task-1-spectral-clustering" class="slide level2">
+<h2>47. Exercise Task 1: Spectral Clustering</h2>
 <ul>
-<li>Implement the core pipeline component with reproducible settings and documented assumptions.</li>
-<li>Applied anchor: k-means/GMM comparison.</li>
-<li>Book anchor: [Neuer 5.3].</li>
+<li>Dataset: Leaf spectra from McClarren.</li>
+<li>Task: Compare K-Means vs.&nbsp;DBSCAN on SVD-reduced spectra.</li>
+<li>Deliverable: Plot Silhouette Score vs.&nbsp;<span class="math inline">\(K\)</span>.</li>
 </ul>
 </section>
-<section id="exercise-task-2-comparisonablation" class="slide level2">
-<h2>47. Exercise task 2 (comparison/ablation)</h2>
+<section id="exercise-task-2-structural-clustering" class="slide level2">
+<h2>48. Exercise Task 2: Structural Clustering</h2>
 <ul>
-<li>Run an ablation/comparison under identical validation protocol and interpret differences.</li>
-<li>Applied anchor: silhouette vs downstream utility.</li>
-<li>Book anchor: [Sandfeld cluster analysis].</li>
+<li>Dataset: Materials Project formation energy subset.</li>
+<li>Task: Cluster structures using stoichiometry vs.&nbsp;SOAP descriptors.</li>
+<li>Deliverable: Adjusted Rand Index (ARI) against space group labels.</li>
 </ul>
 </section>
-<section id="exercise-task-3-failure-analysis" class="slide level2">
-<h2>48. Exercise task 3 (failure analysis)</h2>
+<section id="exercise-task-3-artifact-detection" class="slide level2">
+<h2>49. Exercise Task 3: Artifact Detection</h2>
 <ul>
-<li>Perform structured failure analysis and propose one evidence-backed mitigation.</li>
-<li>Applied anchor: bootstrap cluster stability.</li>
-<li>Book anchor: [Bishop Ch9].</li>
+<li>Task: Intentionally mis-scale a feature (e.g., multiply volume by 1000).</li>
+<li>Deliverable: Before/after UMAP visualization showing the cluster map collapse.</li>
 </ul>
 </section>
-<section id="exam-oriented-key-statements" class="slide level2">
-<h2>49. Exam-oriented key statements</h2>
-<ul>
-<li>Summarize high-yield statements in concise written-exam style with definitions and caveats.</li>
-<li>Applied anchor: cluster-property enrichment table.</li>
-<li>Book anchor: [Murphy Ch11].</li>
+<section id="exam-checklist-evidence-backed-discovery" class="slide level2 smaller scrollable">
+<h2>50. Exam Checklist: Evidence-backed Discovery</h2>
+<ul class="task-list">
+<li><label><input type="checkbox">Why are t-SNE distances not physical?</label></li>
+<li><label><input type="checkbox">How do you diagnose “source bias” in a materials dataset?</label></li>
+<li><label><input type="checkbox">What is the difference between a centroid and a medoid?</label></li>
+<li><label><input type="checkbox">When is DBSCAN superior to K-Means for discovery?</label></li>
+<li><label><input type="checkbox">Why is validation (ARI) necessary for unsupervised claims?</label></li>
 </ul>
-</section>
-<section id="summary-next-unit-bridge-and-references" class="slide level2 smaller scrollable">
-<h2>50. Summary, next-unit bridge, and references</h2>
-<ul>
-<li>Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.</li>
-<li>Applied anchor: novelty candidate shortlist.</li>
-<li>Book anchor: [McClarren Ch9 context].</li>
-</ul>
-<div id="refs" role="list">
-
+<div id="refs" class="references csl-bib-body hanging-indent" data-entry-spacing="0" role="list">
+<div id="ref-bishop2006pattern" class="csl-entry" role="listitem">
+Bishop, Christopher M. 2006. <em>Pattern Recognition and Machine Learning</em>. Springer.
+</div>
+<div id="ref-ryan2021machine" class="csl-entry" role="listitem">
+McClarren, Ryan G. 2021. <em>Machine Learning for Engineers: Using Data to Solve Problems for Physical Systems</em>. Springer.
+</div>
+<div id="ref-murphy2012machine" class="csl-entry" role="listitem">
+Murphy, Kevin P. 2012. <em>Machine Learning: A Probabilistic Perspective</em>. MIT Press.
+</div>
+<div id="ref-neuer2024machine" class="csl-entry" role="listitem">
+Neuer, Michael et al. 2024. <em>Machine Learning for Engineers: Introduction to Physics-Informed, Explainable Learning Methods for AI in Engineering Applications</em>. Springer Nature.
+</div>
 </div>
 
 
