@@ -22,11 +22,11 @@
 - Bishop kernels/feature maps
 
 ## Essential equations / objects (lecture must-include)
-- $\hat{\theta}=\arg\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i),y_i)+\lambda\Omega(\theta)$
-- Train/validation/test with grouped split by chemistry/prototype
-- Generalization gap: $R_{test}-R_{train}$
-- Uncertainty decomposition: aleatoric + epistemic
-- Acquisition objective (conceptual): exploration vs exploitation
+- Coordination number $N_i(r_c)$ under a chosen cutoff radius
+- Local environment descriptor $\phi_i$ and pooled material vector $\Phi=\text{pool}(\{\phi_i\})$
+- SOAP-style similarity as a normalized kernel between local environments
+- Grouped train/validation/test split by chemistry or prototype family
+- Periodic-neighbor construction under minimum-image or cell-expansion logic
 
 ## 50-slide scaffold
 
@@ -162,66 +162,66 @@
 - Diagnose **case: structure family separation in environment space** using one concrete materials example and one common failure mode.
 - Applied anchor: cluster local motifs.
 - Book anchor: [Neuer 6.3].
-34. **How local descriptors support regression in Unit 7**
-- Apply **how local descriptors support regression in unit 7** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-35. **How local descriptors support latent spaces in Unit 10**
-- Define **how local descriptors support latent spaces in unit 10** using one concrete materials example and one common failure mode.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-36. **Exercise design: build environment pipeline end-to-end**
-- Explain **exercise design: build environment pipeline end-to-end** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
-- Book anchor: [Sandfeld 2.2].
-37. **Quality checklist for environment-based features**
-- Compare **quality checklist for environment-based features** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
+34. **Cutoff radius as a scientific modeling choice**
+- Show how changing $r_c$ changes coordination counts, neighbor identity, and descriptor stability.
+- Applied anchor: coordination histogram under multiple cutoffs.
 - Book anchor: [Neuer 6.2].
-38. **Advanced note: Local Atomic Environments concept extension 33**
-- Diagnose **advanced note: local atomic environments concept extension 33** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
-- Book anchor: [Neuer 6.3].
-39. **Advanced note: Local Atomic Environments concept extension 34**
-- Apply **advanced note: local atomic environments concept extension 34** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
-- Book anchor: [McClarren Ch4].
-40. **Advanced note: Local Atomic Environments concept extension 35**
-- Define **advanced note: local atomic environments concept extension 35** using one concrete materials example and one common failure mode.
-- Applied anchor: regression with motif features.
-- Book anchor: [Bishop kernels/feature maps].
-41. **Advanced note: Local Atomic Environments concept extension 36**
-- Explain **advanced note: local atomic environments concept extension 36** using one concrete materials example and one common failure mode.
-- Applied anchor: compute coordination distribution.
+35. **Periodic images and minimum-image conventions**
+- Explain how periodic boundary handling changes local neighborhoods in crystals.
+- Applied anchor: neighbor list across cell boundaries.
 - Book anchor: [Sandfeld 2.2].
-42. **Advanced note: Local Atomic Environments concept extension 37**
-- Compare **advanced note: local atomic environments concept extension 37** using one concrete materials example and one common failure mode.
-- Applied anchor: SOAP vector extraction.
-- Book anchor: [Neuer 6.2].
-43. **Advanced note: Local Atomic Environments concept extension 38**
-- Diagnose **advanced note: local atomic environments concept extension 38** using one concrete materials example and one common failure mode.
-- Applied anchor: cluster local motifs.
+36. **Defects, vacancies, and distorted local motifs**
+- Use a defect example to show where local descriptors are more sensitive than global summaries.
+- Applied anchor: vacancy-induced coordination change.
 - Book anchor: [Neuer 6.3].
-44. **Advanced note: Local Atomic Environments concept extension 39**
-- Apply **advanced note: local atomic environments concept extension 39** using one concrete materials example and one common failure mode.
-- Applied anchor: aggregate motif histograms.
+37. **When local descriptors fail**
+- Discuss long-range physics, charge transfer, and global topology as limits of strictly local fingerprints.
+- Applied anchor: same local motif, different bulk context.
 - Book anchor: [McClarren Ch4].
-45. **Exercise setup and dataset definition**
-- Define dataset, split protocol, and expected deliverables before any coding begins.
-- Applied anchor: regression with motif features.
+38. **Choosing between coordination stats, ACSF, and SOAP**
+- Compare the three by interpretability, cost, and transferability.
+- Applied anchor: side-by-side descriptor choice table.
 - Book anchor: [Bishop kernels/feature maps].
-46. **Exercise task 1 (pipeline core)**
-- Implement the core pipeline component with reproducible settings and documented assumptions.
-- Applied anchor: compute coordination distribution.
+39. **Pooling local descriptors to one material vector**
+- Mean, histogram, and attention-like pooling as distinct scientific assumptions.
+- Applied anchor: pooled representation for a small crystal family.
 - Book anchor: [Sandfeld 2.2].
-47. **Exercise task 2 (comparison/ablation)**
-- Run an ablation/comparison under identical validation protocol and interpret differences.
-- Applied anchor: SOAP vector extraction.
+40. **Environment-space visualization**
+- Use PCA or UMAP conceptually to inspect motif clusters without overselling the picture.
+- Applied anchor: motif cluster plot.
 - Book anchor: [Neuer 6.2].
-48. **Exercise task 3 (failure analysis)**
-- Perform structured failure analysis and propose one evidence-backed mitigation.
-- Applied anchor: cluster local motifs.
+41. **Quality checklist for environment features**
+- Verify parser quality, periodicity, cutoff, normalization, and split strategy before modeling.
+- Applied anchor: pre-regression audit checklist.
 - Book anchor: [Neuer 6.3].
+42. **Bridge to Unit 7 regression**
+- Show how local-environment vectors become supervised learning inputs for property prediction.
+- Applied anchor: local descriptor to target table.
+- Book anchor: [McClarren Ch4].
+43. **Exercise setup and dataset definition**
+- Define dataset, split protocol, deliverables, and one explicit failure-analysis requirement.
+- Applied anchor: coordination-plus-SOAP exercise brief.
+- Book anchor: [Sandfeld 2.2].
+44. **Exercise task 1: build the neighborhood pipeline**
+- Construct neighbors, choose cutoffs, and compute one simple local descriptor family.
+- Applied anchor: coordination distribution.
+- Book anchor: [Neuer 6.2].
+45. **Exercise task 2: compute a richer fingerprint**
+- Add SOAP or ACSF-like features and document the computational tradeoff.
+- Applied anchor: SOAP vector extraction.
+- Book anchor: [Bishop kernels/feature maps].
+46. **Exercise task 3: aggregate to material level**
+- Pool local environments to a single vector and justify the pooling rule.
+- Applied anchor: motif histogram aggregation.
+- Book anchor: [Sandfeld 2.2].
+47. **Exercise task 4: compare stable vs noisy structures**
+- Compare descriptor robustness under perturbation, relaxation noise, or a defect.
+- Applied anchor: noisy structure ablation.
+- Book anchor: [Neuer 6.3].
+48. **Exercise task 5: short failure analysis**
+- Identify one descriptor failure mode and propose an evidence-backed mitigation.
+- Applied anchor: aliasing across polymorphs.
+- Book anchor: [McClarren Ch4].
 49. **Exam-oriented key statements**
 - Summarize high-yield statements in concise written-exam style with definitions and caveats.
 - Applied anchor: aggregate motif histograms.
@@ -230,4 +230,3 @@
 - Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
 - Applied anchor: regression with motif features.
 - Book anchor: [Bishop kernels/feature maps].
-
