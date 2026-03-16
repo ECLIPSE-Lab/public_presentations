@@ -10,6 +10,7 @@ Planning note: the teaching site is week-based, but execution follows the existi
 - [x] Read the linked book chapters from the markdown exports under `/home/philipp/Insync/braunphil@gmail.com/gdrive/erlangen/lecture/SS26`.
 - [x] Write one cross-book summary with `neuer-machine-learning-for-engineers` as the primary source.
 - [x] Develop a strategy for 90 minutes of lecture and about 50 slides.
+- [x] **New Standard**: Implement "full-content" slides in `01_intro.qmd` following the MFML style (detailed bullets, formulas, and citations), not just placeholders.
 - [x] Update the teaching website summary and then update this todo list before handing control back.
 
 ## Canonical unit map
@@ -147,7 +148,7 @@ Status: `done`
 - [x] Update the corresponding teaching-site summary block in `/home/philipp/projects/_teaching/MaterialsGenomics/index.qmd`.
 - [x] Mark this unit done and record notes.
 
-Notes: Updated `unit9_plan.md` and Week 10 summary.
+Notes: Updated `unit9_plan.md`, Week 10 summary, and fleshed out slide content in `01_intro.qmd`.
 
 ## Unit 10: Latent spaces of materials
 
@@ -159,7 +160,7 @@ Status: `done`
 - [x] Update the corresponding teaching-site summary block in `/home/philipp/projects/_teaching/MaterialsGenomics/index.qmd`.
 - [x] Mark this unit done and record notes.
 
-Notes: Updated `unit10_plan.md` and Week 11 summary.
+Notes: Updated `unit10_plan.md`, Week 11 summary, and implemented "full-content" slides in `01_intro.qmd` following MFML style.
 
 ## Unit 11: Clustering vs discovery in materials spaces
 
