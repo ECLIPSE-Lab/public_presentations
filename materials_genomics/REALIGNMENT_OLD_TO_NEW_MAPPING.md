@@ -7,8 +7,9 @@ Source alignment target:
 
 | Unit | Canonical folder | Topic (from index.qmd) |
 |---|---|---|
-| 03 | `03_materials_databases` | Materials databases & thermodynamic quantities |
-| 04 | `04_classical_descriptors` | From classical descriptors to learned representations |
+| 02 | `02_simulation_methods_as_data_generators` | Simulation methods as data generators |
+| 03 | `03_atomistic_and_electronic_simulations` | Atomistic and electronic simulations (DFT, MD, MC) |
+| 04 | `04_continuum_simulations_thermodynamics_and_stability` | Continuum simulations, thermodynamics, and stability |
 | 05 | `05_graph_based_rep` | Graph-based crystal representations |
 | 06 | `06_local_atomic_envs` | Local atomic environments |
 | 07 | `07_regression_and_generalization_in_materials_data` | Regression and generalization in materials data |
@@ -23,7 +24,7 @@ Source alignment target:
 
 | Superseded folder | Replaced by |
 |---|---|
-| `04_databases_ontologies_fair` | `04_classical_descriptors` |
+| `04_databases_ontologies_fair` | `04_continuum_simulations_thermodynamics_and_stability` |
 | `05_supervised_learning_for_property_prediction` | `05_graph_based_rep` |
 | `06_uncertainty_and_error_bars_in_materials_ml` | `06_local_atomic_envs` |
 | `07_model_interpretation_for_scientific_insight` | `07_regression_and_generalization_in_materials_data` |

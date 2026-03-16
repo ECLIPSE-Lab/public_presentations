@@ -17,9 +17,9 @@ Planning note: the teaching site is week-based, but execution follows the existi
 | Unit | Canonical topic | Slide-deck folder | Unit plan | Unit content |
 |---|---|---|---|---|
 | 1 | What is Materials Genomics? | `01_intro` | `01_intro/unit1_plan.md` | `01_intro/unit1_content_50slides.md` |
-| 2 | Crystal structure fundamentals for data-driven materials discovery | `02_crystal_structure_fundamentals` | `02_crystal_structure_fundamentals/unit2_plan.md` | `02_crystal_structure_fundamentals/unit2_content_50slides.md` |
-| 3 | Materials databases and thermodynamic quantities | `03_materials_databases` | `03_materials_databases/unit3_plan.md` | `03_materials_databases/unit3_content_50slides.md` |
-| 4 | From classical descriptors to learned representations | `04_classical_descriptors` | `04_classical_descriptors/unit4_plan.md` | `04_classical_descriptors/unit4_content_50slides.md` |
+| 2 | Simulation methods as data generators | `02_simulation_methods_as_data_generators` | `02_simulation_methods_as_data_generators/unit2_plan.md` | `02_simulation_methods_as_data_generators/unit2_content_50slides.md` |
+| 3 | Atomistic and electronic simulations (DFT, MD, MC) | `03_atomistic_and_electronic_simulations` | `03_atomistic_and_electronic_simulations/unit3_plan.md` | `03_atomistic_and_electronic_simulations/unit3_content_50slides.md` |
+| 4 | Continuum simulations, thermodynamics, and stability | `04_continuum_simulations_thermodynamics_and_stability` | `04_continuum_simulations_thermodynamics_and_stability/unit4_plan.md` | `04_continuum_simulations_thermodynamics_and_stability/unit4_content_50slides.md` |
 | 5 | Graph-based crystal representations | `05_graph_based_rep` | `05_graph_based_rep/unit5_plan.md` | `05_graph_based_rep/unit5_content_50slides.md` |
 | 6 | Local atomic environments | `06_local_atomic_envs` | `06_local_atomic_envs/unit6_plan.md` | `06_local_atomic_envs/unit6_content_50slides.md` |
 | 7 | Regression and generalization in materials data | `07_regression_and_generalization_in_materials_data` | `07_regression_and_generalization_in_materials_data/unit7_plan.md` | `07_regression_and_generalization_in_materials_data/unit7_content_50slides.md` |
@@ -53,7 +53,7 @@ Status: `done`
 
 Notes: Updated `unit1_plan.md`, `unit1_content_50slides.md`, and Week 1 summary.
 
-## Unit 2: Crystal structure fundamentals for data-driven materials discovery
+## Unit 2: Simulation methods as data generators
 
 Status: `done`
 
@@ -65,7 +65,7 @@ Status: `done`
 
 Notes: Updated `unit2_plan.md`, `unit2_content_50slides.md`, and Week 2 summary.
 
-## Unit 3: Materials databases and thermodynamic quantities
+## Unit 3: Atomistic and electronic simulations (DFT, MD, MC)
 
 Status: `done`
 
@@ -77,7 +77,7 @@ Status: `done`
 
 Notes: Updated `unit3_plan.md`, retained book-backed scaffold, and added Week 3 summary.
 
-## Unit 4: From classical descriptors to learned representations
+## Unit 4: Continuum simulations, thermodynamics, and stability
 
 Status: `done`
 
