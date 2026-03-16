@@ -11,10 +11,11 @@ Train property predictors with rigorous validation, focusing on generalization u
 
 ## Learning objectives
 By the end of Unit 7, students can:
-1. Explain the main modeling and data concepts behind **Regression and Generalization in Materials Data**.
-2. Map these concepts to materials-discovery decisions and failure modes.
-3. Apply leakage-aware validation logic in practical workflows.
-4. Distinguish what is lecture-essential vs what belongs in exercise implementation.
+1. Frame materials-property prediction as a regression and generalization problem rather than a leaderboard problem.
+2. Compare linear, regularized, tree-based, and simple neural baselines under the same validation protocol.
+3. Explain why grouped chemistry-aware or prototype-aware splits are more honest than naive random splits.
+4. Diagnose failure modes using residual analysis, learning curves, and OOD-style evaluation.
+5. Design a reproducible baseline benchmark for one materials property.
 
 ## 90-minute lecture structure
 - 0–10 min: dependency recap + notation alignment
@@ -24,10 +25,10 @@ By the end of Unit 7, students can:
 - 80–90 min: summary + exercise handoff
 
 ## Exercise (90 min)
-- implement a minimal reproducible pipeline for the unit topic
-- compare two methodological choices under identical split protocol
-- perform one structured failure analysis and mitigation proposal
-- produce a short report with claims, evidence, and limitations
+- build one reproducible regression benchmark for a materials property
+- compare at least two baseline model families on identical grouped splits
+- analyze residuals by chemistry or structure family
+- report one generalization failure mode and one mitigation idea
 
 ## Required chapter files
 - Neuer:
@@ -47,13 +48,13 @@ By the end of Unit 7, students can:
 - Use Sandfeld, Bishop, and Murphy for regression geometry, feature matrices, basis functions, and the bias-variance trade-off.
 - Use McClarren for baseline model families that work well in engineering settings.
 - Keep the unit centered on fair comparison of materials-property predictors under grouped chemistry-aware validation.
-- Exclude extended statistical proofs and Bayesian derivations; keep the discussion operational.
+- Exclude extended statistical proofs and Bayesian derivations; keep the discussion operational and benchmark-oriented.
 
 ## 50-slide strategy
 - Slides 1-10: target selection, regression framing, baseline metrics.
 - Slides 11-22: linear and regularized models, basis expansions, interpretability.
 - Slides 23-34: tree/ensemble baselines, grouped splits, cross-validation, residual analysis.
-- Slides 35-44: bias-variance, overfitting signatures, OOD behavior in chemical space.
+- Slides 35-44: split design, learning curves, OOD behavior, deployment trust checks.
 - Slides 45-50: baseline-comparison exercise and summary.
 
 ## Website summary update

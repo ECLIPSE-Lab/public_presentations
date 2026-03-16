@@ -23,10 +23,11 @@
 
 ## Essential equations / objects (lecture must-include)
 - $\hat{\theta}=\arg\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i),y_i)+\lambda\Omega(\theta)$
+- Closed-form ridge view: $(X^\top X+\lambda I)^{-1}X^\top y$ conceptually
 - Train/validation/test with grouped split by chemistry/prototype
 - Generalization gap: $R_{test}-R_{train}$
-- Uncertainty decomposition: aleatoric + epistemic
-- Acquisition objective (conceptual): exploration vs exploitation
+- Learning curve: error as a function of training-set size
+- Residual plot by chemistry family or structure prototype
 
 ## 50-slide scaffold
 
@@ -162,66 +163,66 @@
 - Diagnose **uncertainty-aware regression preview** using one concrete materials example and one common failure mode.
 - Applied anchor: nested CV study.
 - Book anchor: [McClarren Ch4+6].
-34. **Connection to Unit 8 neural surrogates**
-- Apply **connection to unit 8 neural surrogates** using one concrete materials example and one common failure mode.
-- Applied anchor: residuals by prototype.
-- Book anchor: [Bishop 3.1–3.3].
-35. **Connection to Unit 12 uncertainty-driven screening**
-- Define **connection to unit 12 uncertainty-driven screening** using one concrete materials example and one common failure mode.
+34. **Random split vs grouped split**
+- Contrast the apparent score gain from random splits with the more realistic performance from grouped chemistry-aware evaluation.
+- Applied anchor: side-by-side split comparison.
+- Book anchor: [Neuer 4.5.9].
+35. **Learning curves as sample-efficiency diagnostics**
+- Use train/test curves to decide whether the next bottleneck is data, features, or model class.
 - Applied anchor: learning curve comparison.
 - Book anchor: [Murphy model selection].
-36. **Exercise: reproducible benchmark protocol**
-- Explain **exercise: reproducible benchmark protocol** using one concrete materials example and one common failure mode.
-- Applied anchor: bandgap regression benchmark.
-- Book anchor: [Neuer 4.2.2].
-37. **Exam checklist: generalization claims and evidence**
-- Compare **exam checklist: generalization claims and evidence** using one concrete materials example and one common failure mode.
-- Applied anchor: grouped split by composition.
-- Book anchor: [Neuer 4.5.9].
-38. **Advanced note: Regression and Generalization in Materials Data concept extension 33**
-- Diagnose **advanced note: regression and generalization in materials data concept extension 33** using one concrete materials example and one common failure mode.
-- Applied anchor: nested CV study.
-- Book anchor: [McClarren Ch4+6].
-39. **Advanced note: Regression and Generalization in Materials Data concept extension 34**
-- Apply **advanced note: regression and generalization in materials data concept extension 34** using one concrete materials example and one common failure mode.
+36. **Residual structure matters more than one scalar metric**
+- Inspect residuals by chemistry family, target scale, and hard examples.
 - Applied anchor: residuals by prototype.
 - Book anchor: [Bishop 3.1–3.3].
-40. **Advanced note: Regression and Generalization in Materials Data concept extension 35**
-- Define **advanced note: regression and generalization in materials data concept extension 35** using one concrete materials example and one common failure mode.
-- Applied anchor: learning curve comparison.
-- Book anchor: [Murphy model selection].
-41. **Advanced note: Regression and Generalization in Materials Data concept extension 36**
-- Explain **advanced note: regression and generalization in materials data concept extension 36** using one concrete materials example and one common failure mode.
-- Applied anchor: bandgap regression benchmark.
-- Book anchor: [Neuer 4.2.2].
-42. **Advanced note: Regression and Generalization in Materials Data concept extension 37**
-- Compare **advanced note: regression and generalization in materials data concept extension 37** using one concrete materials example and one common failure mode.
-- Applied anchor: grouped split by composition.
-- Book anchor: [Neuer 4.5.9].
-43. **Advanced note: Regression and Generalization in Materials Data concept extension 38**
-- Diagnose **advanced note: regression and generalization in materials data concept extension 38** using one concrete materials example and one common failure mode.
-- Applied anchor: nested CV study.
+37. **When a low-complexity model should win**
+- Explain why simple baselines are scientifically valuable and often preferable in small-data settings.
+- Applied anchor: ridge beating a deeper model.
 - Book anchor: [McClarren Ch4+6].
-44. **Advanced note: Regression and Generalization in Materials Data concept extension 39**
-- Apply **advanced note: regression and generalization in materials data concept extension 39** using one concrete materials example and one common failure mode.
-- Applied anchor: residuals by prototype.
+38. **OOD behavior in unseen chemistry**
+- Show how a model can look strong in-domain and collapse when compositions shift.
+- Applied anchor: hold-out chemistry family test.
+- Book anchor: [Neuer 4.2.2].
+39. **OOD behavior in unseen structure prototypes**
+- Separate chemistry shift from structure shift in evaluation design.
+- Applied anchor: prototype-holdout comparison.
+- Book anchor: [Neuer 4.5.9].
+40. **Trust checks before using a surrogate**
+- Require baseline comparison, residual sanity checks, and a credible split before acting on predictions.
+- Applied anchor: surrogate deployment checklist.
+- Book anchor: [McClarren Ch4+6].
+41. **Bridge to Unit 8 neural surrogates**
+- Show what neural models must beat and why benchmark discipline carries forward.
+- Applied anchor: linear/RF/NN comparison table.
 - Book anchor: [Bishop 3.1–3.3].
-45. **Exercise setup and dataset definition**
-- Define dataset, split protocol, and expected deliverables before any coding begins.
-- Applied anchor: learning curve comparison.
+42. **Bridge to Unit 12 uncertainty-aware screening**
+- Connect generalization failure directly to the need for uncertainty-aware decision rules later.
+- Applied anchor: confident-but-wrong predictor example.
 - Book anchor: [Murphy model selection].
-46. **Exercise task 1 (pipeline core)**
-- Implement the core pipeline component with reproducible settings and documented assumptions.
+43. **Exercise setup and dataset definition**
+- Define one target property, one feature set, one grouped split protocol, and fixed evaluation metrics.
 - Applied anchor: bandgap regression benchmark.
 - Book anchor: [Neuer 4.2.2].
-47. **Exercise task 2 (comparison/ablation)**
-- Run an ablation/comparison under identical validation protocol and interpret differences.
-- Applied anchor: grouped split by composition.
+44. **Exercise task 1: build the baseline benchmark**
+- Train linear and regularized models first and record all preprocessing assumptions.
+- Applied anchor: ridge/lasso benchmark.
 - Book anchor: [Neuer 4.5.9].
-48. **Exercise task 3 (failure analysis)**
-- Perform structured failure analysis and propose one evidence-backed mitigation.
-- Applied anchor: nested CV study.
+45. **Exercise task 2: compare one nonlinear baseline**
+- Add a tree-based or shallow neural model under the exact same split and compare fairly.
+- Applied anchor: RF versus ridge comparison.
 - Book anchor: [McClarren Ch4+6].
+46. **Exercise task 3: inspect learning curves and residuals**
+- Use error trends and residual plots to diagnose underfitting, overfitting, and family-specific failure.
+- Applied anchor: learning curve plus residual dashboard.
+- Book anchor: [Bishop 3.1–3.3].
+47. **Exercise task 4: analyze one generalization failure**
+- Identify one chemistry or prototype family where performance degrades sharply.
+- Applied anchor: chemistry-family failure case.
+- Book anchor: [Murphy model selection].
+48. **Exercise task 5: propose one mitigation**
+- Suggest one improvement grounded in evidence: more data, better split design, new features, or a new model.
+- Applied anchor: mitigation memo.
+- Book anchor: [Neuer 4.2.2].
 49. **Exam-oriented key statements**
 - Summarize high-yield statements in concise written-exam style with definitions and caveats.
 - Applied anchor: residuals by prototype.
@@ -230,4 +231,3 @@
 - Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
 - Applied anchor: learning curve comparison.
 - Book anchor: [Murphy model selection].
-
