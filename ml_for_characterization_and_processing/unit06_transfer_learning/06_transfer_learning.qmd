@@ -1,12 +1,12 @@
 ---
 title: |
-  Machine Learning for Characterization and Processing<br>Unit 6: Data scarcity & transfer learning
-subtitle: "AI 4 Materials / KI-Materialtechnologie"
+  Machine Learning in Materials Processing & Characterization<br>
+  Unit 6: Data Scarcity & Transfer Learning
+bibliography: ref.bib
 author:
   - name: Prof. Dr. Philipp Pelz
     affiliation:
       - FAU Erlangen-Nürnberg
-bibliography: ref.bib
 execute:
   eval: false
 format:
@@ -19,100 +19,1003 @@ format:
     theme: custom.scss
     slide-number: c/t
     logo: "eclipse_logo_small.png"
-    footer: "© Philipp Pelz - ML for Characterization and Processing"
+    footer: "© Philipp Pelz - Machine Learning in Materials Processing & Characterization"
 ---
 
 ## 01. The Materials Data Bottleneck
 
-- **Expensive Data**: 1 micrograph $\approx$ hours of prep + days of labeling.
-- **Big Models vs. Small Data**: A model with $10^7$ parameters will easily "memorize" 100 samples.
-- **Goal**: Building deep models that generalize when data is scarce.
+::: {.fragment}
+- **Expensive data**: 1 micrograph ≈ hours of prep + days of labeling
+- **Big models vs. small data**: A model with $10^7$ parameters will memorize 100 samples
+- **Goal**: Build deep models that generalize even when data is scarce
+:::
 
-## 02. Fighting Scarcity (I): Data Augmentation
+::: {.notes}
+Set the stage: this unit addresses the central practical challenge of materials ML. We have powerful architectures (CNNs, ResNets) but not enough labeled data to train them. The three strategies today solve this.
+:::
 
-- Artificially increasing dataset size through transformations.
-- **Traditional Methods**:
-  - Rotation (0, 90, 180, 270).
-  - Flipping (Horizontal, Vertical).
-  - Random Cropping.
-- **Materials Advantage**: Many microstructures are isotropic; a $90^\circ$ rotation is physically valid.
+## 02. Learning Outcomes
 
-## 03. Physics-Preserving Augmentation
+By the end of this unit, you can:
 
-- *Warning*: Do not rotate if there is a physical gradient (e.g., surface hardening layer).
-- **Advanced Methods**:
-  - **Mixup**: Linear combination of two images and their labels.
-  - **Adding Noise**: Simulating detector shot noise to make the model robust.
+::: {.fragment}
+1. Explain why materials data is scarce and how this leads to overfitting
+2. Design physically valid augmentation pipelines
+3. Distinguish feature extraction from fine-tuning in transfer learning
+4. Apply gradual unfreezing and differential learning rates
+5. Evaluate synthetic-to-real transfer approaches
+6. Build a complete small-data training workflow
+:::
 
----
-
-## 04. What is Transfer Learning?
-
-- **Concept**: Taking a model trained on Task A and adapting it for Task B.
-- Why does it work? Because the "early" features of vision are universal.
-- Edges, blobs, and textures are the same in a picture of a dog and a picture of a dendrite.
-
-## 05. Leveraging Pretrained Backbones
-
-- Massive datasets like **ImageNet** (14M natural images) provide the foundation.
-- Common Architectures:
-  - **ResNet**: Residual connections for deep stacks.
-  - **EfficientNet**: Optimized for parameter efficiency (McClarren Ch 6).
-  - **Vision Transformers (ViT)**: The new frontier.
-
-## 06. Transfer Learning Strategies
-
-1. **Feature Extraction**:
-   - Freeze the pretrained backbone.
-   - Train only the final classification head.
-2. **Fine-Tuning**:
-   - Unfreeze the last few layers of the backbone.
-   - Train with a very **low learning rate** to avoid "catastrophic forgetting".
+::: {.notes}
+These outcomes are immediately applicable. Every materials ML project faces data scarcity. Students should leave this unit with a concrete recipe they can apply to their own research.
+:::
 
 ---
 
-## 07. Domain Shift: From Dogs to Dendrites
+## {background-color="#1a1a2e"}
 
-- Does ImageNet pretraining *always* help?
-- **Domain Shift**: The visual statistics of micrographs (high contrast, periodic patterns) differ from natural images.
-- If the shift is too large, the model might need more fine-tuning or pretraining on **simulated** data.
+### Part 1: The Small Data Challenge {style="text-align: center; margin-top: 15%;"}
 
-## 08. Cross-Material Transfer
+*Slides 03–08*
 
-- Train on a large database of Steel micrographs.
-- Fine-tune on a small set of Aluminum samples.
-- **Physics Intuition**: Grain boundary topology is often similar across different alloy systems.
+::: {.notes}
+We quantify the problem: how scarce is materials data really, and why does this matter for deep learning?
+:::
 
-## 09. Synthetic-to-Real Transfer
+## 03. The "Big Data" Myth in Materials Science
 
-- Use **Phase Field** or **Finite Element** simulations to generate $10^5$ labeled images for free.
-- Pretrain the model on simulation data.
-- Fine-tune on the 50 real experimental micrographs.
-- *Challenge*: Overcoming the "Sim-to-Real" gap.
+::: {.fragment}
+- Materials labs generate **TBs of raw data** (e.g., 4D-STEM datasets)
+- But **labeled data** is extremely sparse
+- In computer vision (ImageNet): labels are cheap (crowdsourcing)
+- In materials science: labels require **PhD-level experts** and hours of annotation
+:::
+
+::: {.notes}
+The raw data vs. labeled data distinction is crucial. We have plenty of images — we just don't have labels. Labeling a grain boundary map for one SEM image can take a trained microscopist hours.
+:::
+
+## 04. Why Is Materials Data Scarce?
+
+::: {.fragment}
+1. **High acquisition cost**: Synchrotron beamtime, specialized TEMs
+2. **Limited facility access**: Only a few instruments in the world for some techniques
+3. **Expert annotation time**: Segmenting 100 grains in an SEM takes hours
+4. **Reproducibility barriers**: Different instruments produce different images
+:::
+
+::: {.notes}
+Each of these is a real bottleneck. Even if you have the instrument, the expert time for annotation is the hardest to scale. This is fundamentally different from natural image classification where anyone can label "dog" vs. "cat."
+:::
+
+## 05. The Labeled Data Gap
+
+::: {.fragment}
+| Domain | Typical Dataset Size | Labels |
+|:---|:---|:---|
+| ImageNet | 14,000,000 images | Crowdsourced |
+| Medical Imaging | 10,000–100,000 | Expert radiologists |
+| **Materials Science** | **50–500 images** | **PhD microscopists** |
+:::
+
+::: {.fragment}
+Standard deep learning (ResNet-50: 25M parameters) is designed for 1M+ images.
+
+If we train from scratch on 100 images → **guaranteed overfitting**.
+:::
+
+::: {.notes}
+The table makes the scale difference visceral. We're 4-5 orders of magnitude below the data regime these models were designed for. We need fundamentally different strategies.
+:::
+
+## 06. Overfitting on Small Data
+
+::: {.fragment}
+- Model "memorizes" specific noise and artifacts of those 100 images
+- Fails **catastrophically** on a new dataset from a different microscope
+- Classic symptoms:
+  - Training accuracy: 99%
+  - Test accuracy: 55% (barely better than random)
+:::
+
+::: {.notes}
+Show a typical learning curve: training loss drops to zero while validation loss diverges. This is the hallmark of overfitting. With 100 images and millions of parameters, the model has enough capacity to memorize every pixel.
+:::
+
+## 07. The "Small Data" Survival Kit
+
+::: {.fragment}
+Three strategies to overcome data scarcity:
+
+1. **Data Augmentation**: Multiply data by applying valid transformations
+2. **Transfer Learning**: Reuse knowledge from large-dataset models
+3. **Synthetic Training**: Generate labeled data for free using simulations
+:::
+
+::: {.fragment}
+```{mermaid}
+graph LR
+    PT["Pretrained Model<br>(ImageNet)"] --> TL["Transfer Learning"]
+    SD["Synthetic Data<br>(Voronoi, Phase Field)"] --> Pre["Pretraining"]
+    Pre --> TL
+    TL --> FT["Fine-Tuning"]
+    Aug["Data Augmentation"] --> FT
+    FT --> M["Final Model"]
+    style M fill:#e7ad52,color:#000
+```
+:::
+
+::: {.notes}
+These three strategies are complementary and should be used together. The typical workflow: pretrain on ImageNet or synthetic data, augment the real data, fine-tune on the augmented real data. This is the recipe for materials ML.
+:::
+
+## 08. Part 1 Recap
+
+::: {.fragment}
+1. Materials science has a **labeled data bottleneck** (50-500 images typical)
+2. Standard deep learning **overfits** massively on small datasets
+3. Three complementary strategies: **Augmentation**, **Transfer**, **Synthetic**
+4. These strategies are not alternatives — use them **all together**
+:::
+
+::: {.notes}
+Quick recap. The severity of the problem motivates everything that follows. No single strategy is sufficient — the combination is what makes materials deep learning practical.
+:::
 
 ---
 
-## 10. Case Study: Volcanoes on Venus
+## {background-color="#1a1a2e"}
 
-- **Context**: Detecting volcanoes from satellite radar imagery (McClarren Ch 6).
-- **Small Data**: Only a few labeled examples exist.
-- **Solution**: Transfer learning from **EfficientNet** (ImageNet).
-- **Result**: High accuracy despite never seeing a volcano during the initial training.
+### Part 2: Data Augmentation {style="text-align: center; margin-top: 15%;"}
 
-## 11. Recap: Unit 6
+*Slides 09–20*
 
-- Small data requires **Augmentation** and **Regularization**.
-- **Transfer Learning** allows us to "stand on the shoulders of giants".
-- Fine-tuning requires a low learning rate to preserve pretrained features.
-- Next week: Moving from static images to dynamic processes (Time-series).
+::: {.notes}
+Augmentation is the simplest and most universally applicable strategy. We artificially expand the dataset by applying transformations that preserve physical validity.
+:::
+
+## 09. Concept: Artificially Expanding the Dataset
+
+::: {.fragment}
+- "Reusing existing images by applying transformations"
+- A form of **oversampling** — the same physical content, different pixel arrangements
+- Forces the network to focus on **structure**, not **specific pixel patterns**
+:::
+
+::: {.notes}
+Augmentation is not creating new data — it's showing existing data from different perspectives. The model sees the same grain boundary at different rotations, scales, and noise levels, and learns that the grain boundary is the common factor.
+:::
+
+## 10. Geometric Transformations
+
+::: {.fragment}
+- **Flips**: Horizontal, vertical
+- **Rotations**: 90°, 180°, 270° (or arbitrary angles)
+- **Scaling/Cropping**: Zoom in/out, random crops
+- **Elastic deformation**: Simulating sample warping or drift
+:::
+
+::: {.fragment}
+Each transformation multiplies your effective dataset size. Flips alone give 4× more data.
+:::
+
+::: {.notes}
+Geometric transformations are the easiest to implement and most commonly used. For isotropic microstructures (no preferred direction), rotations and flips are always valid.
+:::
+
+## 11. Invariance via Augmentation
+
+::: {.fragment}
+- By rotating images, we force the network to be **rotation-invariant**
+- Crucial for microstructures where "up" and "down" are arbitrary
+- The augmentation **encodes physical knowledge** into the training process
+:::
+
+::: {.callout-note}
+Augmentation is a way to tell the network: "This transformation doesn't change the physics."
+:::
+
+::: {.notes}
+This framing is important: augmentation is not just a data trick — it's a way of encoding domain knowledge. By choosing which transformations are valid, we inform the model about physical symmetries.
+:::
+
+## 12. When Augmentation Is "Illegal"
+
+::: {.fragment}
+**Physical reality check**: Transformations must not violate materials physics!
+
+- **Don't rotate** if there's a physical gradient (e.g., surface hardening layer, directional solidification)
+- **Don't flip vertically** if gravity matters (e.g., sedimentation structures)
+- **Don't warp** if topology is critical (e.g., grain boundary network connectivity)
+:::
+
+::: {.fragment}
+Think before you augment: "Would this transformation produce a physically plausible image?"
+:::
+
+::: {.notes}
+This is a common mistake. Students apply all augmentations without thinking. If your sample has a directional structure (e.g., epitaxial layers), random rotation creates physically impossible training examples that confuse the model.
+:::
+
+## 13. Intensity Transformations
+
+::: {.fragment}
+- **Brightness jittering**: ±10-20% intensity variation
+- **Contrast adjustment**: Simulating different detector settings
+- **Gamma correction**: Non-linear intensity mapping
+:::
+
+::: {.fragment}
+**Purpose**: Make the model robust to different imaging conditions. A model trained at one brightness level should work at another.
+:::
+
+::: {.notes}
+Intensity augmentation is important for cross-instrument generalization. Different microscopes, different detectors, different settings all produce different intensity distributions for the same sample.
+:::
+
+## 14. Adding "Physical" Noise
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Gaussian noise**: Electronic/thermal noise
+
+- Simulates detector readout noise
+- Makes model robust to noisy images
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**Poisson/Shot noise**: Counting statistics
+
+- Simulates low-dose conditions
+- Important for electron microscopy
+:::
+:::
+:::
+
+::: {.fragment}
+**Blur**: Gaussian or motion blur
+
+- Simulates defocus or sample drift
+- Forces model to rely on structure, not sharpness
+:::
+
+::: {.notes}
+Noise augmentation connects back to Unit 2's noise models. Adding Poisson noise to simulate low-dose TEM conditions is physically meaningful augmentation — it prepares the model for real experimental conditions.
+:::
+
+## 15. Advanced Augmentations
+
+::: {.fragment}
+- **CutOut / Random Erasing**: Mask random regions with zeros
+  - Handles occlusions and artifacts (contamination spots)
+- **Mixup**: Linear combination of two images and their labels
+  - $x' = \lambda x_1 + (1-\lambda) x_2$, $y' = \lambda y_1 + (1-\lambda) y_2$
+  - Regularizes the model, smooths decision boundaries
+:::
+
+::: {.notes}
+CutOut simulates real experimental artifacts (contamination, beam damage) that occlude parts of the image. Mixup is a more aggressive regularization technique — it's less physically motivated but empirically effective.
+:::
+
+## 16. Implementation: Torchvision & Albumentations
+
+::: {.fragment}
+```python
+import albumentations as A
+
+transform = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+    A.GaussNoise(var_limit=(10, 50), p=0.3),
+    A.RandomBrightnessContrast(p=0.3),
+    A.ElasticTransform(alpha=120, sigma=6, p=0.2),
+])
+
+# Apply to image AND mask simultaneously
+augmented = transform(image=image, mask=mask)
+```
+:::
+
+::: {.notes}
+Show this code example. The key detail: Albumentations applies geometric transformations to both image and mask simultaneously. If you rotate the image, the mask rotates with it. Forgetting this is a common bug.
+:::
+
+## 17. On-the-fly vs. Offline Augmentation
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Offline**:
+
+- Generate augmented images on disk before training
+- Pro: Faster training
+- Con: Fixed set of augmentations
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**On-the-fly** (preferred):
+
+- Transform images in RAM during each batch
+- Pro: Infinite diversity — each epoch sees different augmentations
+- Con: Slightly slower per batch
+:::
+:::
+:::
+
+::: {.notes}
+On-the-fly augmentation is the standard. Each training epoch sees the same images but with different random augmentations. This provides much more diversity than a fixed set of pre-generated images.
+:::
+
+## 18. The Label Consistency Rule
+
+::: {.fragment}
+If you transform the image, you **must** transform the labels identically!
+
+- Rotate image → rotate mask
+- Flip image → flip mask
+- Crop image → crop mask at the same location
+:::
+
+::: {.fragment}
+![](images/rotation_aug.png){width=80%}
+:::
+
+::: {.fragment}
+Intensity augmentations (brightness, noise) don't affect labels — only geometric ones do.
+:::
+
+::: {.notes}
+This is a critical implementation detail. If the image is rotated 90° but the mask isn't, the model learns nonsensical associations. Albumentations handles this automatically, but custom pipelines must be careful.
+:::
+
+## 19. Think About This: Augmentation Design
+
+::: {.fragment}
+**Scenario**: You have 50 SEM images of a laser-welded joint. The weld bead runs left-to-right. You want to classify weld quality (good/defective).
+
+Which augmentations are valid?
+:::
+
+::: {.fragment}
+- Horizontal flip: **Valid** (symmetric about weld center)
+- Vertical flip: **Invalid** (top surface ≠ bottom)
+- 90° rotation: **Invalid** (weld direction matters)
+- Brightness jitter: **Valid**
+- Gaussian noise: **Valid**
+:::
+
+::: {.notes}
+Pause for discussion. This reinforces the "physical validity" principle. Students must think about the physics before blindly applying augmentations. The weld has a preferred direction — rotations are not valid.
+:::
+
+## 20. Part 2 Recap
+
+::: {.fragment}
+1. Augmentation **multiplies** your effective dataset size
+2. Geometric transforms encode **physical symmetries**
+3. Only apply transformations that produce **physically plausible** images
+4. Noise augmentation prepares models for **real experimental conditions**
+5. Always transform **images and labels together**
+:::
+
+::: {.notes}
+Recap. Augmentation is the first line of defense against overfitting. It's simple, effective, and should always be used. But alone it's not enough for very small datasets — we need transfer learning.
+:::
 
 ---
 
-## 12. References & Further Reading
+## {background-color="#1a1a2e"}
 
-- **McClarren (2021)**: Ch. 6.4 (Transfer Learning)
-- **Sandfeld (2024)**: Ch. 19 (Advanced Topics in Deep Learning)
-- **Neuer (2024)**: Ch. 4.2.1 (Generalization and Overfitting)
+### Part 3: Transfer Learning {style="text-align: center; margin-top: 15%;"}
+
+*Slides 21–32*
+
+::: {.notes}
+Transfer learning is the most powerful strategy for small-data materials ML. We reuse knowledge learned on millions of natural images and adapt it to our specific materials task.
+:::
+
+## 21. Concept: Knowledge Reuse
+
+::: {.fragment}
+> "Learning on Peas to count Lentils." — Sandfeld (2024)
+
+- Take a model trained on **Task A** (e.g., classifying dogs vs. cats)
+- Adapt it for **Task B** (e.g., classifying phases in micrographs)
+- Why does this work? Because early visual features are **universal**
+:::
+
+::: {.notes}
+The quote from Sandfeld captures the intuition perfectly. Edge detectors, texture analyzers, blob detectors — these are the same whether you're looking at a dog or a dendrite. Only the high-level features differ.
+:::
+
+## 22. Why ImageNet Features Transfer
+
+::: {.fragment}
+**ImageNet**: 14 million images, 1000 classes (dogs, cats, cars, buildings...)
+
+The hierarchical features learned on ImageNet:
+
+- **Layer 1**: Edges, gradients → universal
+- **Layer 2**: Textures, corners → mostly universal
+- **Layer 3**: Object parts → domain-specific
+- **Layer 4+**: Full objects → very domain-specific
+:::
+
+::: {.fragment}
+Early layers transfer well. Late layers need adaptation.
+:::
+
+::: {.notes}
+This explains why transfer learning works at all. The early layers of a CNN learn general visual features. These features are useful for any image — natural or scientific. Only the high-level features need to be retrained for materials.
+:::
+
+## 23. The Backbone and the Head
+
+::: {.fragment}
+```{mermaid}
+graph LR
+    I["Input<br>Image"] --> BB["Backbone<br>(ResNet, VGG)<br>Pretrained"]
+    BB --> H["Head<br>(FC layers)<br>New"]
+    H --> O["Output<br>(your classes)"]
+    style BB fill:#4a9eff,color:#fff
+    style H fill:#e7ad52,color:#000
+```
+:::
+
+::: {.fragment}
+- **Backbone**: The feature extractor — pretrained on ImageNet
+- **Head**: The classifier/regressor — newly initialized for your task
+- Replace the head to match your number of classes
+:::
+
+::: {.notes}
+This two-part structure is the key to transfer learning. The backbone is reusable — it converts images into feature vectors. The head is task-specific — it maps features to your specific classes or regression targets.
+:::
+
+## 24. Strategy 1: Feature Extraction
+
+::: {.fragment}
+- **Freeze** the entire backbone (no weight updates)
+- Train **only** the new head on your materials dataset
+- The backbone becomes a fixed feature extractor
+:::
+
+::: {.fragment}
+**When to use**: Very small dataset (<100 images), risk of overfitting is high.
+
+**Advantage**: Fast training, minimal risk of destroying pretrained features.
+
+**Disadvantage**: Cannot adapt backbone to domain-specific textures.
+:::
+
+::: {.notes}
+Feature extraction is the safest option. You're essentially using the pretrained CNN as a feature calculator and training a simple classifier on top. It works surprisingly well even across the natural-to-scientific image domain gap.
+:::
+
+## 25. Strategy 2: Fine-Tuning
+
+::: {.fragment}
+- Initialize with pretrained weights
+- Train the **entire** network (or the last few layers)
+- Use a **very low learning rate** for the backbone
+:::
+
+::: {.fragment}
+**When to use**: Moderate dataset (100-1000 images), enough to adapt the backbone.
+
+**Advantage**: Backbone adapts to "micrograph-specific" textures.
+
+**Risk**: **Catastrophic forgetting** — destroying useful pretrained features with aggressive updates.
+:::
+
+::: {.notes}
+Fine-tuning is more powerful but riskier. The pretrained weights encode valuable knowledge; we don't want to destroy them with large gradient updates. Low learning rates and gradual unfreezing mitigate this risk.
+:::
+
+## 26. Differential Learning Rates
+
+::: {.fragment}
+- **High LR** for the head ($10^{-3}$): Learning new classes from scratch
+- **Low LR** for the backbone ($10^{-5}$): Gently adapting existing features
+- **Ratio**: Typically 100× between head and backbone
+:::
+
+::: {.fragment}
+```python
+optimizer = torch.optim.Adam([
+    {'params': model.backbone.parameters(), 'lr': 1e-5},
+    {'params': model.head.parameters(), 'lr': 1e-3},
+])
+```
+:::
+
+::: {.notes}
+Differential learning rates are a practical necessity. Without them, the backbone updates as aggressively as the head, quickly destroying the pretrained features. The 100× ratio is a good starting point.
+:::
+
+## 27. Gradual Unfreezing
+
+::: {.fragment}
+A safer fine-tuning protocol:
+
+1. **Freeze** all backbone layers. Train head until convergence.
+2. **Unfreeze** the last backbone block. Train with low LR.
+3. **Unfreeze** the next block. Train further.
+4. Repeat until the entire network is fine-tuned.
+:::
+
+::: {.fragment}
+This prevents **catastrophic forgetting** of low-level features while allowing high-level adaptation.
+:::
+
+::: {.notes}
+Gradual unfreezing is the gold standard for fine-tuning. It starts safe (feature extraction) and progressively allows more adaptation. If validation loss starts increasing at any stage, stop unfreezing.
+:::
+
+## 28. The Domain Gap: Natural vs. Scientific
+
+::: {.fragment}
+Natural images and micrographs differ in:
+
+- **Color**: RGB vs. grayscale / 16-bit
+- **Perspective**: 3D with vanishing points vs. orthographic top-down
+- **Textures**: Organic, varied vs. crystallographic, periodic
+- **Noise**: Compression artifacts vs. shot noise
+:::
+
+::: {.fragment}
+If the domain gap is large, more fine-tuning is needed. Feature extraction alone may not suffice.
+:::
+
+::: {.notes}
+The domain gap is real but manageable. Early layers (edges, textures) transfer well across domains. Later layers (object-level features) need more adaptation. For materials, the gap is smaller than you might expect — many features are shared.
+:::
+
+## 29. Cross-Material Transfer
+
+::: {.fragment}
+- Train on a large database of **steel** micrographs
+- Fine-tune on a small set of **aluminum** samples
+- **Physics intuition**: Grain boundary topology is similar across alloy systems
+:::
+
+::: {.fragment}
+```{mermaid}
+graph LR
+    S["Steel Dataset<br>(1000 images)"] --> PT["Pretrain<br>CNN"]
+    PT --> FT["Fine-tune"]
+    A["Aluminum Dataset<br>(50 images)"] --> FT
+    FT --> M["Aluminum<br>Classifier"]
+    style M fill:#e7ad52,color:#000
+```
+:::
+
+::: {.notes}
+Cross-material transfer is an exciting area. If grain boundaries look similar in steel and aluminum (which they often do), a model trained on abundant steel data can be quickly adapted to scarce aluminum data.
+:::
+
+## 30. Success Story: Au Nanoparticle Segmentation
+
+::: {.fragment}
+- **Task**: Segment crystalline Au nanoparticles from amorphous TEM background
+- **Method**: U-Net initialized with ImageNet weights
+- **Result**: High accuracy despite limited labeled TEM frames
+:::
+
+::: {.fragment}
+![](images/tem_results.png){width=80%}
+:::
+
+::: {.fragment}
+ImageNet pretraining helped even though ImageNet contains no TEM images — the low-level features transferred.
+:::
+
+::: {.notes}
+This case study proves that transfer learning works for materials microscopy. The domain gap between natural images and TEM is large, yet the pretrained features provide a much better starting point than random initialization.
+:::
+
+## 31. Transfer from Simulations
+
+::: {.fragment}
+- Pretrain on **simulated** data (DFT, molecular dynamics, phase field)
+- Fine-tune on real experiments
+- **Advantage**: Simulations provide unlimited labeled data at zero annotation cost
+:::
+
+::: {.fragment}
+The next frontier: physics-simulation-based pretraining for materials ML.
+:::
+
+::: {.notes}
+This is an active research direction. Simulated microscopy images can be generated in large quantities with perfect labels. The challenge is the sim-to-real gap — simulated images look different from real ones. Bridging this gap is the topic of Part 4.
+:::
+
+## 32. Part 3 Recap
+
+::: {.fragment}
+1. **Don't train from scratch** — always start with a pretrained backbone
+2. **Feature extraction**: Freeze backbone, train head only (safest)
+3. **Fine-tuning**: Adapt backbone with low LR (more powerful)
+4. **Gradual unfreezing** prevents catastrophic forgetting
+5. **Differential learning rates**: 100× between head and backbone
+6. Transfer works across domains (natural → scientific) and materials (steel → aluminum)
+:::
+
+::: {.notes}
+Quick recap. The practical rule: always start with a pretrained model. The question is only how much to fine-tune. Start with feature extraction; if performance is insufficient, gradually unfreeze.
+:::
+
+---
+
+## {background-color="#1a1a2e"}
+
+### Part 4: Learning from Synthetic Data {style="text-align: center; margin-top: 15%;"}
+
+*Slides 33–42*
+
+::: {.notes}
+Synthetic data is the "infinite label" dream. If we can simulate realistic microstructures, we never need expert annotation again. The challenge: making synthetic data realistic enough.
+:::
+
+## 33. The "Infinite Data" Dream
+
+::: {.fragment}
+- If we can **simulate** the microstructure, we can generate **unlimited** labeled data
+- **Perfect masks for free**: No expert annotation needed
+- **Controllable**: We choose the parameters (grain size, phase fraction, noise level)
+:::
+
+::: {.callout-note}
+Synthetic data flips the labeling bottleneck: instead of labeling real images, we generate images from known structures.
+:::
+
+::: {.notes}
+This is a paradigm shift. Instead of the painful process of expert annotation, we algorithmically generate both images and labels simultaneously. The question is: can synthetic data capture enough of the real-world complexity?
+:::
+
+## 34. Generating Grain Microstructures
+
+::: {.fragment}
+**Voronoi Tessellations**:
+
+- Distribute random seed points in 2D
+- Assign each pixel to its nearest seed → grain regions
+- Parameters: number of seeds (grain count), regularity, boundary thickness
+:::
+
+::: {.fragment}
+![](images/voronoi_synthetic.png){width=80%}
+:::
+
+::: {.notes}
+Voronoi tessellations are the simplest grain structure generator. They're surprisingly effective because real grain growth follows similar statistical rules. More sophisticated generators (phase field simulations) capture even more physics.
+:::
+
+## 35. From Geometry to Realistic Image
+
+::: {.fragment}
+A raw Voronoi diagram doesn't look like an SEM image. We need to add:
+
+1. **Grain contrast**: Random intensity per grain
+2. **Boundary appearance**: Thickened, possibly bright or dark boundaries
+3. **Texture**: Per-grain crystallographic texture
+4. **Noise**: Gaussian + Poisson to simulate detector noise
+5. **Blur**: Slight defocus
+:::
+
+::: {.fragment}
+![](images/voronoi_synthetic.png){width=80%}
+:::
+
+::: {.notes}
+The realism pipeline is where domain knowledge enters. Each post-processing step makes the synthetic image closer to real SEM. The goal: a model trained on synthetic data should not know the difference.
+:::
+
+## 36. The Sim-to-Real Gap
+
+::: {.fragment}
+- Synthetic data is often "too clean" or "too regular"
+- Real microstructures have:
+  - Non-uniform lighting
+  - Sample preparation artifacts (scratches, contamination)
+  - Complex grain morphologies that Voronoi can't capture
+:::
+
+::: {.fragment}
+CNNs might learn **synthetic-only** features and fail on real SEMs.
+:::
+
+::: {.notes}
+The sim-to-real gap is the central challenge of synthetic data approaches. If the model learns features specific to the simulation (e.g., perfectly straight boundaries), it won't generalize to real data with curved, irregular boundaries.
+:::
+
+## 37. Domain Adaptation: Closing the Gap
+
+::: {.fragment}
+Making synthetic images look more like real ones:
+
+- **Style transfer**: Apply the "style" of real SEMs to synthetic geometry
+- **GANs** (Generative Adversarial Networks): Train a generator to produce realistic textures
+- **Noise modeling**: Use measured noise characteristics from real instruments
+:::
+
+::: {.notes}
+Domain adaptation is an active research area. The simplest approach: add realistic noise and blur measured from your actual instrument. More advanced: use a GAN to translate synthetic images into the style of real images.
+:::
+
+## 38. Case Study: SEM Grain Segmentation
+
+::: {.fragment}
+- Model trained **only** on Voronoi synthetic data
+- Tested on **real** polycrystalline SEM images
+- **Result**: Nearly perfect grain boundary segmentation!
+:::
+
+::: {.fragment}
+![](images/sem_results.png){width=80%}
+:::
+
+::: {.fragment}
+The synthetic data captured the **topological truth** of grain networks — boundaries, junctions, and connectivity patterns.
+:::
+
+::: {.notes}
+This is one of the most impressive results in materials ML. The model has never seen a real SEM image, yet it accurately segments grain boundaries. The key: grain topology is well-captured by Voronoi models.
+:::
+
+## 39. Adaptive Data Generation
+
+::: {.fragment}
+1. Train on 1000 synthetic images
+2. Test on real images → find the **hardest** cases (worst predictions)
+3. Analyze what makes them hard (unusual grain shapes? specific textures?)
+4. Generate **targeted** synthetic data mimicking those hard cases
+5. Retrain and iterate
+:::
+
+::: {.fragment}
+This is a form of **active learning** for synthetic data generation.
+:::
+
+::: {.notes}
+Adaptive generation is smart: instead of generating random synthetic data, focus on the cases where the model struggles. This is much more data-efficient than random generation.
+:::
+
+## 40. Procedural Generation for Spectra
+
+::: {.fragment}
+Synthetic data works for more than images:
+
+- **XRD patterns**: Simulate peaks with varying noise, background, and peak overlap
+- **EELS spectra**: Simulate edges with realistic energy loss and plural scattering
+- **EDS maps**: Simulate elemental distributions with counting noise
+:::
+
+::: {.fragment}
+The same principle: if you can simulate it, you can label it for free.
+:::
+
+::: {.notes}
+Synthetic data for spectra is actually easier than for images, because the physics of spectral formation is well-understood. Peak positions, widths, and intensities can be simulated with high fidelity.
+:::
+
+## 41. Think About This: When Synthetic Data Fails
+
+::: {.fragment}
+**Scenario**: You generate synthetic EBSD maps using a grain growth simulation. Your CNN achieves 95% accuracy on synthetic test data but only 60% on real EBSD maps.
+
+What went wrong?
+:::
+
+::: {.fragment}
+**Possible causes**:
+
+1. Sim-to-real gap: Simulated grain shapes too regular
+2. Missing artifacts: Real EBSD has indexing errors, no-solution pixels
+3. Missing physics: Simulation doesn't capture twinning or deformation textures
+4. Overfitting to synthetic style: Model learned simulation artifacts
+:::
+
+::: {.notes}
+This is a realistic scenario. Diagnosing the sim-to-real gap requires understanding both the simulation limitations and the real data characteristics. The solution often involves adding more realism to the simulation, not collecting more synthetic data.
+:::
+
+## 42. Part 4 Recap
+
+::: {.fragment}
+1. **Synthetic data** provides unlimited labeled data at zero annotation cost
+2. **Voronoi tessellations** are a simple but effective grain generator
+3. **Realism pipeline** (contrast, texture, noise, blur) bridges the sim-to-real gap
+4. **Domain adaptation** (style transfer, GANs) for difficult domain gaps
+5. **Adaptive generation** focuses on the hardest cases
+:::
+
+::: {.notes}
+Synthetic data is a game-changer for materials ML. It's not perfect, but combined with transfer learning and augmentation, it makes deep learning practical even with very few real labeled images.
+:::
+
+---
+
+## {background-color="#1a1a2e"}
+
+### Part 5: Practical Workflow & Best Practices {style="text-align: center; margin-top: 15%;"}
+
+*Slides 43–50*
+
+::: {.notes}
+Final section: putting everything together into a practical recipe that students can follow for their own projects.
+:::
+
+## 43. The Complete Fine-Tuning Recipe
+
+::: {.fragment}
+1. **Select** a pretrained architecture (e.g., ResNet-50, EfficientNet)
+2. **Replace** the final layer for your number of classes/targets
+3. **Freeze** all backbone layers
+4. **Train** the head with standard LR ($10^{-3}$), augmented data
+5. **Unfreeze** gradually, train with low LR ($10^{-5}$)
+6. **Early stopping** based on validation loss
+:::
+
+::: {.callout-note}
+This recipe works for 90% of materials classification and segmentation tasks.
+:::
+
+::: {.notes}
+This is the actionable takeaway. Students should bookmark this slide. The recipe is simple and robust. Variations exist for specific problems, but this is the default starting point.
+:::
+
+## 44. Validation in the Small Data Regime
+
+::: {.fragment}
+- **K-Fold CV** is mandatory (Unit 3 review)
+- Be extremely wary of **augmentation leakage**: don't have an image and its rotation in both train and test!
+- Always split by **specimen**, not by individual crop
+:::
+
+::: {.fragment}
+```python
+from sklearn.model_selection import GroupKFold
+gkf = GroupKFold(n_splits=5)
+for train_idx, test_idx in gkf.split(X, y, groups=specimen_ids):
+    # Each fold: all crops from one specimen in same fold
+    ...
+```
+:::
+
+::: {.notes}
+Validation connects back to Unit 3. Augmentation introduces a new leakage risk: if you augment before splitting, augmented copies of the same image can end up in both train and test. Always split first, then augment the training set.
+:::
+
+## 45. Group-Based Splitting Revisited
+
+::: {.fragment}
+```{mermaid}
+graph TD
+    S1["Specimen 1<br>(10 crops)"] --> Train["Training Fold"]
+    S2["Specimen 2<br>(10 crops)"] --> Train
+    S3["Specimen 3<br>(10 crops)"] --> Train
+    S4["Specimen 4<br>(10 crops)"] --> Test["Test Fold"]
+    S5["Specimen 5<br>(10 crops)"] --> Test
+```
+:::
+
+::: {.fragment}
+- If you have 5 specimens with 10 crops each = 50 images
+- Split by **specimen**: 3 train, 2 test (not 40 random/10 random!)
+- Then augment the 30 training images to 300+
+:::
+
+::: {.notes}
+Visualize the correct splitting. Random splitting allows crops from the same specimen in both sets — the model "recognizes" the specimen. Grouped splitting ensures generalization to unseen specimens.
+:::
+
+## 46. Early Stopping
+
+::: {.fragment}
+- Monitor **validation loss** during training
+- Stop when validation loss starts increasing (even if training loss is still decreasing)
+- Small datasets are prone to **sudden overfitting** late in training
+:::
+
+::: {.fragment}
+```python
+early_stopping = EarlyStopping(
+    monitor='val_loss',
+    patience=10,      # Wait 10 epochs before stopping
+    restore_best_weights=True
+)
+```
+:::
+
+::: {.notes}
+Early stopping is essential for small datasets. Without it, the model will eventually memorize the training set. Patience of 10 epochs is a good default — it allows temporary fluctuations without stopping too early.
+:::
+
+## 47. Active Learning: Maximizing Expert Time
+
+::: {.fragment}
+- Instead of labeling all images equally, let the model guide annotation
+- **Uncertainty-based**: Label images where the model is most uncertain
+- **Diversity-based**: Label images that are most different from already-labeled data
+:::
+
+::: {.fragment}
+Maximizes the value of every expert hour — 50 strategically chosen labels can beat 500 random ones.
+:::
+
+::: {.notes}
+Active learning is the smart version of data collection. Instead of randomly labeling images, focus on the ones that will teach the model the most. This is especially valuable when expert time is the bottleneck.
+:::
+
+## 48. The "Gold Standard" Test Set
+
+::: {.fragment}
+- Even with TL/augmentation/synthetic data, you need a small, high-quality **benchmark test set**
+- Hand-labeled by multiple experts
+- From a **different** instrument or session than training data
+- This is the **absolute** benchmark — never touched during training
+:::
+
+::: {.fragment}
+Your model is only as credible as your test set is rigorous.
+:::
+
+::: {.notes}
+The gold standard test set is what makes your results publishable. It should be the hardest, most realistic evaluation possible. If the model passes this test, you can trust it.
+:::
+
+## 49. Summary: The Complete Small-Data Strategy
+
+::: {.fragment}
+1. **Augment** your data to enforce physical invariances
+2. **Transfer** knowledge from ImageNet or domain-specific pretrained models
+3. **Synthetic** data provides infinite labels if generated carefully
+4. **Validate** rigorously: grouped K-fold, early stopping, gold standard test set
+5. **Combine** all three strategies for maximum effectiveness
+:::
+
+::: {.notes}
+The five-point strategy is the comprehensive answer to data scarcity. No single technique is sufficient, but together they make deep learning practical for materials science.
+:::
+
+## 50. Unit 6 Summary & Next Steps
+
+::: {.fragment}
+**Key Takeaways:**
+
+1. Materials science is the land of **small data** — act accordingly
+2. **Augmentation** is free — use it always, but respect the physics
+3. **Transfer learning** is the single most impactful technique
+4. **Synthetic data** can replace expensive annotation
+5. **Validation** must be even more rigorous when data is scarce
+:::
+
+::: {.fragment}
+**Reading:**
+
+- Sandfeld (2024): Ch. 19.2-19.3 [@sandfeld_materials_data_science]
+- McClarren (2021): Ch. 6.4 (Transfer Learning) [@mcclarren2021machine]
+- Neuer (2024): Ch. 4.2.1 (Generalization) [@neuer2024machine]
+:::
+
+::: {.fragment}
+**Next Week**: Unit 7 — Learning from Processing Data: Time Series & Sequence Models
+:::
+
+::: {.notes}
+Preview Unit 7: we shift from static images to dynamic processes. How do we learn from temperature logs, force curves, and sensor time series? RNNs and sequence models are the tools.
+:::
+
+---
+
+## References
 
 ::: {#refs}
 :::

@@ -21,306 +21,397 @@ format:
     footer: "© Philipp Pelz - Materials Genomics"
 ---
 
-
 ## 01. Title: Graph-Based Crystal Representations
 
-- Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+- **Unit Focus**: Modeling crystals as periodic graphs to learn structure–property relationships.
+- **Goal**: Move beyond fixed descriptors to learn inductive biases from connectivity.
+- **Workflow Position**: Post-database query, pre-regression/discovery.
+
+## 02. Learning objectives
+
+By the end of this unit, students can:
+
+::: {.incremental}
+- explain why graphs are the natural language for crystal structures,
+- implement periodic boundary conditions (PBC) in graph construction,
+- describe the message passing mechanism in GNNs like CGCNN and MEGNet,
+- analyze common failure modes like shortcut learning and cutoff sensitivity.
+:::
+
+## 03. Recap: Prerequisite map
+
+::: {.columns}
+::: {.column width="50%"}
+- **Unit 2**: Simulation as data generation.
+- **Unit 3/4**: Local environments and descriptors.
+- **MFML**: Neural network foundations (Unit 4) and Backprop (Unit 5).
+:::
+
+::: {.column width="50%"}
+### Today's Step
+From **hand-crafted** local features to **learned** graph representations.
+:::
+:::
+
+## 04. Why this matters: The failure of descriptors
+
+- Traditional descriptors (e.g., SOAP, PRDF) often require fixed-size vectors.
+- Large unit cells or varying stoichiometry cause dimension mismatch.
+- **Graph inductive bias**: learn features that are invariant to permutation and cell size by design.
+
+## 05. Reading map
+
+- **Core Theory**: Sandfeld Ch. 2.2 (Structure encoding).
+- **ML Architecture**: Neuer Ch. 4.5.1–4.5.4 (GNNs for engineering).
+- **Deep Learning**: Murphy Ch. 35 (GNN section).
+
+## 06. Crystals as periodic graphs
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.incremental}
+- **Nodes**: Atoms ($Z$, position, oxidation state).
+- **Edges**: Bonds or proximity relationships.
+- **Attributes**: Distance, bond type, cell parameters.
+- **Global**: Crystal system, space group, density.
+:::
+:::
+
+::: {.column width="45%"}
+```{mermaid}
+graph TD
+    A((Atom i)) -- rij --> B((Atom j))
+    B -- rjk --> C((Atom k))
+    A -- rik --> C
+    subgraph Crystal Graph
+    A; B; C;
+    end
+    style A fill:#f9f,stroke:#333
+```
+:::
+:::
+
+## 07. Periodic Boundary Conditions (PBC)
+
+::: {.incremental}
+- Crystals are infinite lattices, not finite molecules.
+- An atom at the cell edge is connected to an atom in the **neighboring image**.
+- Graph construction requires searching within a supercell or using a distance cutoff across images.
+- Failure to account for PBC leads to disconnected graphs and physically wrong features.
+:::
+
+## 08. Graph construction workflow
+
+```{mermaid}
+graph LR
+    A[CIF File] --> B[Atom Positions]
+    B --> C[Distance Matrix]
+    C --> D[Neighbor Search]
+    D --> E[Edge Creation]
+    E --> F[Feature Assignment]
+    style D fill:#ff9,stroke:#333
+```
+
+## 09. Neighbor cutoff choices
+
+::: {.columns}
+::: {.column width="50%"}
+### Fixed Cutoff ($r_c$)
+- Pros: Simple, captures bonding shell.
+- Cons: Sensitive to density changes.
+:::
+
+::: {.column width="50%"}
+### Fixed Neighbors ($k$-NN)
+- Pros: Constant degree graph.
+- Cons: May skip relevant bonds in sparse regions.
+:::
+:::
+
+## 10. Distance encoding: Radial Basis Functions (RBF)
+
+- Raw distance $r_{ij}$ is often expanded into a vector using Gaussians:
+- $e_{ij} = [ \exp(-\beta(r_{ij} - \mu_1)^2), \dots, \exp(-\beta(r_{ij} - \mu_K)^2) ]$
+- This allows the network to distinguish small distance variations precisely.
+
+## 11. Invariance and Equivariance
+
+::: {.incremental}
+- **Permutation Invariance**: Changing atom order doesn't change property.
+- **Translation Invariance**: Shifting the cell doesn't change property.
+- **Rotation Invariance**: Rotating the crystal doesn't change property.
+- GNNs achieve these by using pooling (sum/mean) and relative distances.
+:::
+
+## 12. Message Passing: The intuition
+
+::: {.columns}
+::: {.column width="55%"}
+1. **Send**: Neighbors send messages based on their state and edge features.
+2. **Aggregate**: Atom $i$ collects messages (invariant sum/mean).
+3. **Update**: Atom $i$ updates its hidden state.
+4. **Repeat**: Information spreads across the crystal.
+:::
+
+::: {.column width="45%"}
+```{mermaid}
+graph BT
+    N1[Neighbor 1] --> Agg[Σ]
+    N2[Neighbor 2] --> Agg
+    N3[Neighbor 3] --> Agg
+    Agg --> Upd[Update Atom i]
+    style Agg fill:#bfb
+```
+:::
+:::
 
-## 02. Learning objectives and expected outputs
+## 13. CGCNN: Crystal Graph Convolutional NN
 
-- State measurable outcomes (what students can explain, implement, and critique by the end of the unit).
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+- **Key Innovation**: Gated convolution for crystal graphs.
+- Edge features ($r_{ij}$) and node features ($v_i$) are concatenated.
+- $v_i^{(t+1)} = v_i^{(t)} + \sum_{j \in N(i)} \sigma(W_z z_{ij} + b_z) \odot g(W_s z_{ij} + b_s)$
+- Successfully used for formation energy and bandgap prediction [@sandfeld_materials_data_science].
 
-## 03. Recap from previous unit and dependency map
+## 14. MEGNet: Adding Global State
 
-- Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+- Extends CGCNN by adding a **Global State Variable** ($u$).
+- $u$ captures properties like temperature, pressure, or overall density.
+- Messages flow: Atom $\to$ Bond $\to$ Atom $\to$ Global.
+- Enables multi-property learning and state-aware predictions.
 
-## 04. Why this unit matters for materials discovery
+## 15. Continuous-filter convolution (SchNet)
 
-- Motivate with a realistic failure/success scenario from materials discovery practice.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+- Instead of discrete edges, use a continuous function of distance.
+- Kernel $W(r_{ij})$ is itself a neural network.
+- Particularly effective for modeling potential energy surfaces and forces.
 
-## 05. Reading map and chapter anchors
+## 16. Readout functions (Pooling)
 
-- Map slide blocks to the key book chapters so students can pre-read and post-review effectively.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+- How do we go from atom-level features to a single crystal property?
+- **Global Sum/Mean**: Invariant to cell size but may lose local detail.
+- **Set2Set**: Uses attention to aggregate information.
+- Choice depends on property (Extensive: Energy $\to$ Sum; Intensive: Bandgap $\to$ Mean).
 
-## 06. Why crystals map naturally to graph objects
+## 17. Graph Depth and Over-smoothing
 
-- Explain **why crystals map naturally to graph objects** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+- Each message passing step increases the "receptive field".
+- **Too few layers**: Cannot see long-range interactions (e.g. ionic bonds).
+- **Too many layers**: Features become identical for all atoms (**over-smoothing**).
+- Typical depth for materials: 3–6 layers.
 
-## 07. Node, edge, and global attributes in crystal graphs
+## 18. Data efficiency: Descriptors vs Graphs
 
-- Compare **node, edge, and global attributes in crystal graphs** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+::: {.columns}
+::: {.column width="50%"}
+### Descriptors (MLP)
+- Fast to train.
+- Needs more data to generalize.
+- "Rigid" features.
+:::
 
-## 08. Periodic boundary conditions in graph construction
+::: {.column width="50%"}
+### Graphs (GNN)
+- Slower training.
+- Learns "on the fly".
+- High data efficiency for novel structures.
+:::
+:::
 
-- Diagnose **periodic boundary conditions in graph construction** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+## 19. Handling variable-size unit cells
 
-## 09. Neighbor cutoff choices and physics implications
+- Standard NNs need fixed $D$.
+- GNNs process $N$ atoms, where $N$ can vary per sample.
+- The weight matrices are shared across all atoms, regardless of cell size.
+- This is critical for scaling from primitive to supercells.
 
-- Apply **neighbor cutoff choices and physics implications** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+## 20. Reproducibility in graph construction
 
-## 10. Distance/angle encoding for bonding environments
+- Small changes in $r_c$ (cutoff) can change graph topology.
+- Always document: Cutoff radius, RBF parameters, and neighbor search algorithm.
+- Deterministic construction is a prerequisite for scientific trust.
 
-- Define **distance/angle encoding for bonding environments** using one concrete materials example and one common failure mode.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+## 21. Beyond distances: Edge engineering
 
-## 11. Invariance and equivariance requirements
+- Beyond $r_{ij}$, edges can encode:
+  - Bond angles (triplets).
+  - Dihedral angles.
+  - Coordination numbers.
+- Adding higher-order geometric features improves force prediction.
 
-- Explain **invariance and equivariance requirements** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+## 22. Incorporating Composition Priors
 
-## 12. Message passing intuition for materials graphs
+- Initialize node features with atomic properties (Electronegativity, Ionization energy).
+- This "primes" the graph with chemical knowledge before the first message is passed.
 
-- Compare **message passing intuition for materials graphs** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+## 23. Training Stability and Mini-batches
 
-## 13. How CGCNN represents local interactions
+- Crystal graphs vary in size $\to$ "jagged" batches.
+- **Solution**: Pack multiple graphs into one large disconnected graph.
+- Requires careful index tracking for pooling and gradients.
 
-- Diagnose **how cgcnn represents local interactions** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+## 24. Computational cost scaling
 
-## 14. How MEGNet adds global state variables
+- Graph construction: $O(N \log N)$ or $O(N^2)$ depending on search.
+- Message Passing: $O(E)$ where $E$ is the number of edges.
+- Scaling is linear with cell size, making it much faster than DFT ($O(N^3)$).
 
-- Apply **how megnet adds global state variables** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+## 25. Interpretability: Attention maps
 
-## 15. SchNet-like continuous-filter intuition
+- Which atoms contribute most to the predicted bandgap?
+- Use attention weights to visualize "importance" on the crystal structure.
+- Helps identify active sites in catalysts or structural defects.
 
-- Define **schnet-like continuous-filter intuition** using one concrete materials example and one common failure mode.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+## 26. Failure mode: Shortcut learning
 
-## 16. Pooling/readout choices for property prediction
+- If unit cell volume correlates with energy, the GNN might only learn volume.
+- Check: Perform an ablation study with randomized atom types.
+- If accuracy remains high, the model is cheating!
 
-- Explain **pooling/readout choices for property prediction** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+## 27. Failure mode: Cutoff artifacts
 
-## 17. Graph depth vs over-smoothing tradeoff
+::: {.columns}
+::: {.column width="50%"}
+- Sharp cutoffs cause "jumps" in energy as atoms cross the boundary.
+- **Fix**: Use a smoothing envelope function $f_{cut}(r_{ij})$.
+:::
 
-- Compare **graph depth vs over-smoothing tradeoff** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+::: {.column width="50%"}
+![Effect of cutoff on force continuity](placeholder_cutoff_jump.png)
+:::
+:::
 
-## 18. Data efficiency compared with descriptor MLP baselines
+## 28. Transferability: Across Chemistries
 
-- Diagnose **data efficiency compared with descriptor mlp baselines** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+- Can a GNN trained on Oxides predict Nitrides?
+- Success depends on the diversity of the training set and node feature initialization.
+- Representation learning helps capture universal chemical patterns.
 
-## 19. Handling variable-size crystal inputs
+## 29. OOD behavior: Unseen Prototypes
 
-- Apply **handling variable-size crystal inputs** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+- Predicting properties for a new crystal system (e.g. Perovskite $\to$ Spinel).
+- GNNs are better than descriptors but still fragile.
+- Use uncertainty quantification (Unit 12) to flag these cases.
 
-## 20. Graph construction reproducibility and determinism
+## 30. Baseline comparison protocol
 
-- Define **graph construction reproducibility and determinism** using one concrete materials example and one common failure mode.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+- Always compare GNN performance against:
+  1. Mean target baseline.
+  2. Simple composition-only MLP.
+  3. Classical descriptor baseline (SOAP/PRDF).
 
-## 21. Edge feature engineering beyond distances
+## 31. Evaluation metrics for screening
 
-- Explain **edge feature engineering beyond distances** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+- MSE is for accuracy.
+- **Top-k Recall**: Did we find the best materials?
+- **Spearman Rank Correlation**: Is the ordering correct?
+- For discovery, ranking matters more than absolute values.
 
-## 22. Incorporating composition priors into graph models
+## 32. Uncertainty in GNNs
 
-- Compare **incorporating composition priors into graph models** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+- Ensembles of GNNs provide variance estimates.
+- High variance $\to$ Structural novelty.
+- Key for active learning loops in Materials Genomics.
 
-## 23. Training stability and batch construction issues
+## 33. Case: Bandgap prediction
 
-- Diagnose **training stability and batch construction issues** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+- Challenge: Bandgaps depend on global symmetries.
+- GNNs capture local chemistry but need sufficient depth for global electronic structure.
 
-## 24. Computational cost on large datasets
+## 34. Case: Formation Energy
 
-- Apply **computational cost on large datasets** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+- Standard benchmark for CGCNN/MEGNet.
+- GNNs achieve MAE < 0.03 eV/atom, approaching DFT precision for many systems.
 
-## 25. Interpretability in graph models (attention/sensitivity)
+## 35. Case: Elasticity under limited data
 
-- Define **interpretability in graph models (attention/sensitivity)** using one concrete materials example and one common failure mode.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+- Elastic constants are sparse in databases.
+- GNN transfer learning (from Energy $\to$ Moduli) significantly improves accuracy.
 
-## 26. Failure mode: shortcut learning from cell-size proxies
+## 36. Feeding Representation Learning (Unit 9)
 
-- Explain **failure mode: shortcut learning from cell-size proxies** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+- Unit 9 will show how to use GNN encoders as feature extractors.
+- Discard the property head $\to$ Latent vector $\mathbf{z}$ represents the material structure.
 
-## 27. Failure mode: cutoff choice causing nonphysical neighbors
+## 37. Connection to Unit 6 (Local Environments)
 
-- Compare **failure mode: cutoff choice causing nonphysical neighbors** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+- GNN message passing is an iterative refinement of the local environments discussed in Unit 6.
+- Each layer "looks" one bond further away.
 
-## 28. Transferability across chemistry families
+## 38. Consolidation: Multi-modal crystal graphs
 
-- Diagnose **transferability across chemistry families** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+- Future direction: Combining crystal graphs with text (literature) and images (micrographs).
+- Nodes can represent not just atoms, but entire phases or grains.
 
-## 29. OOD behavior for unseen prototypes
+## 39. Advanced: Equivariant GNNs (Tensor Field Networks)
 
-- Apply **ood behavior for unseen prototypes** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+- Predict vectors (forces) and tensors (elasticity) that rotate correctly with the input structure.
+- Higher mathematical complexity, higher physical fidelity.
 
-## 30. Baseline comparison protocol: descriptor vs graph
+## 40. Scalability to complex microstructures
 
-- Define **baseline comparison protocol: descriptor vs graph** using one concrete materials example and one common failure mode.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+- Can we graph an entire polycrystal?
+- Use hierarchical graphs: Atomic scale $\to$ Grain scale $\to$ Component scale.
 
-## 31. Evaluation metrics for regression and ranking
+## 41. Interpreting GNN "Chemical Intuition"
 
-- Explain **evaluation metrics for regression and ranking** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+- Do the learned embeddings $\mathbf{z}$ match the periodic table?
+- Plotting t-SNE of learned atomic features usually recovers Mendeleev's structure.
 
-## 32. Uncertainty with graph ensembles (preview)
+## 42. Active Learning with GNNs
 
-- Compare **uncertainty with graph ensembles (preview)** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+- Step 1: Predict on 100k candidates.
+- Step 2: Select top candidates with high uncertainty.
+- Step 3: Run DFT validation.
+- Step 4: Retrain GNN.
 
-## 33. Case: bandgap from crystal graph
+## 43. Deployment in Automated Labs
 
-- Diagnose **case: bandgap from crystal graph** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+- GNNs provide the "brain" for self-driving laboratories.
+- Real-time structure-property feedback loop.
 
-## 34. Case: formation energy from graph representation
+## 44. The limit of GNNs
 
-- Apply **case: formation energy from graph representation** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+- GNNs are not physics solvers; they are interpolators.
+- They cannot predict truly new physics (e.g. superconductivity) without training data.
 
-## 35. Case: elasticity prediction under limited data
+## 45. Exercise setup: Graph Construction
 
-- Define **case: elasticity prediction under limited data** using one concrete materials example and one common failure mode.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+- **Goal**: Build a crystal graph from a CIF file using `pymatgen` or `ase`.
+- **Dataset**: A subset of the Materials Project (e.g. ABX3 perovskites).
 
-## 36. How graph embeddings feed Unit 9 representation learning
+## 46. Exercise Task 1: The Pipeline
 
-- Explain **how graph embeddings feed unit 9 representation learning** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
+- Load CIF $\to$ Build Graph $\to$ Visualize Neighbors.
+- Verify PBC implementation.
 
-## 37. How this unit connects to local environments in Unit 6
+## 47. Exercise Task 2: Ablation
 
-- Compare **how this unit connects to local environments in unit 6** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
+- Compare regression accuracy with $r_c = 4.0$Å vs $r_c = 8.0$Å.
+- Plot error vs coordination number.
 
-## 38. Advanced note: Graph-Based Crystal Representations concept extension 33
+## 48. Exercise Task 3: Failure Analysis
 
-- Diagnose **advanced note: graph-based crystal representations concept extension 33** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
+- Identify one sample with very high error.
+- Is it a rare chemistry? A strange unit cell? A shortcut learning victim?
 
-## 39. Advanced note: Graph-Based Crystal Representations concept extension 34
+## 49. Unit summary: 10 exam statements
 
-- Apply **advanced note: graph-based crystal representations concept extension 34** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
+1. Crystals are modeled as graphs to learn flexible, permutation-invariant representations.
+2. PBC enforcement is mandatory to capture the infinite nature of crystal lattices.
+3. RBF expansion of distances allows NNs to resolve fine structural differences.
+4. Message passing iteratively aggregates neighbor information to build global context.
+5. CGCNN uses gated convolutions; MEGNet adds a global state variable.
+6. Readout choice (sum vs mean) must align with property intensive/extensive nature.
+7. Over-smoothing occurs when excessive depth makes node features indistinguishable.
+8. GNNs are typically more data-efficient than fixed-descriptor MLPs for novel structures.
+9. Shortcut learning occurs when the model relies on spurious cell-size correlations.
+10. GNN ranking metrics (Spearman) are often more critical for discovery than MSE.
 
-## 40. Advanced note: Graph-Based Crystal Representations concept extension 35
+## 50. References + Unit 6 Bridge
 
-- Define **advanced note: graph-based crystal representations concept extension 35** using one concrete materials example and one common failure mode.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
-
-## 41. Advanced note: Graph-Based Crystal Representations concept extension 36
-
-- Explain **advanced note: graph-based crystal representations concept extension 36** using one concrete materials example and one common failure mode.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
-
-## 42. Advanced note: Graph-Based Crystal Representations concept extension 37
-
-- Compare **advanced note: graph-based crystal representations concept extension 37** using one concrete materials example and one common failure mode.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
-
-## 43. Advanced note: Graph-Based Crystal Representations concept extension 38
-
-- Diagnose **advanced note: graph-based crystal representations concept extension 38** using one concrete materials example and one common failure mode.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
-
-## 44. Advanced note: Graph-Based Crystal Representations concept extension 39
-
-- Apply **advanced note: graph-based crystal representations concept extension 39** using one concrete materials example and one common failure mode.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
-
-## 45. Exercise setup and dataset definition
-
-- Define dataset, split protocol, and expected deliverables before any coding begins.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
-
-## 46. Exercise task 1 (pipeline core)
-
-- Implement the core pipeline component with reproducible settings and documented assumptions.
-- Applied anchor: build graph from CIF.
-- Book anchor: [Sandfeld 2.2].
-
-## 47. Exercise task 2 (comparison/ablation)
-
-- Run an ablation/comparison under identical validation protocol and interpret differences.
-- Applied anchor: compare two cutoff radii.
-- Book anchor: [Neuer 4.5.1–4.5.4].
-
-## 48. Exercise task 3 (failure analysis)
-
-- Perform structured failure analysis and propose one evidence-backed mitigation.
-- Applied anchor: descriptor MLP vs CGCNN.
-- Book anchor: [McClarren Ch8].
-
-## 49. Exam-oriented key statements
-
-- Summarize high-yield statements in concise written-exam style with definitions and caveats.
-- Applied anchor: readout pooling ablation.
-- Book anchor: [Bishop Ch5].
-
-## 50. Summary, next-unit bridge, and references
-
-- Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
-- Applied anchor: prototype-wise generalization split.
-- Book anchor: [Murphy representation basics].
+- **Next Unit**: Local Atomic Environments and many-body descriptors.
+- **Read**: Sandfeld Ch. 2.2, Neuer Ch. 4.5.
+- **Exercise**: Submit your GNN-construction notebook by next week.
 
 ::: {#refs}
 :::

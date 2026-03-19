@@ -1,12 +1,12 @@
 ---
 title: |
-  Machine Learning for Characterization and Processing<br>Unit 5: Neural networks for microstructure images
-subtitle: "AI 4 Materials / KI-Materialtechnologie"
+  Machine Learning in Materials Processing & Characterization<br>
+  Unit 5: Convolutional Neural Networks for Microstructure Analysis
+bibliography: ref.bib
 author:
   - name: Prof. Dr. Philipp Pelz
     affiliation:
       - FAU Erlangen-Nürnberg
-bibliography: ref.bib
 execute:
   eval: false
 format:
@@ -19,112 +19,1009 @@ format:
     theme: custom.scss
     slide-number: c/t
     logo: "eclipse_logo_small.png"
-    footer: "© Philipp Pelz - ML for Characterization and Processing"
+    footer: "© Philipp Pelz - Machine Learning in Materials Processing & Characterization"
 ---
 
 ## 01. From Vectors to Images
 
-- Last week: Multi-Layer Perceptrons (MLPs).
-- This week: **Convolutional Neural Networks (CNNs)**.
-- Why can't we just use a standard MLP for a $1024 \times 1024$ image?
-- **The Parameter Explosion**: $10^6$ inputs $\times$ 1000 hidden units = $10^8$ weights!
+::: {.fragment}
+- Last week: Multi-Layer Perceptrons (MLPs) for tabular data
+- This week: **Convolutional Neural Networks (CNNs)** for images
+- Why can't we just use a standard MLP for a micrograph?
+:::
 
-## 02. The Intuition: Spatial Locality
+::: {.fragment}
+**The problem**: Images have spatial structure that MLPs destroy.
+:::
 
-- In a microstructure image, a pixel is mostly related to its **neighbors**.
-- A standard MLP ignores this (treats every pixel as independent).
-- **CNN Goal**: Exploit the fact that physical features (grains, cracks) are local.
+::: {.notes}
+Bridge from Unit 4. MLPs flatten images into 1D vectors, losing all spatial information. CNNs are designed to preserve and exploit this structure. This is the key architectural innovation for image-based materials science.
+:::
 
-## 03. The Mechanics: Convolution
+## 02. Learning Outcomes
 
-- Sliding a small "window" (**Kernel**) over the image.
-- At each position, we calculate a weighted sum.
-- **Filters** act as feature detectors:
-  - Edge detection (Sobel filter).
-  - Blur/Smooth (Gaussian filter).
-  - *Modern ML*: The model **learns** the optimal filters.
+By the end of this unit, you can:
 
-## 04. Convolutional Hyperparameters
+::: {.fragment}
+1. Explain why MLPs fail for high-resolution images (parameter explosion)
+2. Define convolution, kernels, stride, and padding
+3. Explain local connectivity, weight sharing, and translation invariance
+4. Distinguish between Max and Average Pooling
+5. Describe key CNN architectures (LeNet, AlexNet, ResNet, U-Net)
+6. Apply CNN concepts to microstructure segmentation and classification
+:::
 
-- **Kernel Size**: Usually $3 \times 3$ or $5 \times 5$.
-- **Stride**: How many pixels we move the window.
-- **Padding**: Adding zeros at the edges to maintain image size.
-- **Channels**: Images have Depth (e.g., Grayscale=1, RGB=3).
-
-## 05. Weight Sharing & Translation Invariance
-
-- **Weight Sharing**: We use the same filter for every part of the image.
-- This drastically reduces parameters.
-- **Translation Invariance**: A precipitate should be recognized whether it is in the top-left or the bottom-right corner.
+::: {.notes}
+These outcomes span theory and application. Students should understand both the math and the materials science motivation. The exercise will involve training a simple CNN on microstructure data.
+:::
 
 ---
 
-## 06. Non-Linearity & Pooling
+## {background-color="#1a1a2e"}
 
-- **Activation (ReLU)**: Applied after convolution to keep only positive "activations".
-- **Pooling (Max/Avg)**:
-  - Downsampling the image.
-  - Summarizes local information.
-  - Provides robustness to small distortions.
+### Section 1: The Image Problem {style="text-align: center; margin-top: 15%;"}
 
-## 07. The Hierarchy of Features
+*Slides 03–08*
 
-- **Layer 1**: Simple edges and dots.
-- **Layer 2**: Textures and simple shapes (e.g., grain boundaries).
-- **Layer 3**: Complex morphologies (e.g., dendrites, twins).
-- **Final Layer**: Global material state or classification.
+::: {.notes}
+We start by showing why the MLP approach from Unit 4 breaks down for real microscopy images. The parameter explosion and loss of spatial structure motivate the convolution operation.
+:::
 
-## 08. Anatomy of a CNN
+## 03. Microscopy Data is Inherently Spatial
 
-1. **Input**: Raw Micrograph.
-2. **Feature Extractor**: Alternating Convolution and Pooling layers.
-3. **Classifier**: Flattened vector + Fully Connected (FC) layers.
-4. **Output**: Predictions (e.g., Phase A vs. Phase B).
+::: {.fragment}
+Materials characterization produces diverse image data:
+
+- **SEM**: Surface morphology (µm resolution)
+- **TEM**: Atomic structure (Å resolution)
+- **AFM**: Surface topography (nm resolution)
+- **Optical**: Macro-scale structure (µm–mm)
+:::
+
+::: {.fragment}
+All share a common property: **nearby pixels are correlated** — physics ensures spatial continuity.
+:::
+
+::: {.notes}
+Remind students of the diverse imaging modalities they've encountered. The common thread: images encode spatial relationships that contain physical information. Grain boundaries, phase regions, defects — all are spatially structured.
+:::
+
+## 04. The Parameter Explosion (I)
+
+::: {.fragment}
+**Example**: A modest $64 \times 64$ image
+
+- Input size: $64 \times 64 = 4{,}096$ pixels
+- One hidden layer with 512 neurons
+- Parameters: $4{,}096 \times 512 = \mathbf{2.1 \text{ million}}$ weights
+:::
+
+::: {.fragment}
+This is already large. But real micrographs are much bigger...
+:::
+
+::: {.notes}
+Walk through the arithmetic. Even a tiny 64×64 image produces millions of parameters. This is the fundamental scaling problem with MLPs on images.
+:::
+
+## 05. The Parameter Explosion (II)
+
+::: {.fragment}
+**Realistic example**: A $1024 \times 1024$ SEM image
+
+- Input size: $1{,}048{,}576$ pixels
+- One hidden layer with 512 neurons
+- Parameters: $1{,}048{,}576 \times 512 = \mathbf{537 \text{ million}}$ weights
+- Memory: ~4 GB just for one layer!
+:::
+
+::: {.callout-note}
+With only 100 training images, a 537M parameter model will memorize every sample perfectly — and generalize to nothing.
+:::
+
+::: {.notes}
+This makes the overfitting problem concrete. More parameters than pixels × samples guarantees memorization. We need an architecture that shares parameters across spatial positions.
+:::
+
+## 06. Loss of Spatial Structure
+
+::: {.fragment}
+- MLPs flatten images into 1D vectors: pixel (0,0), pixel (0,1), ...
+- **Result**: Neighboring pixels (same grain) are treated identically to distant pixels (different phases)
+- The spatial correlation — the key physical information — is destroyed
+:::
+
+::: {.fragment}
+![](images/flattening.png){width=80%}
+:::
+
+::: {.notes}
+This is the deeper problem beyond just parameter count. Even if we could afford the parameters, an MLP has no concept of "nearby." It cannot learn that a grain boundary is an edge between two regions.
+:::
+
+## 07. The Translation Problem
+
+::: {.fragment}
+- If a precipitate moves 5 pixels to the right, the MLP sees a **completely different** input pattern
+- It must relearn the precipitate at every possible position
+- This is hopelessly wasteful — the same feature appears everywhere in the image
+:::
+
+::: {.fragment}
+**What we want**: A feature detector that works the same way regardless of position — **translation invariance**.
+:::
+
+::: {.notes}
+Translation invariance is a physical prior. A precipitate is a precipitate whether it's in the top-left or bottom-right corner. We should encode this knowledge into the architecture, not waste data relearning it.
+:::
+
+## 08. Section 1 Recap
+
+::: {.fragment}
+1. Microscopy images have **spatial structure** that encodes physics
+2. MLPs suffer a **parameter explosion** on high-resolution images
+3. Flattening **destroys spatial relationships**
+4. We need **translation-invariant** feature detection
+5. The solution: **Convolutional Neural Networks**
+:::
+
+::: {.notes}
+Quick recap. The three problems — parameter explosion, spatial destruction, and translation sensitivity — all have one solution: convolutions with shared weights. That's next.
+:::
 
 ---
 
-## 09. Application: Microstructure Segmentation
+## {background-color="#1a1a2e"}
 
-- Assigning a class to **every pixel**.
-- Architectures like **U-Net** are standard.
-- Examples: 
-  - Segmenting grains in a steel micrograph.
-  - Mapping chemical domains in EDS.
+### Section 2: The Convolution Layer {style="text-align: center; margin-top: 15%;"}
 
-## 10. Application: Object Detection
+*Slides 09–20*
 
-- Finding and bounding specific features.
-- Examples:
-  - Counting precipitates.
-  - Localizing micro-cracks in a component.
+::: {.notes}
+The convolution is the core operation of CNNs. We build intuition from classical image processing filters, then show how CNNs learn optimal filters from data.
+:::
 
-## 11. Case Study: Fashion-MNIST vs. Micrographs
+## 09. Convolution: The Core Idea
 
-- **Fashion-MNIST**: Clean, centered, no noise.
-- **Micrographs**: Experimental noise, heterogeneous lighting, overlapping features.
-- *Lesson*: CNNs need to be more robust for the lab.
+::: {.fragment}
+- Slide a small "window" (**kernel/filter**) over the image
+- At each position, compute a weighted sum
+- The output is a **feature map**: a new image highlighting specific patterns
+:::
 
-## 12. Challenges: Data Scarcity
+::: {.fragment}
+```{mermaid}
+graph LR
+    I["Input Image"] --> K["Kernel<br>(3×3)"]
+    K --> FM["Feature Map<br>(detected edges)"]
+```
+:::
 
-- Training a CNN from scratch requires **thousands** of images.
-- In the lab, we might only have **fifty**.
-- This leads to **Overfitting**: The model memorizes the specific samples.
-- Next week: How to fix this with **Transfer Learning**.
+::: {.notes}
+Convolution is borrowed from classical signal processing. The key innovation in CNNs: instead of hand-designing the kernel (as in Sobel or Gaussian filters), we learn it from data.
+:::
 
-## 13. Recap: Unit 5
+## 10. The Discrete Convolution Formula
 
-- Convolutions exploit **spatial structure**.
-- Weight sharing enables **deep learning** without parameter explosion.
-- CNNs learn a **hierarchy** of physical features.
-- Next week: Fighting data scarcity (Transfer Learning).
+::: {.fragment}
+$$(I * K)_{m,n} = \sum_{i}\sum_{j} I_{m-i,\, n-j} \cdot K_{i,j}$$
+
+- $I$: input image
+- $K$: kernel (filter) — typically $3 \times 3$ or $5 \times 5$
+- The kernel slides across the image, computing element-wise products and summing
+:::
+
+::: {.notes}
+Write this on the board. Walk through a concrete 3×3 example on a small image. The mathematical definition is a weighted sum over a local neighborhood — exactly what we wanted: local connectivity.
+:::
+
+## 11. Visualizing the Sliding Window
+
+::: {.fragment}
+![](images/multi_conv.png){width=80%}
+:::
+
+::: {.fragment}
+- Input: $5 \times 5$ image
+- Kernel: $3 \times 3$
+- Output: $3 \times 3$ feature map (without padding)
+- Each output pixel "sees" a $3 \times 3$ local neighborhood
+:::
+
+::: {.notes}
+If you have a whiteboard, draw this step by step. Show the kernel at position (0,0), compute the output, move to (0,1), compute again. Students should be able to do this by hand for a small example.
+:::
+
+## 12. The Feature Map
+
+::: {.fragment}
+- The output of one convolution is called a **feature map**
+- Each pixel in the feature map represents how strongly the kernel's pattern was detected at that location
+- High values = strong match. Low values = weak match.
+:::
+
+::: {.fragment}
+A single kernel produces one feature map. We use **multiple kernels** to detect multiple features simultaneously.
+:::
+
+::: {.notes}
+This is the key concept. One kernel might detect horizontal edges, another vertical edges, another blobs. Together, they provide a multi-channel description of local image structure.
+:::
+
+## 13. Kernels as Feature Detectors (I)
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Edge detection** (Laplacian):
+
+$$K = \begin{pmatrix} 0 & -1 & 0 \\ -1 & 4 & -1 \\ 0 & -1 & 0 \end{pmatrix}$$
+
+Highlights boundaries between regions.
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**Blur** (Gaussian):
+
+$$K = \frac{1}{16}\begin{pmatrix} 1 & 2 & 1 \\ 2 & 4 & 2 \\ 1 & 2 & 1 \end{pmatrix}$$
+
+Smooths noise by averaging neighbors.
+:::
+:::
+:::
+
+::: {.notes}
+Students may recognize Sobel and Gaussian filters from image processing courses. The key insight: in a CNN, we don't choose these kernels — the network learns them. But the learned kernels often resemble classical filters in early layers.
+:::
+
+## 14. Kernels as Feature Detectors (II)
+
+::: {.fragment}
+**Horizontal edges**:
+$$K_h = \begin{pmatrix} -1 & -1 & -1 \\ 0 & 0 & 0 \\ 1 & 1 & 1 \end{pmatrix}$$
+
+**Vertical edges**:
+$$K_v = \begin{pmatrix} -1 & 0 & 1 \\ -1 & 0 & 1 \\ -1 & 0 & 1 \end{pmatrix}$$
+:::
+
+::: {.fragment}
+**In a CNN**: The network discovers that these filters (and many others) are useful for the task — automatically, from data.
+:::
+
+::: {.notes}
+Show how applying these kernels to a micrograph highlights grain boundaries in different orientations. The CNN's first layer typically learns similar oriented-edge detectors.
+:::
+
+## 15. Stride: Controlling the Step Size
+
+::: {.fragment}
+- **Stride** = how many pixels the kernel moves at each step
+- Stride 1: kernel moves one pixel → output nearly same size as input
+- Stride 2: kernel moves two pixels → output is half the size
+:::
+
+::: {.fragment}
+Higher stride = faster computation, lower resolution output. A design trade-off.
+:::
+
+::: {.notes}
+Stride is a hyperparameter. Stride 1 preserves spatial resolution. Stride 2 is often used instead of pooling in modern architectures. Students should understand that stride controls the spatial downsampling.
+:::
+
+## 16. Padding: Preserving Image Size
+
+::: {.fragment}
+- Without padding, a $3 \times 3$ kernel on a $W \times W$ image produces $(W-2) \times (W-2)$
+- Images **shrink** after each convolution!
+:::
+
+::: {.fragment}
+- **"Valid" padding**: No padding, output shrinks
+- **"Same" padding**: Add zeros at borders → output size = input size
+- Same padding is the standard in most architectures
+:::
+
+::: {.notes}
+Padding is a practical detail but important for architecture design. Without same padding, a 10-layer network would dramatically shrink the spatial dimensions. Same padding lets you stack many convolution layers without losing resolution.
+:::
+
+## 17. Think About This: Parameter Savings
+
+::: {.fragment}
+**Compare**: Processing a $1024 \times 1024$ image
+
+| Approach | Parameters |
+|:---|:---|
+| MLP (512 hidden units) | 537 million |
+| One $3 \times 3$ conv filter | **9** |
+| 64 conv filters | **576** |
+:::
+
+::: {.fragment}
+**That's a 930,000× reduction!** Weight sharing is the key: the same 9 weights are reused at every position in the image.
+:::
+
+::: {.notes}
+This is the "wow" moment. The parameter reduction from MLPs to CNNs is enormous. This is what makes deep learning on images practical. Emphasize: the 9 parameters of one filter are shared across all ~1 million positions.
+:::
+
+## 18. Multi-Channel Convolution
+
+::: {.fragment}
+- Real images have **depth** (channels):
+  - Grayscale: 1 channel
+  - RGB: 3 channels
+  - Hyperspectral: 100+ channels
+  - Feature maps from previous layer: $C$ channels
+:::
+
+::: {.fragment}
+A kernel on multi-channel input has shape $C \times k \times k$. It sums across all channels.
+:::
+
+::: {.fragment}
+![](images/multi_conv.png){width=80%}
+:::
+
+::: {.notes}
+This is how layers connect: the output of layer $l$ has $C_l$ channels (one per filter). The kernels in layer $l+1$ span all $C_l$ channels. This enables combining features detected by different filters.
+:::
+
+## 19. Activation in CNNs
+
+::: {.fragment}
+After each convolution, apply a non-linear activation:
+
+$$\text{Feature Map} = \text{ReLU}(I * K + b)$$
+
+- ReLU keeps only positive activations: "this feature is present here"
+- Same activation functions as in MLPs (Unit 4)
+:::
+
+::: {.notes}
+Brief reminder from Unit 4. ReLU is the standard. After convolution detects a feature, ReLU decides whether the detection is "strong enough" to pass to the next layer.
+:::
+
+## 20. Section 2 Recap
+
+::: {.fragment}
+1. **Convolution** = sliding a kernel over the image, computing local weighted sums
+2. **Kernels** are feature detectors (edges, textures, blobs)
+3. **Stride** controls spatial downsampling; **padding** preserves size
+4. **Weight sharing** reduces parameters by 5-6 orders of magnitude vs. MLPs
+5. **Multi-channel** convolution enables combining features across depth
+:::
+
+::: {.notes}
+Recap before moving to architectural principles. Students should be able to compute a simple convolution by hand and explain why weight sharing is beneficial.
+:::
 
 ---
 
-## 14. References & Further Reading
+## {background-color="#1a1a2e"}
 
-- **McClarren (2021)**: Ch. 6 (CNNs for Scientific Images)
-- **Sandfeld (2024)**: Ch. 17.2 (The Perceptron and Visual Perception)
-- **Bishop (2006)**: Ch. 5.5 (Convolutional Neural Networks)
+### Section 3: Architectural Principles {style="text-align: center; margin-top: 15%;"}
+
+*Slides 21–30*
+
+::: {.notes}
+Now we formalize the design principles that make CNNs work: local connectivity, weight sharing, translation properties, and the receptive field concept.
+:::
+
+## 21. Local Connectivity
+
+::: {.fragment}
+- Each neuron in a conv layer "sees" only a **small local patch** of the input
+- A $3 \times 3$ kernel means each output pixel depends on only 9 input pixels
+- **Physical justification**: Features in micrographs are local (grain boundaries, precipitates)
+:::
+
+::: {.notes}
+Local connectivity is the first key principle. It's a physical prior: pixels far apart in an image are rarely directly related. Nearby pixels share the same grain, phase, or defect.
+:::
+
+## 22. Weight Sharing
+
+::: {.fragment}
+- The **same kernel** is used at every spatial position
+- One set of weights → applied millions of times
+- **Assumption**: A feature that's useful in one part of the image is useful everywhere
+:::
+
+::: {.callout-note}
+Weight sharing encodes translation invariance into the architecture — we don't need to learn the same feature at every position.
+:::
+
+::: {.notes}
+Weight sharing is the second key principle. It's what makes the parameter count tractable. The assumption is that local features (edges, textures) are the same everywhere in the image. This is almost always true for micrographs.
+:::
+
+## 23. Translation Invariance vs. Equivariance
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Translation Equivariance**:
+
+If the input shifts, the feature map shifts by the same amount.
+
+*Conv layers are equivariant.*
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**Translation Invariance**:
+
+The output doesn't change when the input shifts.
+
+*Classification layers (after pooling + flattening) are invariant.*
+:::
+:::
+:::
+
+::: {.fragment}
+Equivariance preserves "where" the feature is. Invariance discards "where" and keeps only "what."
+:::
+
+::: {.notes}
+This distinction is subtle but important. For segmentation (where pixel location matters), we want equivariance. For classification (where only the presence matters), we want invariance. CNNs provide both at different stages.
+:::
+
+## 24. The Concept of Depth
+
+::: {.fragment}
+- Each conv layer has multiple filters → multiple feature maps
+- The **number of filters** per layer is called the layer's "depth" or "channels"
+- Typical progression: 64 → 128 → 256 → 512 channels
+:::
+
+::: {.fragment}
+More filters = more features detected. But also more parameters and computation.
+:::
+
+::: {.notes}
+The depth of each layer is a key hyperparameter. Early layers typically have fewer filters (simple features). Deeper layers have more filters (complex features). This follows the increasing complexity of the features being detected.
+:::
+
+## 25. The Receptive Field (I)
+
+::: {.fragment}
+- **Receptive field**: The region of the input image that influences a specific output neuron
+- A single $3 \times 3$ conv layer: receptive field = $3 \times 3$
+- Two stacked $3 \times 3$ layers: receptive field = $5 \times 5$
+- Three stacked layers: receptive field = $7 \times 7$
+:::
+
+::: {.notes}
+The receptive field grows with depth. This is crucial: to detect large features (whole grains, large defects), you need a large receptive field, which requires either deep networks or large kernels.
+:::
+
+## 26. The Receptive Field (II)
+
+::: {.fragment}
+**With stride and pooling**, the receptive field grows faster:
+
+$$r_{\text{eff}} = r + (k - 1) \times \prod_{i} s_i$$
+
+where $k$ is kernel size and $s_i$ are strides of preceding layers.
+:::
+
+::: {.fragment}
+**Design rule**: The receptive field should be large enough to "see" the features you want to detect. Grain boundary detection needs at least grain-sized receptive fields.
+:::
+
+::: {.notes}
+This formula helps students design architectures. If your grains are 100 pixels across, your final layer needs a receptive field of at least 100 pixels. Calculate backwards to determine how many layers and what stride/pooling you need.
+:::
+
+## 27. The Hierarchy of Features
+
+::: {.fragment}
+- **Layer 1**: Simple edges, dots, intensity gradients
+- **Layer 2**: Textures, corners, simple shapes (grain boundary segments)
+- **Layer 3**: Complex morphologies (dendrites, twins, precipitate clusters)
+- **Final layers**: Global material state or classification
+:::
+
+::: {.fragment}
+![](images/alexnet_filters.png){width=80%}
+:::
+
+::: {.notes}
+This hierarchy mirrors how humans perceive images: low-level features combine into higher-level structures. The CNN automates this process. Showing actual learned filters makes this concrete.
+:::
+
+## 28. Full CNN Anatomy
+
+::: {.fragment}
+```{mermaid}
+graph LR
+    I["Input<br>Micrograph"] --> C1["Conv + ReLU<br>(64 filters)"]
+    C1 --> P1["MaxPool<br>(2×2)"]
+    P1 --> C2["Conv + ReLU<br>(128 filters)"]
+    C2 --> P2["MaxPool<br>(2×2)"]
+    P2 --> C3["Conv + ReLU<br>(256 filters)"]
+    C3 --> F["Flatten"]
+    F --> FC["FC Layers"]
+    FC --> O["Output<br>(Phase A/B)"]
+```
+:::
+
+::: {.fragment}
+1. **Feature Extractor**: Alternating Conv + Pooling layers
+2. **Classifier**: Flatten → Fully Connected → Output
+:::
+
+::: {.notes}
+This is the canonical CNN architecture. The feature extractor progressively reduces spatial dimensions while increasing depth (channels). The classifier takes the final feature map and makes predictions.
+:::
+
+## 29. Think About This: Designing a CNN
+
+::: {.fragment}
+**Task**: You need to classify microstructure images as "martensitic" or "ferritic." Your images are $256 \times 256$ grayscale. You have 200 labeled images.
+
+What's your concern?
+:::
+
+::: {.fragment}
+**Answer**: 200 images is far too few to train a CNN from scratch. Even a modest CNN has millions of parameters. You'll need **transfer learning** (Unit 6) or **data augmentation**. Start with the simplest possible model.
+:::
+
+::: {.notes}
+This previews Unit 6 while reinforcing Unit 3's parsimony principle. Students should recognize that dataset size constrains architecture complexity. 200 images → simple model or transfer learning.
+:::
+
+## 30. Section 3 Recap
+
+::: {.fragment}
+1. **Local connectivity**: Each neuron sees only a small patch
+2. **Weight sharing**: Same kernel everywhere → massive parameter reduction
+3. **Translation equivariance/invariance**: Features detected regardless of position
+4. **Receptive field**: Grows with depth — must match feature scale
+5. **Feature hierarchy**: Edges → textures → morphologies → classification
+:::
+
+::: {.notes}
+Quick recap. The three principles (locality, sharing, invariance) plus the receptive field concept give students the full toolkit for understanding CNN design decisions.
+:::
+
+---
+
+## {background-color="#1a1a2e"}
+
+### Section 4: The Pooling Layer {style="text-align: center; margin-top: 15%;"}
+
+*Slides 31–38*
+
+::: {.notes}
+Pooling provides downsampling and shift robustness. It's simple but has important consequences for what information is preserved and what is discarded.
+:::
+
+## 31. Why Pool?
+
+::: {.fragment}
+- **Downsampling**: Reduce spatial dimensions → less computation
+- **Noise robustness**: Small pixel shifts don't change the output
+- **Increase receptive field**: Each pixel in the pooled output covers a larger input region
+:::
+
+::: {.notes}
+Pooling serves multiple purposes simultaneously. It's a form of lossy compression — deliberately discarding spatial precision to gain computational efficiency and robustness.
+:::
+
+## 32. Max Pooling
+
+::: {.fragment}
+- Take the **maximum** value in each window (typically $2 \times 2$)
+- Preserves the **strongest** signal in each region
+- Spatial size: halved in each dimension
+:::
+
+::: {.fragment}
+$$\text{MaxPool}(x)_{m,n} = \max_{i,j \in \text{window}} x_{m+i, n+j}$$
+
+![](images/maxpooling.png){width=80%}
+:::
+
+::: {.notes}
+Max pooling is the most common choice. It preserves the strongest activations — the most confident feature detections. If any pixel in the window detected an edge strongly, that signal is passed forward.
+:::
+
+## 33. Average Pooling
+
+::: {.fragment}
+- Take the **mean** value in each window
+- Preserves the **overall** signal level
+- Less aggressive than max pooling — retains more information about intensity
+:::
+
+::: {.fragment}
+$$\text{AvgPool}(x)_{m,n} = \frac{1}{|W|}\sum_{i,j \in \text{window}} x_{m+i, n+j}$$
+:::
+
+::: {.fragment}
+Used more often in later layers. **Global Average Pooling** (over the entire feature map) is standard for the final layer of modern architectures.
+:::
+
+::: {.notes}
+Average pooling is gentler. It's used in architectures like ResNet for the final classification layer. Global average pooling replaces the fully connected layers entirely — each feature map becomes a single number.
+:::
+
+## 34. Pooling and Shift Invariance
+
+::: {.fragment}
+- If the input shifts by 1 pixel, the feature map shifts by 1 pixel
+- After $2 \times 2$ max pooling: a 1-pixel shift may produce the **same** output
+- Pooling provides **approximate** translation invariance
+:::
+
+::: {.fragment}
+**Materials implication**: A precipitate at pixel (50, 50) and one at pixel (51, 51) produce the same classification — which is physically correct.
+:::
+
+::: {.notes}
+This is the invariance mechanism in action. Small spatial variations (sample positioning, detector alignment) don't affect the output. This robustness is essential for real microscopy data where exact positioning varies between sessions.
+:::
+
+## 35. The Conv-Pool Block
+
+::: {.fragment}
+The standard building block of CNNs:
+
+$$\text{Input} \xrightarrow{\text{Conv}} \xrightarrow{\text{ReLU}} \xrightarrow{\text{Pool}} \text{Output}$$
+
+Typically repeated 3-5 times, with increasing filter count:
+:::
+
+::: {.fragment}
+| Block | Filters | Spatial Size (from 256×256) |
+|:---:|:---:|:---:|
+| 1 | 64 | 128×128 |
+| 2 | 128 | 64×64 |
+| 3 | 256 | 32×32 |
+| 4 | 512 | 16×16 |
+:::
+
+::: {.notes}
+Show the spatial dimension halving at each block while depth doubles. This is the fundamental trade-off in CNNs: spatial precision for semantic richness. By the final block, each pixel represents a large receptive field.
+:::
+
+## 36. Hierarchical Features: From Edges to Phases
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Early layers** (Block 1-2):
+
+- Edges, intensity gradients
+- Grain boundary segments
+- Local texture patterns
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**Deep layers** (Block 3-4):
+
+- Grain shapes, phase morphologies
+- Precipitate distributions
+- Global arrangement patterns
+:::
+:::
+:::
+
+::: {.fragment}
+![](images/alexnet_filters.png){width=80%}
+:::
+
+::: {.notes}
+This hierarchical decomposition is the power of deep CNNs. Each level of abstraction builds on the previous one. The network automatically discovers that grain boundaries are made of edges, phases are made of grain boundaries, and material states are made of phase arrangements.
+:::
+
+## 37. Visualizing What CNNs See
+
+::: {.fragment}
+- **Filter visualization**: What pattern does each kernel respond to?
+- **Activation maps**: Where in the image does each filter activate strongly?
+- **Grad-CAM**: Which regions are most important for the classification?
+:::
+
+::: {.fragment}
+These visualization tools are essential for **scientific trust** — they answer: "What is the CNN actually looking at?"
+:::
+
+::: {.notes}
+Visualization connects back to the explainability discussion from Unit 1. In a paper, showing Grad-CAM overlays on micrographs demonstrates that the network is looking at physically meaningful features (grain boundaries) not artifacts (sample labels).
+:::
+
+## 38. Section 4 Recap
+
+::: {.fragment}
+1. **Max pooling** preserves strongest activations; **average pooling** preserves overall intensity
+2. Pooling provides **downsampling** and **approximate shift invariance**
+3. The **Conv-Pool block** is the standard building unit
+4. Features progress from **edges** to **morphologies** to **classifications**
+5. **Visualization tools** (Grad-CAM) verify the network's reasoning
+:::
+
+::: {.notes}
+Quick recap. The Conv-Pool pattern is universal. Students should understand how spatial resolution trades off with feature abstraction at each block.
+:::
+
+---
+
+## {background-color="#1a1a2e"}
+
+### Section 5: Key Architectures {style="text-align: center; margin-top: 15%;"}
+
+*Slides 39–44*
+
+::: {.notes}
+A brief history of CNN architectures, from LeNet to ResNet to U-Net. Each solved a specific problem and introduced a key innovation.
+:::
+
+## 39. LeNet-5 (1995): The Ancestor
+
+::: {.fragment}
+- **Yann LeCun**: Handwritten digit recognition (postal codes)
+- Architecture: 2 conv layers → 2 pooling → 3 FC layers
+- Only ~60K parameters — tiny by modern standards
+:::
+
+::: {.fragment}
+![](images/lenet.png){width=80%}
+:::
+
+::: {.fragment}
+**Legacy**: Proved that learned features outperform hand-crafted features for vision tasks.
+:::
+
+::: {.notes}
+LeNet is the grandfather of all CNNs. It's simple enough to understand completely. The key insight: learning the filters from data beats designing them by hand. This was not obvious in 1995.
+:::
+
+## 40. AlexNet (2012): The Deep Learning Revolution
+
+::: {.fragment}
+- Won ImageNet competition by a **massive margin** (15.3% vs. 26.2% error)
+- Key innovations:
+  - **ReLU** activation (fast training, no vanishing gradients)
+  - **Dropout** regularization (prevents overfitting)
+  - **GPU training** (made deep networks practical)
+  - 60 million parameters, 8 layers
+:::
+
+::: {.fragment}
+![](images/alexnet.png){width=80%}
+:::
+
+::: {.notes}
+AlexNet is the "Big Bang" of modern deep learning. Before AlexNet, computer vision was dominated by hand-crafted features (SIFT, HOG). After AlexNet, everything changed. Emphasize: the architecture is not that different from LeNet — the key was scale (data, compute, depth).
+:::
+
+## 41. Going Deeper: The Vanishing Gradient Problem
+
+::: {.fragment}
+- After AlexNet: let's just add more layers!
+- **Problem**: Very deep networks (20+ layers) **stop learning**
+- Gradients vanish as they flow through many layers
+- Training loss plateaus — the network can't be trained effectively
+:::
+
+::: {.fragment}
+Deeper is not always better... unless you have a trick.
+:::
+
+::: {.notes}
+This was a real barrier. VGG (19 layers) worked, but 30+ layers performed worse than shallower ones. The vanishing gradient problem from Unit 4 returns. The solution came from a surprising direction.
+:::
+
+## 42. ResNet (2015): Skip Connections
+
+::: {.fragment}
+**The Residual Block**:
+
+$$\mathbf{y} = F(\mathbf{x}) + \mathbf{x}$$
+
+- Instead of learning $\mathbf{y} = F(\mathbf{x})$, learn the **residual** $F(\mathbf{x}) = \mathbf{y} - \mathbf{x}$
+- The skip connection $+ \mathbf{x}$ provides a gradient highway
+:::
+
+::: {.fragment}
+```{mermaid}
+graph LR
+    X["x"] --> C1["Conv + ReLU"]
+    C1 --> C2["Conv"]
+    X -- "Skip<br>Connection" --> ADD["+ "]
+    C2 --> ADD
+    ADD --> R["ReLU"]
+    R --> Y["y = F(x) + x"]
+```
+:::
+
+::: {.callout-note}
+ResNet enabled networks with 100+ layers. The 2015 ImageNet winner had **152 layers**.
+:::
+
+::: {.notes}
+The skip connection is arguably the most important architectural innovation since CNNs. It solves the vanishing gradient problem by providing a direct path for gradients. If the layers learn nothing useful, the skip connection passes the input through unchanged — the network can't get worse by adding layers.
+:::
+
+## 43. U-Net: Segmentation Architecture
+
+::: {.fragment}
+- Designed for **pixel-level** classification (semantic segmentation)
+- **Encoder**: Downsampling path (like a normal CNN)
+- **Decoder**: Upsampling path (restores spatial resolution)
+- **Skip connections**: Connect encoder to decoder at each level
+:::
+
+::: {.fragment}
+```{mermaid}
+graph TD
+    I["Input Image"] --> E1["Encoder 1<br>(↓ 256)"]
+    E1 --> E2["Encoder 2<br>(↓ 128)"]
+    E2 --> B["Bottleneck<br>(64)"]
+    B --> D2["Decoder 2<br>(↑ 128)"]
+    D2 --> D1["Decoder 1<br>(↑ 256)"]
+    D1 --> O["Output Mask"]
+    E1 -. "skip" .-> D1
+    E2 -. "skip" .-> D2
+```
+:::
+
+::: {.notes}
+U-Net is the workhorse of materials microscopy segmentation. The encoder extracts what features are present; the decoder determines where they are. Skip connections combine high-resolution spatial information from early layers with high-level semantic information from deep layers.
+:::
+
+## 44. Section 5 Recap
+
+::: {.fragment}
+| Architecture | Year | Innovation | Use Case |
+|:---|:---:|:---|:---|
+| **LeNet** | 1995 | Learned filters | Digit recognition |
+| **AlexNet** | 2012 | ReLU, Dropout, GPU | Image classification |
+| **ResNet** | 2015 | Skip connections | Very deep networks |
+| **U-Net** | 2015 | Encoder-Decoder | Pixel segmentation |
+:::
+
+::: {.notes}
+This table is a quick reference. For materials science: classification tasks → ResNet backbone. Segmentation tasks → U-Net. Students should know which architecture to reach for based on their task.
+:::
+
+---
+
+## {background-color="#1a1a2e"}
+
+### Section 6: Materials Science Case Studies {style="text-align: center; margin-top: 15%;"}
+
+*Slides 45–50*
+
+::: {.notes}
+Now we ground everything in real materials applications. These case studies demonstrate that CNNs work for materials microscopy — and highlight the remaining challenges.
+:::
+
+## 45. Case Study: Phase Segmentation in TEM
+
+::: {.fragment}
+- **Task**: Segment crystalline Au nanoparticles from amorphous background
+- **Method**: U-Net trained on labeled TEM frames
+- **Challenge**: Limited labeled data, noisy images, beam damage
+:::
+
+::: {.fragment}
+![](images/unet_results.png){width=80%}
+:::
+
+::: {.notes}
+This is a real success story from the literature. The U-Net achieves high IoU scores despite noise and limited training data. Emphasize that the architecture (U-Net) was designed for exactly this type of task.
+:::
+
+## 46. Case Study: Synthetic Training Data
+
+::: {.fragment}
+- **Problem**: No labeled SEM grain microstructures available
+- **Solution**: Generate synthetic grain structures using **Voronoi tessellations**
+- Parameters: number of seeds, regularity, boundary thickness
+- **Result**: Perfect labels for free — no expert annotation needed!
+:::
+
+::: {.fragment}
+![](images/sem_segmentation.png){width=80%}
+:::
+
+::: {.notes}
+This is a powerful approach: simulate the microstructure, generate automatic labels, train the CNN. The challenge is making the synthetic images look realistic enough. Adding noise, blur, and intensity variations helps bridge the gap.
+:::
+
+## 47. Case Study: Synthetic-to-Real Transfer
+
+::: {.fragment}
+- Train **only** on Voronoi synthetic data
+- Test on **real** polycrystalline SEM images
+- **Result**: Nearly perfect grain boundary segmentation!
+:::
+
+::: {.fragment}
+The synthetic data captured the **topological truth** of grain networks — the CNN learned grain boundary detection without ever seeing a real micrograph.
+:::
+
+::: {.fragment}
+![](images/sem_segmentation.png){width=80%}
+:::
+
+::: {.notes}
+This is remarkable. The model has never seen a real SEM image during training, yet it segments grain boundaries accurately. This works because the topological structure of grain networks is well-captured by Voronoi models.
+:::
+
+## 48. Case Study: Property Prediction from Microstructure
+
+::: {.fragment}
+- **Task**: Classify Ising model microstructures by simulation temperature
+- **Input**: 2D spin configurations (binary images)
+- **Method**: CNN classifier trained on labeled configurations
+- **Result**: CNN learns to detect the phase transition temperature from microstructure alone
+:::
+
+::: {.fragment}
+![](images/ising_config.png){width=80%}
+:::
+
+::: {.notes}
+The Ising model is a physics toy model, but the principle is powerful: the CNN extracts a scalar property (temperature) from a spatial image (microstructure). This is exactly the PSPP mapping: Structure → Property, learned end-to-end.
+:::
+
+## 49. Current Challenges
+
+::: {.fragment}
+- **Data scarcity**: 50 labeled micrographs vs. 14M ImageNet images
+- **Domain gap**: Natural images ≠ micrographs (contrast, texture, noise)
+- **3D structures from 2D sections**: Stereological sampling bias persists
+- **Interpretability**: What does the CNN actually learn?
+:::
+
+::: {.fragment}
+**Next week**: Strategies to overcome data scarcity — Transfer Learning, Augmentation, and Synthetic Data.
+:::
+
+::: {.notes}
+Honest assessment of limitations. CNNs are powerful but not a magic bullet. Each of these challenges is an active research area. Unit 6 addresses the data scarcity problem directly.
+:::
+
+## 50. Unit 5 Summary & Next Steps
+
+::: {.fragment}
+**Key Takeaways:**
+
+1. **Convolutions** exploit spatial locality with shared weights
+2. **Weight sharing** reduces parameters by orders of magnitude
+3. **Pooling** provides downsampling and shift invariance
+4. **Feature hierarchies**: edges → textures → morphologies → properties
+5. **U-Net** is the standard for microstructure segmentation
+:::
+
+::: {.fragment}
+**Reading:**
+
+- Sandfeld (2024): Ch. 19 (CNNs) [@sandfeld_materials_data_science]
+- McClarren (2021): Ch. 6 (CNNs) [@mcclarren2021machine]
+:::
+
+::: {.fragment}
+**Next Week**: Unit 6 — Data Scarcity, Transfer Learning & Synthetic Data
+:::
+
+::: {.notes}
+Preview Unit 6: we address the elephant in the room — CNNs need lots of data, but materials science has very little. Transfer learning, augmentation, and synthetic data are the three strategies.
+:::
+
+---
+
+## References
 
 ::: {#refs}
 :::
