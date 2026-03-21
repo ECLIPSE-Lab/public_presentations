@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gravitational Law Widget</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --text: #e8ecf2;
+      --muted: #9aa4b2;
+      --accent: #72d6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 14px;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid #252b36;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .title {
+      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .hint {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 118px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+    input[type="range"] { width: 100%; }
+    .value {
+      min-width: 110px;
+      text-align: right;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    .formula {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      background: #11141b;
+      border: 1px solid #242b39;
+      border-radius: 10px;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+    .force {
+      margin-top: 8px;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      min-height: 250px;
+      background: radial-gradient(circle at center, #1a2030 0%, #0f1115 70%);
+      border-radius: 10px;
+      border: 1px solid #252b36;
+      display: block;
+    }
+    .foot {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <h2 class="title">Newtonian Gravitation</h2>
+      <p class="hint">Adjust masses and distance. Force follows inverse-square scaling.</p>
+
+      <div class="row">
+        <label for="m1">Mass m1 (kg)</label>
+        <input id="m1" type="range" min="20" max="30" step="0.1" value="24">
+        <div class="value" id="m1v"></div>
+      </div>
+      <div class="row">
+        <label for="m2">Mass m2 (kg)</label>
+        <input id="m2" type="range" min="20" max="30" step="0.1" value="24.8">
+        <div class="value" id="m2v"></div>
+      </div>
+      <div class="row">
+        <label for="r">Distance r (m)</label>
+        <input id="r" type="range" min="6" max="8" step="0.01" value="7">
+        <div class="value" id="rv"></div>
+      </div>
+
+      <div class="formula" id="formula"></div>
+      <div class="force" id="force"></div>
+      <div class="foot">G = 6.67430e-11 N m^2 / kg^2</div>
+    </section>
+
+    <section class="card">
+      <canvas id="scene" width="520" height="300" aria-label="Two masses with attraction arrows"></canvas>
+    </section>
+  </div>
+
+  <script>
+    const G = 6.67430e-11;
+    const m1 = document.getElementById("m1");
+    const m2 = document.getElementById("m2");
+    const r = document.getElementById("r");
+    const m1v = document.getElementById("m1v");
+    const m2v = document.getElementById("m2v");
+    const rv = document.getElementById("rv");
+    const formula = document.getElementById("formula");
+    const forceOut = document.getElementById("force");
+    const canvas = document.getElementById("scene");
+    const ctx = canvas.getContext("2d");
+
+    function fmtExp(x) {
+      return x.toExponential(3);
+    }
+
+    function drawBodies(forceN, rn) {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const y = h / 2;
+      const rad1 = 16 + (Number(m1.value) - 20) * 2;
+      const rad2 = 16 + (Number(m2.value) - 20) * 2;
+      const rMin = Number(r.min);
+      const rMax = Number(r.max);
+      const rNorm = (rn - rMin) / (rMax - rMin);
+      const gapPx = 120 + rNorm * 140;
+      const centerX = w / 2;
+      const x1 = centerX - gapPx / 2;
+      const x2 = centerX + gapPx / 2;
+
+      // Arrow length proportional to force (with a log mapping for visibility).
+      // This means both distance and masses affect the arrows through F.
+      const logF = Math.log10(forceN + 1e-20);
+      const forceNorm = (logF + 10) / 2; // map ~1e-10..1e-8 to ~0..1
+      const arrowLen = Math.max(20, Math.min(120, 20 + forceNorm * 100));
+      const leftArrowEnd = x1 + rad1 + 8 + arrowLen;
+      const rightArrowEnd = x2 - rad2 - 8 - arrowLen;
+
+      ctx.strokeStyle = "#8b96aa";
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(x1, y + 64);
+      ctx.lineTo(x2, y + 64);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#9fb4ff";
+      ctx.beginPath();
+      ctx.arc(x1, y, rad1, 0, 2 * Math.PI);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffd17b";
+      ctx.beginPath();
+      ctx.arc(x2, y, rad2, 0, 2 * Math.PI);
+      ctx.fill();
+
+      ctx.strokeStyle = "#72d6ff";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x1 + rad1 + 8, y);
+      ctx.lineTo(leftArrowEnd, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(leftArrowEnd, y);
+      ctx.lineTo(leftArrowEnd - 10, y - 7);
+      ctx.lineTo(leftArrowEnd - 10, y + 7);
+      ctx.closePath();
+      ctx.fillStyle = "#72d6ff";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x2 - rad2 - 8, y);
+      ctx.lineTo(rightArrowEnd, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(rightArrowEnd, y);
+      ctx.lineTo(rightArrowEnd + 10, y - 7);
+      ctx.lineTo(rightArrowEnd + 10, y + 7);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#b8c2d3";
+      ctx.font = "13px ui-monospace, monospace";
+      ctx.fillText("m1", x1 - 10, y + 5);
+      ctx.fillText("m2", x2 - 10, y + 5);
+      ctx.fillText("r", (x1 + x2) / 2 - 4, y + 84);
+    }
+
+    function update() {
+      const m1n = Number(m1.value);
+      const m2n = Number(m2.value);
+      const rn = Number(r.value);
+      const F = G * m1n * m2n / (rn * rn);
+
+      m1v.textContent = m1n.toFixed(1);
+      m2v.textContent = m2n.toFixed(1);
+      rv.textContent = rn.toFixed(2);
+      formula.textContent =
+        `F = G * m1 * m2 / r^2\n` +
+        `F = (${G.toExponential(5)}) * (${m1n.toFixed(1)}) * (${m2n.toFixed(1)}) / (${rn.toFixed(2)})^2`;
+      forceOut.textContent = `F = ${fmtExp(F)} N`;
+      drawBodies(F, rn);
+    }
+
+    [m1, m2, r].forEach(el => el.addEventListener("input", update));
+    update();
+  </script>
+</body>
+</html>

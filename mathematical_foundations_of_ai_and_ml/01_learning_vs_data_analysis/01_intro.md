@@ -186,7 +186,7 @@ Let’s highlight the important features of models again: a) They help us unders
 ## Data-based modeling (top-down)
 
 ::: {.fragment}
-- Learn relationships from observed $(x,y)$ pairs.
+- Learn relationships from observed \\((x,y)\\) pairs.
 - Assumes relevant structure is represented in measured data.
 - Performance depends on data quality, coverage, and split design [@neuer2024machine].
 :::
@@ -307,174 +307,67 @@ Learning methods can be sampled. By deliberately disturbing the input variables,
 ## Structural classification of data
 
 ::: {.fragment}
-<ul class="hover-example-list">
-  <li class="hover-example-item">
-    <strong>Structured:</strong> Predefined schema and format (e.g., SQL tables, technical process data).
-    <img class="hover-image" src="img/structured_example.svg" alt="Structured data example">
-  </li>
-  <li class="hover-example-item">
-    <strong>Unstructured:</strong> No fixed data model (e.g., images, books, health records).
-    <img class="hover-image" src="img/unstructured_example.svg" alt="Unstructured data example">
-  </li>
-  <li class="hover-example-item">
-    <strong>Semi-structured:</strong> Mix of ordered and flexible components (e.g., emails, digital twin memory).
-    <img class="hover-image" src="img/semi_structured_example.svg" alt="Semi-structured data example">
-  </li>
-</ul>
+- **Structured:** Predefined schema and format (e.g., SQL tables, technical process data).
+- **Unstructured:** No fixed data model (e.g., images, books, health records).
+- **Semi-structured:** Mix of ordered and flexible components (e.g., emails, digital twin memory).
+:::
+
+## Quantitative and qualitative classification
+
+::: {.fragment}
+- **Quantitative:**
+  - *Continuous*: Can assume any value within a range (e.g., length, analog signals).
+  - *Discrete*: Clearly separable, countable points (e.g., product counts, digital data).
 :::
 ::: {.fragment}
-### Quantitative and qualitative classification
-
-
-<ul>
-  <li>
-    <strong>Quantitative:</strong>    
-    <ul>
-      <li class="hover-example-item">
-        <em>Continuous</em>: Can assume any value within a range (e.g., length, analog signals).
-        <img class="hover-image" src="img/continuous_example.svg" alt="Continuous data example">
-      </li>
-      <li class="hover-example-item">
-        <em>Discrete</em>: Clearly separable, countable points (e.g., product counts, digital data).
-        <img class="hover-image" src="img/discrete_example.svg" alt="Discrete data example">
-      </li>
-    </ul>
-  </li>
-</ul>
+- **Qualitative:**
+  - *Nominal*: Descriptive attributes without intrinsic order (e.g., material names, colors).
+  - *Ordinal*: Data with a logical ranking or sequence (e.g., months, quality ratings).
+  - *Cardinal*: Data supporting arithmetic operations.
+  - *Binary*: Boolean (True/False, Pass/Fail) states.
 :::
-::: {.fragment}
-<ul>
-  <li>
-    <strong>Qualitative:</strong> 
-    <ul>
-      <li class="hover-example-item">
-        <em>Nominal</em>: Descriptive attributes without intrinsic order (e.g., material names, colors).
-        <img class="hover-image" src="img/nominal_example.svg" alt="Nominal data example">
-      </li>
-      <li class="hover-example-item">
-        <em>Ordinal</em>: Data with a logical ranking or sequence (e.g., months, quality ratings).
-        <img class="hover-image" src="img/ordinal_example.svg" alt="Ordinal data example">
-      </li>
-      <li class="hover-example-item">
-        <em>Cardinal</em>: Data supporting arithmetic operations.
-        <img class="hover-image" src="img/cardinal_example.svg" alt="Cardinal data example">
-      </li>
-      <li class="hover-example-item">
-        <em>Binary</em>: Boolean (True/False, Pass/Fail) states.
-        <img class="hover-image" src="img/binary_example.svg" alt="Binary data example">
-      </li>
-    </ul>
-  </li>
-</ul>
-:::
-
 
 ## Time series and labels
-::: {.fragment} 
-<ul>
-  <li class="hover-example-item">
-    <strong>Time Series:</strong> Data points indexed and ordered by time; typically cardinal and discrete in modern systems.
-    <img class="hover-image" src="img/time_series_example.svg" alt="Time series example">
-  </li>
-  <li class="hover-example-item">
-    <strong>Labels:</strong> Special qualitative or quantitative variables used as training targets in mapping $x \to y$.
-    <img class="hover-image" src="img/labels_example.svg" alt="Labels example">
-  </li>
-</ul>
-:::
-
-### Measurement scales
 
 ::: {.fragment}
-<ul>
-  <li class="hover-example-item">
-    <strong>Nominal scale:</strong> Sorting into categories; operations $=, \neq$.
-    <img class="hover-image" src="img/nominal_example.svg" alt="Nominal scale example">
-  </li>
-  <li class="hover-example-item">
-    <strong>Ordinal scale:</strong> Introduces ranking; operations $<, >$.
-    <img class="hover-image" src="img/ordinal_example.svg" alt="Ordinal scale example">
-  </li>
-  <li class="hover-example-item">
-    <strong>Interval scale:</strong> Meaningful distances, but no absolute zero (e.g., $^{\circ}$C); allows $+, -$.
-    <img class="hover-image" src="img/interval_example.svg" alt="Interval scale example">
-  </li>
-  <li class="hover-example-item">
-    <strong>Ratio scale:</strong> Absolute zero exists; enables ratios and scaling (e.g., Kelvin); allows $\times, \div$.
-    <img class="hover-image" src="img/ratio_example.svg" alt="Ratio scale example">
-  </li>
-</ul>
-::: 
+- **Time Series:** Data points indexed and ordered by time; typically cardinal and discrete in modern systems.
+- **Labels:** Special qualitative or quantitative variables used as training targets in mapping $x \to y$.
+:::
+
+## Measurement scales
+
+::: {.fragment}
+- **Nominal scale:** Sorting into categories; operations $=, \neq$.
+- **Ordinal scale:** Introduces ranking; operations $<, >$.
+- **Interval scale:** Meaningful distances, but no absolute zero (e.g., $^{\circ}$C); allows $+, -$. 
+- **Ratio scale:** Absolute zero exists; enables ratios and scaling (e.g., Kelvin); allows $\times, \div$.
+:::
 
 ## Data notation and task notation
 
-::: {.fragment}
 - Dataset: $\mathcal{D} = \{(\mathbf{x}_i, y_i)\}_{i=1}^N$
 - Hypothesis class: $f_\theta: \mathcal{X} \to \mathcal{Y}$
 - Objective: choose $\theta$ minimizing risk under deployment-relevant assumptions.
-:::
 
 ## Empirical risk minimization (ERM)
 
-::: {.fragment}
 - Core training objective:
- 
+
 $$
 \hat\theta = \arg\min_\theta \frac{1}{N}\sum_{i=1}^{N}\ell\big(f_\theta(\mathbf{x}_i), y_i\big)
 $$
-:::
 
-::: {.fragment}
-**Example in Code (MSE):**
-```python
-def mse_loss(y_true, y_pred):
-    return np.mean((y_true - y_pred)**2)
-```
-:::
-
-::: {.fragment}
 - ERM fits observed data, not future distribution automatically.
-:::
-
-::: {.notes}
-**ERM**: This is the engine room of machine learning. You define a loss function $\ell$, measure the error on your training dataset, and search for parameters $\theta$ that minimize this sum. Emphasize that ERM only knows about the training data $N$, which is why it has no concept of the 'future' or 'generalization' on its own.
-:::
 
 ## Regularized objective
 
-::: {.columns}
-::: {.column width="50%"}
-::: {.fragment}
 - Practical objective adds complexity penalty:
 
 $$
 \hat\theta = \arg\min_\theta \frac{1}{N}\sum_{i=1}^{N}\ell\big(f_\theta(\mathbf{x}_i), y_i\big) + \lambda\Omega(\theta)
 $$
-:::
 
-::: {.fragment}
-- $\lambda$ controls fit–complexity tradeoff.
-:::
-:::
-
-::: {.column width="50%"}
-::: {.fragment}
-<iframe
-  src="../../assets/widgets/regularization_widget.html"
-  frameBorder="0"
-  width="100%"
-  height="720px"
-  style="border: none;"
-  loading="lazy"
-  title="Interactive Regularization Widget"
-></iframe> 
-:::
-:::
-:::
-
-::: {.notes}
-**Regularization**: Because ERM only tries to fit the dataset, it will eagerly overfit if given a very flexible model (like a 15th-degree polynomial). Regularization $\Omega(\theta)$ adds a penalty for complexity. The parameter $\lambda$ determines how much we care about being "smooth" versus being "accurate on the training set". Use the widget to demonstrate flattening out the high-degree fit!
-:::
+- \\(\lambda\\) controls fit–complexity tradeoff.
 
 ## Population risk vs empirical risk
 
@@ -505,49 +398,32 @@ $$
 
 ## Regression vs classification vs ranking
 
-::: {.fragment}
+
 - Regression: continuous target estimation.
 - Classification: class-probability estimation.
 - Ranking: relative ordering for screening/prioritization workflows.
-:::
 
 ## Loss functions and meaning
 
-::: {.fragment}
 - MSE emphasizes large errors quadratically.
 - MAE is robust to outliers but less smooth for optimization.
 - Cross-entropy aligns naturally with probabilistic classification outputs.
-:::
-
-::: {.notes}
-Explain why different tasks require different loss functions. An absolute error (MAE) treats a 10-unit error exactly as ten 1-unit errors. Squared error (MSE) punishes the 10-unit error 100 times worse, making it highly sensitive to outliers.
-:::
 
 ## Optimization lens
 
-::: {.fragment}
 - Learning is numerical optimization in parameter space.
 - Convergence behavior depends on curvature, scaling, and initialization.
 - “Model failure” is often an optimization-pathology issue.
-:::
 
 ## Bayesian lens (intro)
 
-::: {.fragment}
 - Bayesian update:
 
 $$
 p(\theta\mid\mathcal D) \propto p(\mathcal D\mid\theta)\,p(\theta)
 $$
-:::
 
-::: {.fragment}
 - Output is a distribution over parameters/predictions, not just a point estimate.
-:::
-
-::: {.notes}
-**Bayesian Lens**: Instead of finding one single "best" set of parameters $\theta$, we start with prior beliefs $p(\theta)$ and update them based on how well the parameters explain the data $p(\mathcal D\mid\theta)$. This elegant perspective naturally outputs uncertainty because we maintain a distribution of beliefs rather than just a single point estimate.
-:::
 
 ## Frequentist vs Bayesian workflow (practical)
 
@@ -584,33 +460,9 @@ $$
 
 ## Overfitting explained visually
 
-::: {.columns}
-::: {.column width="33%"}
-::: {.fragment}
-![Underfitting (High Bias)](img/underfit.svg){width=100%}
-
-- Misses data structure
-:::
-:::
-::: {.column width="33%"}
-::: {.fragment}
-![Appropriate Fit](img/optimal_fit.svg){width=100%}
-
-- Captures stable signal
-:::
-:::
-::: {.column width="33%"}
-::: {.fragment}
-![Overfitting (High Variance)](img/overfit.svg){width=100%}
-
-- Memorizes quirks/noise
-:::
-:::
-:::
-
-::: {.notes}
-Show how the linear model fundamentally cannot capture the curve (bias), while the high-degree polynomial contorts itself to hit every point perfectly, resulting in terrible predictions between points (variance).
-:::
+- Underfit: high bias, misses structure.
+- Overfit: memorizes quirks/noise, weak transfer.
+- Well-fit: captures stable signal with controlled complexity.
 
 ## Bias–variance intuition
 
@@ -692,17 +544,13 @@ Show how the linear model fundamentally cannot capture the curve (bias), while t
 
 ::: {.columns}
 ::: {.column width="60%"}
-::: {.fragment}
 - Inputs: process parameters, composition, heat treatment metadata.
 - Target: hardness / tensile strength (continuous).
 - Risks: confounding from batch effects, hidden process controls.
 :::
-:::
 
 ::: {.column width="40%"}
-::: {.fragment}
-![Correlation plot between process parameter and measured hardness.](img/hardness_correlation.svg){width=100%}
-:::
+![Placeholder: Correlation plot between process parameters and measured hardness.](placeholder_hardness.png){width=100%}
 :::
 :::
 
@@ -710,17 +558,13 @@ Show how the linear model fundamentally cannot capture the curve (bias), while t
 
 ::: {.columns}
 ::: {.column width="60%"}
-::: {.fragment}
 - Inputs: microscopy images + acquisition metadata.
 - Target: defect class / defect probability.
 - Risks: class imbalance, label noise, instrument-specific artifacts.
 :::
-:::
 
 ::: {.column width="40%"}
-::: {.fragment}
-![Electron microscopy image showing typical microstructural defects.](img/defect_microscopy.png){width=100%}
-:::
+![Placeholder: microscopy images showing different defect classes.](placeholder_defects.png){width=100%}
 :::
 :::
 
@@ -728,17 +572,13 @@ Show how the linear model fundamentally cannot capture the curve (bias), while t
 
 ::: {.columns}
 ::: {.column width="60%"}
-::: {.fragment}
 - Inputs: spectral signal (possibly multimodal context).
 - Targets: composition class, phase indicator, or property proxy.
 - Risks: baseline drift, preprocessing leakage, calibration instability.
 :::
-:::
 
 ::: {.column width="40%"}
-::: {.fragment}
-![Spectral data showing characteristic synthesized peaks.](img/synthetic_spectra.svg){width=100%}
-:::
+![Placeholder: Spectral data showing characteristic peaks for different phases.](placeholder_spectra.png){width=100%}
 :::
 :::
 
@@ -757,11 +597,9 @@ Show how the linear model fundamentally cannot capture the curve (bias), while t
 ## Lecture-essential vs exercise content split
 
 **Lecture essential:**
-
 - definitions, equations, assumptions, validity criteria.
 
 **Exercise essential:**
-
 - implementation, diagnostics, ablations, error analysis.
 
 ## Exercise setup: NumPy linear regression from scratch
@@ -792,8 +630,8 @@ Show how the linear model fundamentally cannot capture the curve (bias), while t
 ## References + reading assignment for next unit
 
 - **Required reading before Unit 2:**
-  - Neuer: Ch. 1 
- 
+  - Neuer: Ch. 1.1 and 1.3
+  - McClarren: Ch. 1.1 and 1.5
 - **Optional depth:**
   - Murphy: Ch. 1.1–1.4
   - Bishop: Ch. 1.1 and 1.3
