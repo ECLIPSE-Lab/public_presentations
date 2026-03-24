@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            background: transparent;
+        }
+        .controls { 
+            display: flex; 
+            flex-direction: column;
+            gap: 15px; 
+            margin-top: 10px; 
+            background: #f8f9fa; 
+            padding: 20px; 
+            border-radius: 12px; 
+            border: 1px solid #e9ecef;
+            width: 90%; 
+            box-sizing: border-box; 
+        }
+        .control-group { 
+            display: flex; 
+            flex-direction: row; 
+            align-items: center;
+            justify-content: space-between;
+        }
+        label { 
+            font-weight: 600; 
+            font-size: 16px; 
+            color: #333;
+            width: 320px;
+        }
+        input[type=range] { 
+            flex: 1; 
+            margin-left: 20px;
+        }
+        #plot { 
+            width: 100%; 
+            height: 380px; 
+            margin-top: 10px;
+        }
+        .info { 
+            font-size: 18px; 
+            font-weight: bold;
+            text-align: center; 
+            margin-top: 15px; 
+            padding: 10px;
+            border-radius: 8px;
+            width: 90%;
+            box-sizing: border-box;
+        }
+        .alert { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .safe { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="control-group">
+            <label for="sigFreq">Signal Frequency (&nu;<sub>max</sub>): <span id="sigFreqVal">1.0</span> Hz</label>
+            <input type="range" id="sigFreq" min="0.1" max="10.0" step="0.1" value="1.0">
+        </div>
+        <div class="control-group">
+            <label for="sampFreq">Sampling Frequency (&nu;<sub>S</sub>): <span id="sampFreqVal">15.0</span> Hz</label>
+            <input type="range" id="sampFreq" min="1.0" max="25.0" step="0.1" value="15.0">
+        </div>
+    </div>
+    <div class="info" id="statusMessage"></div>
+    <div id="plot"></div>
+
+    <script>
+        const sigFreqSlider = document.getElementById('sigFreq');
+        const sampFreqSlider = document.getElementById('sampFreq');
+        const sigFreqVal = document.getElementById('sigFreqVal');
+        const sampFreqVal = document.getElementById('sampFreqVal');
+        const statusMessage = document.getElementById('statusMessage');
+
+        function updatePlot() {
+            const f = parseFloat(sigFreqSlider.value);
+            const fs = parseFloat(sampFreqSlider.value);
+            
+            sigFreqVal.textContent = f.toFixed(1);
+            sampFreqVal.textContent = fs.toFixed(1);
+
+            const duration = 2.0; 
+            
+            const t_cont = [];
+            const y_cont = [];
+            for (let i = 0; i <= 1000; i++) {
+                const t = i * duration / 1000;
+                t_cont.push(t);
+                y_cont.push(Math.sin(2 * Math.PI * f * t));
+            }
+
+            const t_samp = [];
+            const y_samp = [];
+            let current_t = 0;
+            while(current_t <= duration) {
+                t_samp.push(current_t);
+                y_samp.push(Math.sin(2 * Math.PI * f * current_t));
+                current_t += 1/fs;
+            }
+            
+            let f_raw = ((f + fs/2) % fs) - fs/2;
+            
+            const y_alias = [];
+            for (let i = 0; i <= 1000; i++) {
+                const t = i * duration / 1000;
+                y_alias.push(Math.sin(2 * Math.PI * f_raw * t));
+            }
+
+            const trace1 = {
+                x: t_cont,
+                y: y_cont,
+                mode: 'lines',
+                name: 'True Signal',
+                line: {color: 'rgba(0, 123, 255, 0.4)', width: 3, dash: 'dash'}
+            };
+
+            const trace3 = {
+                x: t_cont,
+                y: y_alias,
+                mode: 'lines',
+                name: 'Apparent Signal',
+                line: {color: '#343a40', width: 4}
+            };
+            
+            const trace2 = {
+                x: t_samp,
+                y: y_samp,
+                mode: 'markers',
+                name: 'Samples',
+                marker: {color: '#dc3545', size: 10, line: {color: 'white', width: 2}}
+            };
+
+            if (fs >= 2 * f) {
+                statusMessage.className = "info safe";
+                statusMessage.innerHTML = `Nyquist Satisfied (&nu;<sub>S</sub> &ge; 2&nu;<sub>max</sub>). Perfect reconstruction.`;
+            } else {
+                statusMessage.className = "info alert";
+                statusMessage.innerHTML = `Aliasing! Apparent frequency is ${Math.abs(f_raw).toFixed(2)} Hz instead of ${f.toFixed(1)} Hz.`;
+            }
+
+            const layout = {
+                xaxis: {title: 'Time (s)', range: [0, duration], fixedrange: true},
+                yaxis: {title: 'Amplitude', range: [-1.5, 1.5], fixedrange: true},
+                margin: {t: 20, b: 40, l: 50, r: 20},
+                legend: {orientation: 'h', y: -0.2, x: 0.5, xanchor: 'center'},
+                plot_bgcolor: '#ffffff',
+                paper_bgcolor: 'transparent'
+            };
+
+            Plotly.newPlot('plot', [trace1, trace3, trace2], layout, {responsive: true, displayModeBar: false});
+        }
+
+        sigFreqSlider.addEventListener('input', updatePlot);
+        sampFreqSlider.addEventListener('input', updatePlot);
+        
+        updatePlot();
+    </script>
+</body>
+</html>
