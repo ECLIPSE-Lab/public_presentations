@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; background: transparent; margin: 0; padding: 0; }
+        .controls { display: flex; gap: 20px; background: #f8f9fa; padding: 20px; border-radius: 12px; border: 1px solid #e9ecef; width: 90%; box-sizing: border-box; margin-top: 15px;}
+        .control-group { display: flex; flex-direction: column; flex: 1; }
+        label { font-weight: 600; font-size: 15px; margin-bottom: 5px; color: #333; }
+        input[type=range] { width: 100%; margin-top: 5px;}
+        #plot { width: 95%; height: 400px; margin-top: 10px; }
+        .btn-group { display: flex; gap: 15px; align-items: center; margin-top: 15px; width: 90%; justify-content: center;}
+        button { padding: 10px 24px; font-size: 16px; font-weight: bold; color: white; background: #0d6efd; border: none; border-radius: 6px; cursor: pointer; transition: 0.2s;}
+        button:hover { background: #0b5ed7; }
+        #btnNew { background: #198754; }
+        #btnNew:hover { background: #157347; }
+        .status { font-weight: bold; font-size: 18px; margin-left: 20px; color: #495057; width: 150px; text-align: left;}
+        .math-symbol { font-style: italic; font-family: "Times New Roman", Times, serif; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="control-group">
+            <label>Measurements (<span class="math-symbol">M</span>): <span id="mVal">35</span></label>
+            <input type="range" id="measRange" min="10" max="120" step="1" value="35">
+        </div>
+        <div class="control-group">
+            <label>Sparsity (<span class="math-symbol">K</span> non-zeros): <span id="kVal">10</span></label>
+            <input type="range" id="sparsityRange" min="1" max="40" step="1" value="10">
+        </div>
+        <div class="control-group">
+            <label>Noise Level (<span class="math-symbol">&sigma;</span>): <span id="noiseVal">0.05</span></label>
+            <input type="range" id="noiseRange" min="0" max="0.5" step="0.01" value="0.05">
+        </div>
+    </div>
+    
+    <div class="btn-group">
+        <button id="btnNew">Generate New Problem</button>
+        <button id="btnRun">Run FISTA</button>
+        <div class="status" id="statusMessage">Iter: 0</div>
+    </div>
+
+    <div id="plot"></div>
+
+    <script>
+        const M_slider = document.getElementById('measRange');
+        const K_slider = document.getElementById('sparsityRange');
+        const noise_slider = document.getElementById('noiseRange');
+        let fistaState = null;
+        let trueSignal = [];
+        let A_matrix = [];
+        let y_measurements = [];
+        const N = 120;
+        let iters = 0;
+        let runningId = null;
+
+        // Approx standard normal
+        function gaussianRandom() {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random(); 
+            while(v === 0) v = Math.random();
+            return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+        }
+
+        function matVec(A, x) {
+            let y = new Array(A.length).fill(0);
+            for(let i=0; i<A.length; i++) {
+                let sum = 0;
+                for(let j=0; j<x.length; j++) sum += A[i][j] * x[j];
+                y[i] = sum;
+            }
+            return y;
+        }
+
+        function matTVec(A, y) {
+            let x = new Array(A[0].length).fill(0);
+            for(let i=0; i<A.length; i++) {
+                for(let j=0; j<x.length; j++) x[j] += A[i][j] * y[i];
+            }
+            return x;
+        }
+
+        function initProblem() {
+            if(runningId) cancelAnimationFrame(runningId);
+            
+            const M = parseInt(M_slider.value);
+            const K = parseInt(K_slider.value);
+            const noise = parseFloat(noise_slider.value);
+            
+            document.getElementById('mVal').textContent = M;
+            document.getElementById('kVal').textContent = K;
+            document.getElementById('noiseVal').textContent = noise.toFixed(2);
+
+            trueSignal = new Array(N).fill(0);
+            let indices = [];
+            while(indices.length < K) {
+                let idx = Math.floor(Math.random() * N);
+                if(indices.indexOf(idx) === -1) indices.push(idx);
+            }
+            indices.forEach(idx => {
+                trueSignal[idx] = (Math.random() > 0.5 ? 1 : -1) * (0.5 + Math.random() * 0.5);
+            });
+
+            A_matrix = [];
+            for(let i=0; i<M; i++) {
+                let row = new Array(N);
+                for(let j=0; j<N; j++) row[j] = gaussianRandom() / Math.sqrt(M);
+                A_matrix.push(row);
+            }
+
+            // Power iteration for Lipschitz constant L
+            let q = new Array(N).fill(1).map(()=>Math.random());
+            for(let iter=0; iter<30; iter++) {
+                let norm = Math.sqrt(q.reduce((s,v)=>s+v*v,0));
+                q = q.map(v=>v/norm);
+                let Aq = matVec(A_matrix, q);
+                let AtAq = matTVec(A_matrix, Aq);
+                q = AtAq;
+            }
+            let L = Math.sqrt(q.reduce((s,v)=>s+v*v, 0));
+
+            y_measurements = matVec(A_matrix, trueSignal);
+            y_measurements = y_measurements.map(v => v + noise * gaussianRandom());
+
+            // Adaptive Lambda selection based on noise and max correlation
+            let ATy = matTVec(A_matrix, y_measurements);
+            let max_corr = Math.max(...ATy.map(Math.abs));
+            let factor = 0.02 + 0.15 * noise; 
+            let lambda = factor * max_corr;
+
+            fistaState = {
+                x: new Array(N).fill(0),
+                y_k: new Array(N).fill(0),
+                t: 1.0,
+                gamma: 1.0 / (L * 1.05),
+                lambda: lambda
+            };
+            iters = 0;
+            document.getElementById('statusMessage').textContent = `Iter: 0`;
+            updatePlot();
+        }
+
+        function stepFista(steps) {
+            let s = fistaState;
+            for(let k=0; k<steps; k++) {
+                let x_old = [...s.x];
+                let t_old = s.t;
+
+                // gradient step
+                let diff = matVec(A_matrix, s.y_k).map((val, idx) => val - y_measurements[idx]);
+                let grad = matTVec(A_matrix, diff);
+
+                // soft shrinkage
+                for(let i=0; i<N; i++) {
+                    let val = s.y_k[i] - s.gamma * grad[i];
+                    let thres = s.gamma * s.lambda;
+                    s.x[i] = Math.sign(val) * Math.max(0, Math.abs(val) - thres);
+                }
+
+                // momentum
+                s.t = (1 + Math.sqrt(1 + 4 * t_old * t_old)) / 2;
+                for(let i=0; i<N; i++) {
+                    s.y_k[i] = s.x[i] + ((t_old - 1) / s.t) * (s.x[i] - x_old[i]);
+                }
+                iters++;
+            }
+            document.getElementById('statusMessage').textContent = `Iter: ${iters}`;
+        }
+
+        function updatePlot() {
+            const x_axis = Array.from({length: N}, (_,i)=>i);
+            
+            const trace1 = {
+                x: x_axis, y: trueSignal,
+                mode: 'markers', name: 'True Signal',
+                marker: { color: 'rgba(0,0,0,0.3)', size: 10, symbol: 'circle-open', line: {width: 2} },
+                type: 'scatter'
+            };
+            
+            const trace2 = {
+                x: x_axis, y: fistaState.x,
+                mode: 'markers', name: 'Reconstructed (FISTA)',
+                marker: { color: '#dc3545', size: 6 },
+                type: 'scatter'
+            };
+
+            const layout = {
+                title: 'Sparse Recovery via L1 Minimization',
+                xaxis: { title: 'Vector Index', range: [-1, N] },
+                yaxis: { title: 'Amplitude', range: [-1.5, 1.5] },
+                margin: {t: 40, b:40, l:50, r:20},
+                legend: {x: 0.8, y: 1.0},
+                plot_bgcolor: '#ffffff',
+                paper_bgcolor: 'transparent'
+            };
+
+            Plotly.react('plot', [trace1, trace2], layout, {responsive: true, displayModeBar: false});
+        }
+
+        function animateFista() {
+            if(iters < 800) {
+                stepFista(15); // 15 iterations per frame
+                updatePlot();
+                runningId = requestAnimationFrame(animateFista);
+            } else {
+                runningId = null;
+            }
+        }
+
+        document.getElementById('btnNew').addEventListener('click', () => {
+            initProblem();
+        });
+        document.getElementById('btnRun').addEventListener('click', () => {
+            if(runningId) cancelAnimationFrame(runningId);
+            runningId = requestAnimationFrame(animateFista);
+        });
+
+        M_slider.addEventListener('change', initProblem);
+        K_slider.addEventListener('change', initProblem);
+        noise_slider.addEventListener('change', initProblem);
+
+        initProblem();
+    </script>
+</body>
+</html>
