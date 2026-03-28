@@ -6,8 +6,6 @@ author:
   - name: Prof. Dr. Philipp Pelz
     affiliation:
       - FAU Erlangen-Nürnberg
-execute:
-  eval: false
 format:
   revealjs:
     width: 1920
@@ -21,7 +19,7 @@ format:
     footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
 ---
 
-## 01. Title + Unit 7 positioning
+## Title + Unit 7 positioning
 
 ::: {.fragment}
 - Units 1–6 built the machinery: loss functions, architectures, backprop, optimization.
@@ -29,7 +27,7 @@ format:
 - Generalization is the central goal of machine learning — everything else is in service of it.
 :::
 
-## 02. Learning outcomes for Unit 7
+## Learning outcomes for Unit 7
 
 By the end of this lecture, students can:
 
@@ -40,7 +38,7 @@ By the end of this lecture, students can:
 - design a k-fold cross-validation procedure for model selection and hyperparameter tuning.
 :::
 
-## 03. Recall: ERM from Unit 1
+## Recall: ERM from Unit 1
 
 ::: {.fragment}
 - Empirical Risk Minimization: \\(\hat{\mathbf{w}} = \arg\min_{\mathbf{w}} \frac{1}{N}\sum_{i=1}^{N} L(f_{\mathbf{w}}(\mathbf{x}_i), y_i)\\).
@@ -48,7 +46,7 @@ By the end of this lecture, students can:
 - The gap between these two is the core challenge of learning.
 :::
 
-## 04. The generalization gap
+## The generalization gap
 
 ::: {.fragment}
 - **Generalization gap** = test error − training error.
@@ -57,7 +55,7 @@ By the end of this lecture, students can:
 - The gap is not observable during training — we need held-out data to estimate it.
 :::
 
-## 05. Why generalization is the central goal
+## Why generalization is the central goal
 
 ::: {.fragment}
 - A model that perfectly fits training data but fails on new data is useless in deployment.
@@ -65,7 +63,7 @@ By the end of this lecture, students can:
 - Every design choice — architecture, regularization, optimizer — should be evaluated by its effect on generalization.
 :::
 
-## 06. Overfitting — definition and visual example
+## Overfitting — definition and visual example
 
 ::: {.fragment}
 - **Overfitting**: the model captures noise and idiosyncrasies of the training data instead of the underlying signal.
@@ -73,7 +71,7 @@ By the end of this lecture, students can:
 - Visual: a high-degree polynomial passes through every training point but oscillates wildly between them.
 :::
 
-## 07. Underfitting — definition and visual example
+## Underfitting — definition and visual example
 
 ::: {.fragment}
 - **Underfitting**: the model is too simple to capture the structure in the data.
@@ -81,7 +79,7 @@ By the end of this lecture, students can:
 - Visual: a straight line fit to clearly nonlinear data misses the pattern entirely.
 :::
 
-## 08. The complexity spectrum
+## The complexity spectrum
 
 ::: {.fragment}
 - **Low complexity** (few parameters, simple model): high bias, low variance → underfitting.
@@ -89,7 +87,83 @@ By the end of this lecture, students can:
 - The **sweet spot**: enough complexity to capture the signal, not so much that it captures noise.
 :::
 
-## 09. Detecting overfitting in practice
+## Interactive: The Complexity Spectrum
+
+::: {.columns}
+::: {.column width="25%"}
+```{ojs}
+//| echo: false
+//| panel: input
+viewof polyDegree = Inputs.range([1, 15], {value: 1, step: 1, label: "Polynomial Degree (Complexity)"})
+```
+**Training Data**: 15 samples
+**Noise**: $\sigma = 0.2$
+
+```{ojs}
+//| echo: false
+html`
+<div style="margin-top: 20px;">
+  <strong>Train MSE:</strong> ${mse.train.toFixed(3)}<br>
+  <strong>Test MSE:</strong> ${mse.test.toFixed(3)}
+</div>
+`
+```
+:::
+::: {.column width="75%"}
+```{ojs}
+//| echo: false
+d3_reg = require("d3@7", "d3-regression@1")
+seed = 42
+randomVal = d3_reg.randomNormal.source(d3_reg.randomLcg(seed))(0, 0.2)
+trueFunc = (x) => Math.sin(1.5 * Math.PI * x)
+
+points = {
+  const train = Array.from({length: 15}, (_, i) => {
+    let x = (i+0.5) / 15 + (d3_reg.randomUniform.source(d3_reg.randomLcg(seed+i))() - 0.5) * 0.05;
+    return {x: x, y: trueFunc(x) + randomVal(), type: "train"};
+  });
+  const test = Array.from({length: 100}, (_, i) => {
+    let x = (i+0.5) / 100;
+    return {x: x, y: trueFunc(x) + randomVal(), type: "test"};
+  });
+  return [...train, ...test];
+}
+
+trainPts = points.filter(d => d.type === "train")
+testPts = points.filter(d => d.type === "test")
+
+polyModel = {
+  try {
+    return d3_reg.regressionPoly().x(d => d.x).y(d => d.y).degree(polyDegree)(trainPts);
+  } catch(e) {
+    // fallback if d3-regression fails for very high degrees/collinearity
+    return {predict: (x) => 0}; 
+  }
+}
+
+mse = {
+  const trainMSE = d3_reg.mean(trainPts, d => Math.pow(polyModel.predict(d.x) - d.y, 2));
+  const testMSE = d3_reg.mean(testPts, d => Math.pow(polyModel.predict(d.x) - d.y, 2));
+  return {train: trainMSE || 0, test: testMSE || 0};
+}
+
+Plot.plot({
+  width: 1000,
+  height: 600,
+  y: {domain: [-2, 2], grid: true},
+  x: {domain: [0, 1], grid: true},
+  color: {domain: ["train", "test"], range: ["red", "steelblue"]},
+  marks: [
+    Plot.dot(points, {x: "x", y: "y", fill: "type", fillOpacity: 0.8, r: d => d.type === "train" ? 6 : 3}),
+    Plot.line(d3_reg.range(0, 1.01, 0.01), {x: d => d, y: d => trueFunc(d), stroke: "gray", strokeDasharray: "4,4", strokeWidth: 2, title: "True Function"}),
+    Plot.line(d3_reg.range(0, 1.01, 0.01).map(x => ({x: x, y: polyModel.predict(x)})), {x: "x", y: "y", stroke: "orange", strokeWidth: 4, title: "Fitted Model", clip: true})
+  ]
+})
+```
+:::
+:::
+
+## Detecting overfitting in practice
 
 ::: {.fragment}
 - Plot training loss and validation loss over training epochs.
@@ -98,7 +172,7 @@ By the end of this lecture, students can:
 - The divergence point suggests when to stop training (early stopping) [@neuer2024machine].
 :::
 
-## 10. Engineering consequence: false confidence
+## Engineering consequence: false confidence
 
 ::: {.fragment}
 - A model with 99% training accuracy may have 60% test accuracy.
@@ -106,7 +180,7 @@ By the end of this lecture, students can:
 - Perfect training fit can mask catastrophic deployment failure — always validate on held-out data.
 :::
 
-## 11. Setup: expected prediction error
+## Setup: expected prediction error
 
 ::: {.fragment}
 - Consider the expected loss over both the training data \\(\mathcal{D}\\) and a new test point \\((\mathbf{x}, y)\\):
@@ -120,7 +194,7 @@ $$
 - This averages over all possible training sets and all possible true outputs at \\(\mathbf{x}\\).
 :::
 
-## 12. Decomposing squared error — step 1
+## Decomposing squared error — step 1
 
 ::: {.fragment}
 - Add and subtract the expected prediction \\(\mathbb{E}_{\mathcal{D}}[\hat{f}(\mathbf{x})]\\):
@@ -132,7 +206,7 @@ y - \hat{f}(\mathbf{x}) = \underbrace{(y - f(\mathbf{x}))}_{\text{noise}} + \und
 $$
 :::
 
-## 13. Decomposing squared error — step 2
+## Decomposing squared error — step 2
 
 ::: {.fragment}
 - Square the expression and take expectations.
@@ -146,7 +220,7 @@ $$
 - The three surviving terms give us the decomposition.
 :::
 
-## 14. The three components
+## The three components
 
 ::: {.fragment}
 $$
@@ -160,7 +234,7 @@ $$
 - **Noise**: irreducible — the Bayes error [@bishop2006pattern].
 :::
 
-## 15. Bias — interpretation
+## Bias — interpretation
 
 ::: {.fragment}
 - Bias measures how far the **average** prediction (over all possible training sets) is from the truth.
@@ -169,7 +243,7 @@ $$
 - Bias is a property of the **model family**, not the specific training set.
 :::
 
-## 16. Variance — interpretation
+## Variance — interpretation
 
 ::: {.fragment}
 - Variance measures how much the prediction **changes** when we draw a different training set.
@@ -178,7 +252,7 @@ $$
 - Variance is controlled by model complexity and training set size.
 :::
 
-## 17. Intrinsic noise / Bayes error
+## Intrinsic noise / Bayes error
 
 ::: {.fragment}
 - The noise term \\(\sigma^2\\) represents inherent randomness in the data-generating process.
@@ -187,7 +261,7 @@ $$
 - Estimating \\(\sigma^2\\) helps set realistic performance expectations.
 :::
 
-## 18. The bias-variance tradeoff
+## The bias-variance tradeoff
 
 ::: {.fragment}
 - **Increasing complexity**: bias decreases (model can fit more patterns), variance increases (model fits noise too).
@@ -196,7 +270,7 @@ $$
 - This is the most fundamental tradeoff in machine learning [@murphy2012machine].
 :::
 
-## 19. Visual: U-shaped total error curve
+## Visual: U-shaped total error curve
 
 ```{mermaid}
 %%| align: center
@@ -217,7 +291,67 @@ graph LR
 - Total error = Bias² + Variance + noise: a **U-shaped** curve with a minimum at optimal complexity.
 :::
 
-## 20. Example: polynomial regression
+## Interactive: Bias and Variance Demystified
+
+::: {.columns}
+::: {.column width="25%"}
+```{ojs}
+//| echo: false
+//| panel: input
+viewof bvDegree = Inputs.range([1, 12], {value: 3, step: 1, label: "Model Complexity (Degree)"})
+viewof numSamples = Inputs.range([5, 50], {value: 10, step: 5, label: "Number of Datasets"})
+viewof showAverage = Inputs.toggle({label: "Show Expected Fit (Bias)", value: false})
+```
+- Each faint blue curve is trained on a different dataset sampled from the true distribution.
+- The spread of these curves represents **Variance**.
+- The distance from the red average curve to the true function represents **Bias**.
+:::
+::: {.column width="75%"}
+```{ojs}
+//| echo: false
+bvDatasets = {
+  const sets = [];
+  for(let i=0; i<numSamples; i++) {
+    const rng = d3_reg.randomNormal.source(d3_reg.randomLcg(seed * 10 + i))(0, 0.4);
+    const pts = Array.from({length: 12}, (_, j) => {
+      let x = (j+0.5)/12 + (d3_reg.randomUniform.source(d3_reg.randomLcg(seed * 100 + i*12 + j))() - 0.5) * 0.05;
+      return {x: x, y: trueFunc(x) + rng()};
+    });
+    sets.push(pts);
+  }
+  return sets;
+}
+
+bvModels = bvDatasets.map(pts => d3_reg.regressionPoly().x(d=>d.x).y(d=>d.y).degree(bvDegree)(pts))
+
+bvLines = bvModels.flatMap((model, i) => {
+  return d3_reg.range(0, 1.05, 0.05).map(x => ({x: x, y: model.predict(x), lineId: i, type: "individual"}));
+})
+
+bvAverageLine = {
+  const xs = d3_reg.range(0, 1.05, 0.05);
+  return xs.map(x => {
+    const sum = bvModels.reduce((acc, m) => acc + m.predict(x), 0);
+    return {x: x, y: sum / numSamples, type: "average"};
+  });
+}
+
+Plot.plot({
+  width: 1000,
+  height: 600,
+  y: {domain: [-2, 2], grid: true},
+  x: {domain: [0, 1], grid: true},
+  marks: [
+    Plot.line(d3_reg.range(0, 1.01, 0.01), {x: d => d, y: d => trueFunc(d), stroke: "gray", strokeDasharray: "4,4", strokeWidth: 3, title: "True Function"}),
+    Plot.line(bvLines, {x: "x", y: "y", z: "lineId", stroke: "steelblue", strokeOpacity: 0.2, strokeWidth: 2, clip: true}),
+    showAverage ? Plot.line(bvAverageLine, {x: "x", y: "y", stroke: "red", strokeWidth: 5, strokeDasharray: "2,2", title: "Average Fit", clip: true}) : null
+  ]
+})
+```
+:::
+:::
+
+## Example: polynomial regression
 
 ::: {.fragment}
 - **Degree 1**: high bias (line cannot capture curvature), low variance → underfitting.
@@ -226,7 +360,7 @@ graph LR
 - The optimal degree depends on the data: amount of noise, sample size, true function complexity.
 :::
 
-## 21. Example: Ridge regression and the tradeoff
+## Example: Ridge regression and the tradeoff
 
 ::: {.fragment}
 - Ridge regression with regularization parameter \\(\lambda\\):
@@ -236,7 +370,7 @@ graph LR
 - Optimal \\(\lambda\\) minimizes total MSE, not training error [@murphy2012machine].
 :::
 
-## 22. Checkpoint: why is the MLE not always best?
+## Checkpoint: why is the MLE not always best?
 
 ::: {.fragment}
 - Maximum Likelihood Estimation is **unbiased** but can have high variance.
@@ -245,7 +379,7 @@ graph LR
 - This is the mathematical justification for regularization.
 :::
 
-## 23. Regularization — the key idea
+## Regularization — the key idea
 
 ::: {.fragment}
 - Add a **penalty** to the loss function that discourages unnecessary complexity:
@@ -260,7 +394,7 @@ $$
 - \\(\lambda > 0\\) controls the strength of regularization.
 :::
 
-## 24. Regularized ERM
+## Regularized ERM
 
 ::: {.fragment}
 - The regularized optimization problem:
@@ -276,7 +410,7 @@ $$
 - Choosing \\(\lambda\\) is a **model selection** problem, not a parameter estimation problem.
 :::
 
-## 25. Ridge regression (L2 penalty)
+## Ridge regression (L2 penalty)
 
 ::: {.fragment}
 - Penalty: \\(\Omega(\mathbf{w}) = \|\mathbf{w}\|_2^2 = \sum_j w_j^2\\).
@@ -292,7 +426,7 @@ $$
 - Equivalent to a Gaussian prior on weights in Bayesian interpretation.
 :::
 
-## 26. Ridge regression — closed-form solution
+## Ridge regression — closed-form solution
 
 ::: {.fragment}
 $$
@@ -306,7 +440,7 @@ $$
 - The closed form connects regularization directly to linear algebra [@mcclarren2021machine].
 :::
 
-## 27. Ridge regression — geometric view
+## Ridge regression — geometric view
 
 ::: {.fragment}
 - The unconstrained optimum lies at the OLS solution.
@@ -315,7 +449,7 @@ $$
 - Contour plot: elliptical loss contours intersect the circular constraint region.
 :::
 
-## 28. Lasso regression (L1 penalty)
+## Lasso regression (L1 penalty)
 
 ::: {.fragment}
 - Penalty: \\(\Omega(\mathbf{w}) = \|\mathbf{w}\|_1 = \sum_j |w_j|\\).
@@ -330,7 +464,7 @@ $$
 - Key property: Lasso can set coefficients **exactly to zero** — it performs **variable selection**.
 :::
 
-## 29. Lasso — geometric view and sparsity
+## Lasso — geometric view and sparsity
 
 ::: {.fragment}
 - The L1 constraint region is a **diamond** (in 2D) or cross-polytope (in higher dimensions).
@@ -339,7 +473,127 @@ $$
 - This geometric property is why L1 promotes sparsity while L2 does not [@mcclarren2021machine].
 :::
 
-## 30. Ridge vs Lasso — side-by-side comparison
+## Interactive Geometry: Ridge vs Lasso
+
+::: {.columns}
+::: {.column width="25%"}
+```{ojs}
+//| echo: false
+//| panel: input
+viewof regType = Inputs.radio(["Lasso (L1)", "Ridge (L2)"], {value: "Lasso (L1)", label: "Regularization Type"})
+viewof constraintT = Inputs.range([0.1, 3], {value: 1.5, step: 0.05, label: "Constraint Bound (t)"})
+```
+- A geometric view of minimizing $MSE(\mathbf{w})$ subject to $\Omega(\mathbf{w}) \leq t$.
+- In the dual, a smaller $t$ corresponds to a larger $\lambda$.
+- Notice how the optimal regularized solution (red dot) naturally strikes the corners of the L1 diamond, setting $w_2=0$ identically.
+:::
+::: {.column width="75%"}
+```{ojs}
+//| echo: false
+
+constraintRegion = {
+  if (regType === "Ridge (L2)") {
+    return d3_reg.range(0, 2 * Math.PI + 0.1, 0.1).map(theta => {
+      const r = constraintT;
+      return {w1: r * Math.cos(theta), w2: r * Math.sin(theta)};
+    });
+  } else {
+    return [
+      {w1: constraintT, w2: 0},
+      {w1: 0, w2: constraintT},
+      {w1: -constraintT, w2: 0},
+      {w1: 0, w2: -constraintT},
+      {w1: constraintT, w2: 0}
+    ];
+  }
+}
+
+minPointPerfect = {
+  const unconstrainedLoss = 0; 
+  let inRegion = false;
+  if (regType === "Ridge (L2)") {
+    inRegion = (2*2 + 1*1) <= constraintT*constraintT;
+  } else {
+    inRegion = (2 + 1) <= constraintT;
+  }
+  
+  if (inRegion) return {w1: 2, w2: 1};
+
+  let minLoss = Infinity;
+  let bestW1 = 0, bestW2 = 0;
+  
+  if (regType === "Ridge (L2)") {
+    for (let theta = 0; theta < 2*Math.PI; theta += 0.01) {
+      let w1 = constraintT * Math.cos(theta);
+      let w2 = constraintT * Math.sin(theta);
+      let loss = Math.pow(w1 - 2, 2) + 3 * Math.pow(w2 - 1, 2);
+      if (loss < minLoss) { minLoss = loss; bestW1 = w1; bestW2 = w2; }
+    }
+  } else {
+    const segments = [
+      {sw1: constraintT, sw2: 0, ew1: 0, ew2: constraintT},
+      {sw1: 0, sw2: constraintT, ew1: -constraintT, ew2: 0},
+      {sw1: -constraintT, sw2: 0, ew1: 0, ew2: -constraintT},
+      {sw1: 0, sw2: -constraintT, ew1: constraintT, ew2: 0}
+    ];
+    for (const seg of segments) {
+      for (let alpha = 0; alpha <= 1; alpha += 0.005) {
+        let w1 = seg.sw1 * (1 - alpha) + seg.ew1 * alpha;
+        let w2 = seg.sw2 * (1 - alpha) + seg.ew2 * alpha;
+        let loss = Math.pow(w1 - 2, 2) + 3 * Math.pow(w2 - 1, 2);
+        if (loss < minLoss) { minLoss = loss; bestW1 = w1; bestW2 = w2; }
+      }
+    }
+  }
+  
+  if (regType === "Lasso (L1)") {
+     if (Math.abs(bestW1) < 0.05) { bestW1 = 0; bestW2 = constraintT * Math.sign(bestW2); }
+     if (Math.abs(bestW2) < 0.05) { bestW2 = 0; bestW1 = constraintT * Math.sign(bestW1); }
+  }
+  
+  return {w1: bestW1, w2: bestW2};
+}
+
+contourLines = {
+  const lines = [];
+  const minLoss = Math.pow(minPointPerfect.w1 - 2, 2) + 3 * Math.pow(minPointPerfect.w2 - 1, 2);
+  const levels = [0.5, 2, 4, 8, 12, minLoss];
+  for (const C of levels) {
+    if (C < 0) continue;
+    const pts = [];
+    for (let alpha = 0; alpha <= 2*Math.PI + 0.1; alpha += 0.05) {
+      pts.push({
+        w1: 2 + Math.sqrt(C) * Math.cos(alpha),
+        w2: 1 + Math.sqrt(C/3) * Math.sin(alpha),
+        level: C,
+        isMin: Math.abs(C - minLoss) < 0.01
+      });
+    }
+    lines.push(pts);
+  }
+  return lines;
+}
+
+Plot.plot({
+  width: 800,
+  height: 600,
+  x: {domain: [-2, 3], grid: true, label: "Coefficient w1"},
+  y: {domain: [-2, 3], grid: true, label: "Coefficient w2"},
+  marks: [
+    ...contourLines.map(pts => 
+      Plot.line(pts, {x: "w1", y: "w2", stroke: d => d.isMin[0] ? "red" : "gray", strokeWidth: d => d.isMin[0] ? 3 : 1})
+    ),
+    Plot.line(constraintRegion, {x: "w1", y: "w2", stroke: "steelblue", fill: "steelblue", fillOpacity: 0.2, strokeWidth: 2}),
+    Plot.dot([minPointPerfect], {x: "w1", y: "w2", fill: "red", r: 8}),
+    Plot.dot([{w1: 2, w2: 1}], {x: "w1", y: "w2", fill: "black", r: 5, stroke: "white"}),
+    Plot.text([{w1: 2, w2: 1.15}], {x: "w1", y: "w2", text: () => "OLS Unconstrained Min", fill: "black"})
+  ]
+})
+```
+:::
+:::
+
+## Ridge vs Lasso — side-by-side comparison
 
 ::: {.columns}
 ::: {.column width="70%"}
@@ -361,7 +615,7 @@ $$
 :::
 :::
 
-## 31. Elastic net (brief)
+## Elastic net (brief)
 
 ::: {.fragment}
 - Combines L1 and L2 penalties:
@@ -377,7 +631,7 @@ $$
 - \\(\alpha\\) interpolates between Ridge (\\(\alpha = 0\\)) and Lasso (\\(\alpha = 1\\)).
 :::
 
-## 32. Normalization requirement
+## Normalization requirement
 
 ::: {.fragment}
 - Regularization penalizes coefficient **magnitude**.
@@ -386,7 +640,7 @@ $$
 - Standard approach: zero mean, unit variance for each feature [@mcclarren2021machine].
 :::
 
-## 33. Dropout as regularization (neural networks)
+## Dropout as regularization (neural networks)
 
 ::: {.fragment}
 - During training, randomly set each neuron's output to zero with probability \\(p\\).
@@ -395,7 +649,7 @@ $$
 - Dropout is equivalent to training an ensemble of \\(2^H\\) sub-networks (where \\(H\\) = number of hidden units).
 :::
 
-## 34. Choosing lambda — preview of cross-validation
+## Choosing lambda — preview of cross-validation
 
 ::: {.fragment}
 - \\(\lambda\\) is a **hyperparameter** — it controls model complexity but is not a model parameter.
@@ -403,7 +657,7 @@ $$
 - We need a principled method to select \\(\lambda\\): **cross-validation**.
 :::
 
-## 35. Train / validation / test — the three roles
+## Train / validation / test — the three roles
 
 ::: {.fragment}
 - **Training set**: used to fit model parameters \\(\mathbf{w}\\).
@@ -412,7 +666,7 @@ $$
 - Typical split: 60% train / 20% validation / 20% test.
 :::
 
-## 36. Why we need three sets, not two
+## Why we need three sets, not two
 
 ::: {.fragment}
 - If we use the test set to select \\(\lambda\\), the reported test performance is **optimistically biased**.
@@ -421,7 +675,7 @@ $$
 - Violation of this principle is one of the most common mistakes in applied ML.
 :::
 
-## 37. k-fold cross-validation — procedure
+## k-fold cross-validation — procedure
 
 ::: {.fragment}
 1. Split data into \\(k\\) equal folds.
@@ -439,7 +693,7 @@ $$
 - Common choice: \\(k = 5\\) or \\(k = 10\\) [@neuer2024machine].
 :::
 
-## 38. k-fold cross-validation — variance reduction
+## k-fold cross-validation — variance reduction
 
 ::: {.fragment}
 - Every data point is used for both training and evaluation (in different folds).
@@ -448,7 +702,7 @@ $$
 - Tradeoff: \\(k\\) times more expensive computationally.
 :::
 
-## 39. Leave-one-out CV
+## Leave-one-out CV
 
 ::: {.fragment}
 - Special case: \\(k = N\\) (each fold contains exactly one sample).
@@ -458,7 +712,7 @@ $$
 - Useful for very small datasets where data cannot be wasted.
 :::
 
-## 40. Choosing lambda via CV
+## Choosing lambda via CV
 
 ::: {.fragment}
 - For each candidate \\(\lambda\\), compute the CV error \\(\text{CV}(\lambda)\\).
@@ -467,7 +721,7 @@ $$
 - Alternative: the **one-standard-error rule** [@murphy2012machine].
 :::
 
-## 41. The one-standard-error rule
+## The one-standard-error rule
 
 ::: {.fragment}
 - Compute the standard error of the CV estimate at each \\(\lambda\\).
@@ -476,7 +730,7 @@ $$
 - This implements Occam's razor in a principled, data-driven way.
 :::
 
-## 42. Model selection: complexity vs performance
+## Model selection: complexity vs performance
 
 ::: {.fragment}
 - Cross-validation is not limited to tuning \\(\lambda\\).
@@ -485,7 +739,7 @@ $$
 - Select the model family with the best outer CV performance.
 :::
 
-## 43. Grouped / stratified CV for materials data
+## Grouped / stratified CV for materials data
 
 ::: {.fragment}
 - Standard k-fold assumes **IID** data — often violated in engineering applications.
@@ -494,7 +748,7 @@ $$
 - Ignoring data structure leads to over-optimistic CV estimates.
 :::
 
-## 44. Checkpoint MCQ slide
+## Checkpoint MCQ slide
 
 ::: {.fragment}
 - **Scenario**: A student uses the test set to tune \\(\lambda\\), then reports test set accuracy as the model's generalization performance. What goes wrong?
@@ -507,7 +761,7 @@ $$
 - **Answer**: C — the test set was used for selection, so it no longer provides an unbiased estimate.
 :::
 
-## 45. Materials example: overfitting in alloy property prediction
+## Materials example: overfitting in alloy property prediction
 
 ::: {.fragment}
 - Setting: predicting hardness from 50 compositional features using only 200 samples.
@@ -520,7 +774,7 @@ $$
 ![Hardness prediction error vs model complexity.](images/hardness_bv.png){width=80%}
 :::
 
-## 46. Materials example: Lasso for identifying governing features
+## Materials example: Lasso for identifying governing features
 
 ::: {.fragment}
 - Starting from 100 candidate features (composition, processing, microstructure).
@@ -533,7 +787,7 @@ $$
 ![Lasso coefficient paths vs regularization strength.](images/lasso_path.png){width=80%}
 :::
 
-## 47. Materials example: polynomial models for process-property curves
+## Materials example: polynomial models for process-property curves
 
 ::: {.fragment}
 - A high-degree polynomial captures batch-to-batch noise in sintering temperature vs density data.
@@ -546,14 +800,14 @@ $$
 ![Comparison of underfitting, good fit, and overfitting.](images/fit_comparison.png){width=80%}
 :::
 
-## 48. Lecture-essential vs exercise content split
+## Lecture-essential vs exercise content split
 
 ::: {.fragment}
 - **Lecture**: bias-variance decomposition derivation, regularization formulation, geometric interpretation, CV design, model selection principles.
 - **Exercise**: polynomial overfitting demo, \\(\lambda\\) sweeps for Ridge vs Lasso, CV implementation in Python, materials feature selection.
 :::
 
-## 49. Exam-aligned summary: 10 must-know statements
+## Exam-aligned summary: 10 must-know statements
 
 ::: {.fragment}
 1. Generalization gap = test error − training error.
@@ -568,7 +822,7 @@ $$
 10. Model selection balances complexity against validated performance.
 :::
 
-## 50. References + reading assignment for next unit
+## References + reading assignment for next unit
 
 ::: {.fragment}
 - **Required reading before Unit 8:**
