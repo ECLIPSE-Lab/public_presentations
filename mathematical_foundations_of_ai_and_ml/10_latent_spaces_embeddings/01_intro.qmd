@@ -6,8 +6,6 @@ author:
   - name: Prof. Dr. Philipp Pelz
     affiliation:
       - FAU Erlangen-Nürnberg
-execute:
-  eval: false
 format:
   revealjs:
     width: 1920
@@ -52,7 +50,7 @@ By the end of this lecture, students can:
 
 | Space | Definition | Structure |
 |-------|:----------:|:---------:|
-| Feature space | Raw measurements (\(\mathbb{R}^d\)) | High-dimensional, redundant |
+| Feature space | Raw measurements ($\mathbb{R}^d$) | High-dimensional, redundant |
 | PCA eigenspace | Linear projection onto top eigenvectors | Flat subspace, orthogonal axes |
 | Latent space | Learned embedding (possibly nonlinear) | Captures manifold structure |
 
@@ -71,9 +69,9 @@ By the end of this lecture, students can:
 ::: {.columns}
 ::: {.column width="45%"}
 ::: {.incremental}
-- Encoder \(f_\phi: \mathbb{R}^{d_{\mathbf{x}}} \to \mathbb{R}^{d_{\mathbf{z}}}\) maps each input to a latent code.
-- The collection \(\{\mathbf{z}_i = f_\phi(\mathbf{x}_i)\}\) forms a **point cloud** in the latent space.
-- The decoder \(g_\psi\) ensures the latent code retains enough information for reconstruction.
+- Encoder $f_\phi: \mathbb{R}^{d_{\mathbf{x}}} \to \mathbb{R}^{d_{\mathbf{z}}}$ maps each input to a latent code.
+- The collection $\{\mathbf{z}_i = f_\phi(\mathbf{x}_i)\}$ forms a **point cloud** in the latent space.
+- The decoder $g_\psi$ ensures the latent code retains enough information for reconstruction.
 :::
 :::
 
@@ -95,8 +93,8 @@ graph LR
 ::: {.incremental}
 - An **embedding** assigns each data point a coordinate in the latent space.
 - Good embeddings preserve meaningful relationships:
-  - Similar inputs \(\to\) nearby embeddings.
-  - Different inputs \(\to\) distant embeddings.
+  - Similar inputs $\to$ nearby embeddings.
+  - Different inputs $\to$ distant embeddings.
 - The quality of the embedding determines the utility of the latent space.
 :::
 
@@ -156,15 +154,45 @@ graph LR
 
 ## Latent space interpolation
 
-::: {.incremental}
+::: {.columns}
+::: {.column width="45%"}
 - Linearly interpolate between two latent codes:
+  $\mathbf{z}_{\text{mix}} = \alpha \mathbf{z}_1 + (1-\alpha) \mathbf{z}_2$
+- Decode $\mathbf{z}_{\text{mix}}$ to observe structural transitions.
+- **Example**: Latent space encodes `[frequency, phase]`. Interpolating yields smooth structural changes in the generated waveform.
+- **Smooth interpolation** proves the latent space has learned a meaningful, continuous representation.
+:::
 
-$$
-\mathbf{z}_{\text{mix}} = \alpha \mathbf{z}_1 + (1-\alpha) \mathbf{z}_2, \quad \alpha \in [0, 1]
-$$
+::: {.column width="55%"}
+```{ojs}
+//| echo: false
+viewof alpha_interp = Inputs.range([0, 1], {value: 0.5, step: 0.01, label: "α (Interpolation)"})
 
-- Decode $\mathbf{z}_{\text{mix}}$ to observe smooth transitions between inputs.
-- **Smooth interpolation** = the latent space has learned a meaningful, continuous representation.
+z1_latent = [1, 0]      // freq 1, phase 0
+z2_latent = [5, Math.PI] // freq 5, phase pi
+
+z_mix_latent = [
+  alpha_interp * z1_latent[0] + (1 - alpha_interp) * z2_latent[0],
+  alpha_interp * z1_latent[1] + (1 - alpha_interp) * z2_latent[1]
+]
+
+x_interp = d3.range(0, 4 * Math.PI, 0.05)
+
+Plot.plot({
+  width: 550,
+  height: 350,
+  y: {domain: [-1.2, 1.2], label: "Decoded Output"},
+  x: {domain: [0, 4 * Math.PI], label: "x"},
+  marks: [
+    Plot.ruleY([0]),
+    Plot.line(x_interp, {x: d => d, y: d => Math.sin(z1_latent[0] * d + z1_latent[1]), stroke: "black", strokeOpacity: 0.2}),
+    Plot.line(x_interp, {x: d => d, y: d => Math.sin(z2_latent[0] * d + z2_latent[1]), stroke: "black", strokeOpacity: 0.2}),
+    Plot.line(x_interp, {x: d => d, y: d => Math.sin(z_mix_latent[0] * d + z_mix_latent[1]), stroke: "blue", strokeWidth: 3, title: "Interpolated"}),
+    Plot.text([[2 * Math.PI, 1.1]], {text: [`Freq: ${z_mix_latent[0].toFixed(2)}, Phase: ${(z_mix_latent[1]/Math.PI).toFixed(2)}π`], fill: "blue", fontSize: 16})
+  ]
+})
+```
+:::
 :::
 
 ## Latent space arithmetic
@@ -208,7 +236,7 @@ $$
 ## Step 1: Gaussian similarities in high dimensions
 
 ::: {.fragment}
-- For each pair \((i, j)\), define the conditional probability that \(j\) is a neighbor of \(i\):
+- For each pair $(i, j)$, define the conditional probability that $j$ is a neighbor of $i$:
 :::
 
 ::: {.fragment}
@@ -218,58 +246,117 @@ $$
 :::
 
 ::: {.fragment}
-- \(\sigma_i\) is chosen per point to achieve a target **perplexity**.
+- $\sigma_i$ is chosen per point to achieve a target **perplexity**.
 :::
 
 ## Perplexity parameter
 
-- Perplexity \(\approx\) effective number of neighbors considered for each point.
-::: {.fragment}
-- Low perplexity (5): very local structure; many small clusters.
+::: {.columns}
+::: {.column width="45%"}
+- Perplexity $\approx$ effective number of neighbors considered for a point.
+  - **Low** (e.g. 5): local structure, many clusters.
+  - **High** (e.g. 50): broader neighborhoods.
+- The algorithm adjusts $\sigma_i$ to match the target perplexity. Dense regions get smaller $\sigma_i$, sparse get larger.
+- *Adjust $\sigma_i$ to see how the neighborhood probability $p_{j|i}$ changes for the red point.*
 :::
-::: {.fragment}
-- High perplexity (50): broader neighborhoods; fewer, larger clusters.
+
+::: {.column width="55%"}
+```{ojs}
+//| echo: false
+viewof sigma_tsne = Inputs.range([0.1, 4], {value: 1, step: 0.1, label: "Bandwidth (σ_i)"})
+
+pts_tsne = [-3, -2, -0.5, 0, 0.8, 2.5, 4]
+target_idx_tsne = 3
+
+function p_ji_tsne(idx_i, idx_j, sigma) {
+  if (idx_i === idx_j) return 0;
+  let dist_sq = (pts_tsne[idx_i] - pts_tsne[idx_j])**2;
+  let num = Math.exp(-dist_sq / (2 * sigma * sigma));
+  let den = 0;
+  for (let k = 0; k < pts_tsne.length; k++) {
+    if (k !== idx_i) {
+      den += Math.exp(-((pts_tsne[idx_i] - pts_tsne[k])**2) / (2 * sigma * sigma));
+    }
+  }
+  return num / den;
+}
+
+tsne_data = pts_tsne.map((x, i) => ({
+  x: x,
+  p: p_ji_tsne(target_idx_tsne, i, sigma_tsne),
+  is_target: i === target_idx_tsne
+}))
+
+Plot.plot({
+  width: 550,
+  height: 350,
+  x: {domain: [-4.5, 4.5], label: "Data points (1D Space)"},
+  y: {domain: [-0.1, 1], label: "Probability p_{j|i}"},
+  marks: [
+    Plot.ruleY([0]),
+    Plot.line(d3.range(-5, 5, 0.1), {
+      x: d => d, 
+      y: d => Math.exp(-Math.pow(d - pts_tsne[target_idx_tsne], 2) / (2 * sigma_tsne * sigma_tsne)), 
+      stroke: "gray", strokeDasharray: "4"
+    }),
+    Plot.ruleX(tsne_data.filter(d => !d.is_target), {x: "x", y1: 0, y2: "p", stroke: "blue", strokeWidth: 4}),
+    Plot.dot(tsne_data.filter(d => !d.is_target), {x: "x", y: "p", fill: "blue", r: 6}),
+    Plot.dot(tsne_data, {x: "x", y: -0.02, fill: d => d.is_target ? "red" : "black", r: d => d.is_target ? 8 : 5})
+  ]
+})
+```
 :::
-::: {.fragment}
-- Typical range: 5–50. The bandwidth \(\sigma_i\) is set via binary search for each point.
 :::
 
 ## Step 2: Student-t similarities in low dimensions
 
-::: {.fragment}
-- In the 2D embedding, define similarities using a **Student-t distribution** with one degree of freedom:
-:::
+- In the 2D embedding space, similarities are defined using a **Student-t distribution** (1 degree of freedom):
 
-::: {.fragment}
 $$
 q_{ij} = \frac{(1 + \|\mathbf{y}_i - \mathbf{y}_j\|^2)^{-1}}{\sum_{k \neq l}(1 + \|\mathbf{y}_k - \mathbf{y}_l\|^2)^{-1}}
 $$
+
+- The heavy tails of the Student-t distribution allow distant points to spread out in the embedding, avoiding the **crowding problem**.
+
+
+## The crowding problem: why heavy tails?
+
+::: {.columns}
+::: {.column width="45%"}
+- In high dimensions, the available volume grows exponentially. Many points can be mutually almost equidistant.
+- When mapped to 2D, they naturally crowd into a small area.
+- Using a Gaussian in both spaces $\to$ points collapse together.
+- Student-t has **heavier tails**: to achieve the same similarity $q_{ij}$ for moderately similar points, they must be placed **further apart** in 2D space.
 :::
 
-::: {.fragment}
-- The heavy tails of the Student-t allow distant points to spread out in the embedding.
-:::
+::: {.column width="55%"}
+```{ojs}
+//| echo: false
+viewof distScale = Inputs.range([1, 10], {value: 4, step: 0.1, label: "Viewing Distance"})
 
-## The crowding problem
+x_vals_t = d3.range(-distScale, distScale, distScale/200)
 
-- Mapping from high to low dimensions creates a **crowding problem**:
-::: {.fragment}
-  - In high dimensions, many points can be moderately distant.
+Plot.plot({
+  width: 550,
+  height: 350,
+  y: {domain: [0, 0.45], label: "Similarity / Density"},
+  x: {domain: [-distScale, distScale], label: "Distance ||y_i - y_j||"},
+  marks: [
+    Plot.ruleY([0]),
+    Plot.line(x_vals_t, {x: d => d, y: d => Math.exp(-d*d/2) / Math.sqrt(2*Math.PI), stroke: "blue", strokeWidth: 3}),
+    Plot.line(x_vals_t, {x: d => d, y: d => Math.PI**(-1) * (1 + d*d)**(-1), stroke: "red", strokeWidth: 3}),
+    Plot.text([[distScale*0.5, 0.4]], {text: ["Gaussian similarity"], fill: "blue", fontSize: 16}),
+    Plot.text([[distScale*0.5, 0.35]], {text: ["Student-t similarity"], fill: "red", fontSize: 16})
+  ]
+})
+```
 :::
-::: {.fragment}
-  - In 2D, they crowd into a small area.
-:::
-::: {.fragment}
-- Using Gaussian in both spaces → moderate-distance points collapse together.
-:::
-::: {.fragment}
-- The Student-t distribution's heavier tails solve this by allowing more spread.
 :::
 
 ## Step 3: KL divergence minimization
 
 ::: {.fragment}
-- Minimize the KL divergence between high-dim (\(\mathbf{P}\)) and low-dim (\(\mathbf{Q}\)) similarities:
+- Minimize the KL divergence between high-dim ($\mathbf{P}$) and low-dim ($\mathbf{Q}$) similarities:
 :::
 
 ::: {.fragment}
@@ -279,7 +366,7 @@ $$
 :::
 
 ::: {.fragment}
-- Optimize the embedding coordinates \(\{\mathbf{y}_i\}\) via gradient descent.
+- Optimize the embedding coordinates $\{\mathbf{y}_i\}$ via gradient descent.
 :::
 ::: {.fragment}
 - Asymmetric KL: heavily penalizes nearby points being mapped far apart.
@@ -318,7 +405,7 @@ $$
 | Strengths | Weaknesses |
 |:---------:|:----------:|
 | Excellent local structure | No global distance preservation |
-| Handles complex manifolds | \(O(N^2)\) complexity (slow) |
+| Handles complex manifolds | $O(N^2)$ complexity (slow) |
 | Reveals clusters and subgroups | Non-parametric (no new-point mapping) |
 | Widely used and understood | Hyperparameter-sensitive |
 
@@ -331,7 +418,7 @@ $$
 
 - Based on **topological data analysis** and manifold theory (McInnes et al., 2018).
 - Key advantages over t-SNE:
-  - Faster (approximate nearest neighbors, \(O(N \log N)\)).
+  - Faster (approximate nearest neighbors, $O(N \log N)$).
   - Better preserves **global structure**.
   - Supports **transform** of new data points.
 
@@ -339,7 +426,7 @@ $$
 
 | Aspect | t-SNE | UMAP |
 |--------|:-----:|:----:|
-| Speed | Slow (\(O(N^2)\)) | Fast (\(O(N \log N)\)) |
+| Speed | Slow ($O(N^2)$) | Fast ($O(N \log N)$) |
 | Global structure | Poor | Better preserved |
 | New points | Must rerun | Transform method available |
 | Theory | KL divergence | Topological / cross-entropy |
@@ -360,20 +447,20 @@ $$
 k(\mathbf{x}_i, \mathbf{x}_j) = \phi(\mathbf{x}_i)^\top \phi(\mathbf{x}_j)
 $$
 
-- The kernel implicitly maps data to a high-dimensional feature space \(\phi(\mathbf{x})\).
+- The kernel implicitly maps data to a high-dimensional feature space $\phi(\mathbf{x})$.
 - PCA in this space captures nonlinear structure in the original space [@bishop2006pattern].
 
 ## Common kernels
 
-- **RBF (Gaussian)**: \(k(\mathbf{x}_i, \mathbf{x}_j) = \exp(-\gamma \|\mathbf{x}_i - \mathbf{x}_j\|^2)\) — captures smooth nonlinearity.
-- **Polynomial**: \(k(\mathbf{x}_i, \mathbf{x}_j) = (\mathbf{x}_i^\top \mathbf{x}_j + c)^d\) — captures polynomial interactions.
-- **Sigmoid**: \(k(\mathbf{x}_i, \mathbf{x}_j) = \tanh(\alpha \mathbf{x}_i^\top \mathbf{x}_j + c)\) — neural network connection.
+- **RBF (Gaussian)**: $k(\mathbf{x}_i, \mathbf{x}_j) = \exp(-\gamma \|\mathbf{x}_i - \mathbf{x}_j\|^2)$ — captures smooth nonlinearity.
+- **Polynomial**: $k(\mathbf{x}_i, \mathbf{x}_j) = (\mathbf{x}_i^\top \mathbf{x}_j + c)^d$ — captures polynomial interactions.
+- **Sigmoid**: $k(\mathbf{x}_i, \mathbf{x}_j) = \tanh(\alpha \mathbf{x}_i^\top \mathbf{x}_j + c)$ — neural network connection.
 - The kernel choice encodes assumptions about the data structure.
 
 ## Kernel PCA: strengths and limitations
 
 - **Strengths**: principled (eigenvalue decomposition), captures nonlinear structure, theoretical guarantees.
-- **Limitations**: \(O(N^2)\) memory for kernel matrix, no density estimation, kernel selection requires care.
+- **Limitations**: $O(N^2)$ memory for kernel matrix, no density estimation, kernel selection requires care.
 - Best suited for moderate-sized datasets where a kernel can be specified.
 
 ## Comparison: PCA, kernel PCA, t-SNE, UMAP
@@ -382,10 +469,10 @@ $$
 ::: {.column width="65%"}
 | Method | Linear? | Preserves | Scalability | New points |
 |--------|:-------:|:---------:|:-----------:|:----------:|
-| PCA | Yes | Global variance | \(O(d^2 N)\) | Yes |
-| Kernel PCA | No | Kernel similarity | \(O(N^3)\) | Limited |
-| t-SNE | No | Local neighborhoods | \(O(N^2)\) | No |
-| UMAP | No | Local + some global | \(O(N \log N)\) | Yes |
+| PCA | Yes | Global variance | $O(d^2 N)$ | Yes |
+| Kernel PCA | No | Kernel similarity | $O(N^3)$ | Limited |
+| t-SNE | No | Local neighborhoods | $O(N^2)$ | No |
+| UMAP | No | Local + some global | $O(N \log N)$ | Yes |
 :::
 
 ::: {.column width="35%"}
@@ -402,7 +489,7 @@ $$
 - **Quick exploration**: PCA (fast, interpretable).
 - **Visualization of clusters**: t-SNE or UMAP (nonlinear, reveals structure).
 - **Feature extraction for ML**: PCA or autoencoder (produces reusable features).
-- **Nonlinear feature extraction**: kernel PCA (moderate \(N\)) or autoencoder (large \(N\)).
+- **Nonlinear feature extraction**: kernel PCA (moderate $N$) or autoencoder (large $N$).
 
 ## Anomaly detection in latent space
 
@@ -412,16 +499,16 @@ $$
 
 ## Strategy 1: reconstruction error revisited
 
-- High reconstruction error \(\|\mathbf{x} - g(f(\mathbf{x}))\|\) indicates the input differs from learned patterns.
+- High reconstruction error $\|\mathbf{x} - g(f(\mathbf{x}))\|$ indicates the input differs from learned patterns.
 - Set threshold from validation normal distribution.
 - Limitation: some anomalies may reconstruct well if they share local structure with normals.
 
 ## Strategy 2: latent density estimation
 
 - Fit a density model to normal latent embeddings:
-  - Gaussian: \(p(\mathbf{z}) = \mathcal{N}(\mathbf{z}; \hat{\boldsymbol{\mu}}, \hat{\boldsymbol{\Sigma}})\).
-  - GMM: \(p(\mathbf{z}) = \sum_k \pi_k \mathcal{N}(\mathbf{z}; \mu_k, \Sigma_k)\).
-- Anomaly score: \(-\log p(\mathbf{z})\). High score = low density = potential anomaly.
+  - Gaussian: $p(\mathbf{z}) = \mathcal{N}(\mathbf{z}; \hat{\boldsymbol{\mu}}, \hat{\boldsymbol{\Sigma}})$.
+  - GMM: $p(\mathbf{z}) = \sum_k \pi_k \mathcal{N}(\mathbf{z}; \mu_k, \Sigma_k)$.
+- Anomaly score: $-\log p(\mathbf{z})$. High score = low density = potential anomaly.
 
 ## Combining both strategies
 
@@ -433,8 +520,8 @@ $$
 
 ## Conditional latent probabilities and trust
 
-- For classification, compute \(p(\text{class} | \mathbf{z})\) using a classifier trained in latent space.
-- Low maximum probability \(\max_c p(c | \mathbf{z})\) indicates **uncertain** classification.
+- For classification, compute $p(\text{class} | \mathbf{z})$ using a classifier trained in latent space.
+- Low maximum probability $\max_c p(c | \mathbf{z})$ indicates **uncertain** classification.
 - Use this as a **trust score**: predictions with low trust are flagged for human review [@neuer2024machine].
 
 ## Trust quantification in deployment
@@ -464,7 +551,7 @@ $$
 
 ::: {.columns}
 ::: {.column width="50%"}
-- Track latent embeddings \(\mathbf{z}_t\) over time during a manufacturing process.
+- Track latent embeddings $\mathbf{z}_t$ over time during a manufacturing process.
 - **Drift** from the normal cluster indicates process degradation.
 - Advantage over raw sensor monitoring: latent space distills many sensors into a compact signal.
 - Early drift detection enables preventive maintenance.
