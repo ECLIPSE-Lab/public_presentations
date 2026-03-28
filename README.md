@@ -4,8 +4,8 @@ Central link index for lecture decks and units.
 
 ## Data Science for Electron Microscopy
 
-- **Unit 01: Intro** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/01_intro/template.html) · [Source](./data_science_for_em/01_intro/template.qmd)
-- **Unit 02: Regression** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/02_regression/template.html) · [Source](./data_science_for_em/02_regression/template.qmd)
+- **Unit 01: Intro** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/01_intro/docs/template.html) · [Source](./data_science_for_em/01_intro/template.qmd)
+- **Unit 02: Regression** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/02_regression/docs/template.html) · [Source](./data_science_for_em/02_regression/template.qmd)
 - **Unit 03: CNNs** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/03_cnns/template.html) · [Source](./data_science_for_em/03_cnns/template.qmd)
 - **Unit 04: Self-Supervised Learning** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/04_selfsupervised/template.html) · [Source](./data_science_for_em/04_selfsupervised/template.qmd)
 - **Unit 05: GANs** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/05_gan/template.html) · [Source](./data_science_for_em/05_gan/template.qmd)
