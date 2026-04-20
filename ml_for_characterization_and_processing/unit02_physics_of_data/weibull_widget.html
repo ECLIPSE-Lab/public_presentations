@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: transparent;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 10px;
+            background: #f8f9fa;
+            padding: 18px 20px;
+            border-radius: 12px;
+            border: 1px solid #e9ecef;
+            width: 92%;
+            box-sizing: border-box;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+        }
+        label {
+            font-weight: 600;
+            font-size: 16px;
+            color: #333;
+            width: 360px;
+        }
+        input[type=range] {
+            flex: 1;
+            margin-left: 20px;
+        }
+        .info {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            width: 92%;
+            box-sizing: border-box;
+        }
+        .regime-infant  { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .regime-random  { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .regime-wearout { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .regime-gauss   { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
+        .stats {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-around;
+            width: 92%;
+            margin-top: 8px;
+            font-size: 14px;
+            color: #495057;
+        }
+        .stat-box {
+            background: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 6px 10px;
+            min-width: 110px;
+            text-align: center;
+        }
+        .stat-label { font-weight: 600; color: #212529; }
+        .stat-value { font-family: "Courier New", monospace; color: #007bff; }
+        #plot {
+            width: 98%;
+            height: 420px;
+            margin-top: 8px;
+        }
+        .math-symbol {
+            font-style: italic;
+            font-family: "Times New Roman", Times, serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="control-group">
+            <label for="shape">Shape <span class="math-symbol">k</span> (Weibull modulus): <span id="shapeVal">1.5</span></label>
+            <input type="range" id="shape" min="0.3" max="8.0" step="0.05" value="1.5">
+        </div>
+        <div class="control-group">
+            <label for="scale">Scale <span class="math-symbol">&lambda;</span> (characteristic life): <span id="scaleVal">1.0</span></label>
+            <input type="range" id="scale" min="0.3" max="3.0" step="0.05" value="1.0">
+        </div>
+    </div>
+
+    <div class="info" id="regimeMessage"></div>
+
+    <div class="stats">
+        <div class="stat-box"><span class="stat-label">Mean</span><br><span class="stat-value" id="meanVal">–</span></div>
+        <div class="stat-box"><span class="stat-label">Median</span><br><span class="stat-value" id="medianVal">–</span></div>
+        <div class="stat-box"><span class="stat-label">Mode</span><br><span class="stat-value" id="modeVal">–</span></div>
+        <div class="stat-box"><span class="stat-label">Std dev</span><br><span class="stat-value" id="stdVal">–</span></div>
+        <div class="stat-box"><span class="stat-label">Skewness</span><br><span class="stat-value" id="skewVal">–</span></div>
+    </div>
+
+    <div id="plot"></div>
+
+    <script>
+        const shapeSlider  = document.getElementById('shape');
+        const scaleSlider  = document.getElementById('scale');
+        const shapeVal     = document.getElementById('shapeVal');
+        const scaleVal     = document.getElementById('scaleVal');
+        const regimeBanner = document.getElementById('regimeMessage');
+
+        // Lanczos approximation of the gamma function (accurate to ~1e-15)
+        function gamma(z) {
+            const g = 7;
+            const c = [
+                0.99999999999980993,
+                676.5203681218851,
+                -1259.1392167224028,
+                771.32342877765313,
+                -176.61502916214059,
+                12.507343278686905,
+                -0.13857109526572012,
+                9.9843695780195716e-6,
+                1.5056327351493116e-7
+            ];
+            if (z < 0.5) {
+                return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+            }
+            z -= 1;
+            let x = c[0];
+            for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
+            const t = z + g + 0.5;
+            return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+        }
+
+        function weibullPDF(x, k, lam) {
+            if (x < 0) return 0;
+            if (x === 0) return (k === 1) ? 1 / lam : (k < 1 ? Infinity : 0);
+            const u = x / lam;
+            return (k / lam) * Math.pow(u, k - 1) * Math.exp(-Math.pow(u, k));
+        }
+
+        function weibullCDF(x, k, lam) {
+            if (x <= 0) return 0;
+            return 1 - Math.exp(-Math.pow(x / lam, k));
+        }
+
+        function weibullHazard(x, k, lam) {
+            if (x <= 0) return (k < 1) ? Infinity : (k === 1 ? 1 / lam : 0);
+            return (k / lam) * Math.pow(x / lam, k - 1);
+        }
+
+        function setRegime(k) {
+            let klass, msg;
+            if (k < 0.95) {
+                klass = "regime-infant";
+                msg = `Infant-mortality regime (k = ${k.toFixed(2)} < 1): hazard DECREASES with time &mdash; early failures from manufacturing defects.`;
+            } else if (k < 1.05) {
+                klass = "regime-random";
+                msg = `Random-failure regime (k ≈ 1): constant hazard &mdash; Weibull reduces to the EXPONENTIAL distribution (memoryless).`;
+            } else if (k < 3.0) {
+                klass = "regime-wearout";
+                msg = `Early wear-out regime (1 &lt; k &lt; 3): hazard INCREASES with time &mdash; fatigue, corrosion, creep.`;
+            } else if (k < 3.8) {
+                klass = "regime-gauss";
+                msg = `Near-Gaussian regime (k ≈ 3.4): Weibull is nearly symmetric &mdash; classical wear-out.`;
+            } else {
+                klass = "regime-wearout";
+                msg = `Strong wear-out regime (k = ${k.toFixed(2)} &gt; 3.8): steeply increasing hazard &mdash; uniform specimens, tight strength distribution.`;
+            }
+            regimeBanner.className = "info " + klass;
+            regimeBanner.innerHTML = msg;
+        }
+
+        function updateStats(k, lam) {
+            const mean   = lam * gamma(1 + 1 / k);
+            const median = lam * Math.pow(Math.LN2, 1 / k);
+            const mode   = (k > 1) ? lam * Math.pow((k - 1) / k, 1 / k) : 0;
+            const var_   = lam * lam * (gamma(1 + 2 / k) - Math.pow(gamma(1 + 1 / k), 2));
+            const std    = Math.sqrt(var_);
+            const mu1    = gamma(1 + 1 / k);
+            const mu2    = gamma(1 + 2 / k);
+            const mu3    = gamma(1 + 3 / k);
+            const num    = mu3 - 3 * mu1 * mu2 + 2 * Math.pow(mu1, 3);
+            const den    = Math.pow(mu2 - mu1 * mu1, 1.5);
+            const skew   = num / den;
+
+            document.getElementById('meanVal').textContent   = mean.toFixed(3);
+            document.getElementById('medianVal').textContent = median.toFixed(3);
+            document.getElementById('modeVal').textContent   = mode.toFixed(3);
+            document.getElementById('stdVal').textContent    = std.toFixed(3);
+            document.getElementById('skewVal').textContent   = skew.toFixed(3);
+            return { mean, median, mode, std };
+        }
+
+        function updatePlot() {
+            const k   = parseFloat(shapeSlider.value);
+            const lam = parseFloat(scaleSlider.value);
+            shapeVal.textContent = k.toFixed(2);
+            scaleVal.textContent = lam.toFixed(2);
+
+            setRegime(k);
+            const s = updateStats(k, lam);
+
+            const xMax = Math.max(4.0, 2.5 * lam, s.mean + 4 * s.std);
+            const nPts = 400;
+            const xs = [];
+            const pdf = [];
+            const cdf = [];
+            const haz = [];
+            for (let i = 0; i <= nPts; i++) {
+                const x = (i / nPts) * xMax;
+                xs.push(x);
+                pdf.push(weibullPDF(x, k, lam));
+                cdf.push(weibullCDF(x, k, lam));
+                haz.push(weibullHazard(x, k, lam));
+            }
+
+            const yMaxPDF = Math.min(Math.max(...pdf.filter(v => isFinite(v))) * 1.15, 10);
+            const yMaxHaz = Math.min(Math.max(...haz.filter(v => isFinite(v))) * 1.15, 12);
+
+            const tracePDF = {
+                x: xs, y: pdf,
+                mode: 'lines', name: 'PDF p(x)',
+                line: { color: '#0d6efd', width: 3 },
+                fill: 'tozeroy',
+                fillcolor: 'rgba(13,110,253,0.15)',
+                xaxis: 'x1', yaxis: 'y1'
+            };
+            const traceCDF = {
+                x: xs, y: cdf,
+                mode: 'lines', name: 'CDF F(x)',
+                line: { color: '#198754', width: 2, dash: 'dot' },
+                xaxis: 'x1', yaxis: 'y2'
+            };
+
+            // Markers at characteristic locations on PDF
+            const markerX = [s.mean, s.median];
+            const markerY = [weibullPDF(s.mean, k, lam), weibullPDF(s.median, k, lam)];
+            const markerText = ['mean', 'median'];
+            if (k > 1) {
+                markerX.push(s.mode);
+                markerY.push(weibullPDF(s.mode, k, lam));
+                markerText.push('mode');
+            }
+            const traceMarkers = {
+                x: markerX, y: markerY,
+                mode: 'markers+text', name: 'Key points',
+                text: markerText, textposition: 'top center',
+                marker: { color: '#dc3545', size: 10, line: { color: 'white', width: 2 } },
+                xaxis: 'x1', yaxis: 'y1',
+                textfont: { size: 11, color: '#dc3545' },
+                showlegend: false
+            };
+
+            const traceHaz = {
+                x: xs, y: haz,
+                mode: 'lines', name: 'Hazard h(x)',
+                line: { color: '#fd7e14', width: 3 },
+                xaxis: 'x2', yaxis: 'y3'
+            };
+
+            const layout = {
+                grid: { rows: 1, columns: 2, pattern: 'independent', xgap: 0.15 },
+                xaxis:  { title: 'x', domain: [0, 0.48], fixedrange: true },
+                yaxis:  { title: 'PDF p(x)', fixedrange: true, range: [0, yMaxPDF] },
+                yaxis2: { title: 'CDF F(x)', overlaying: 'y', side: 'right',
+                          range: [0, 1], fixedrange: true, showgrid: false, tickfont: { color: '#198754' } },
+                xaxis2: { title: 'x', domain: [0.58, 1.0], fixedrange: true, anchor: 'y3' },
+                yaxis3: { title: 'Hazard h(x)', fixedrange: true, range: [0, yMaxHaz], anchor: 'x2' },
+                margin: { t: 30, b: 50, l: 55, r: 55 },
+                legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center' },
+                plot_bgcolor: '#ffffff',
+                paper_bgcolor: 'transparent',
+                annotations: [
+                    { text: 'PDF (blue) & CDF (green)', x: 0.24, y: 1.04, xref: 'paper', yref: 'paper',
+                      showarrow: false, font: { size: 13, color: '#495057' } },
+                    { text: 'Hazard function h(x) = p(x)/(1-F(x))', x: 0.79, y: 1.04, xref: 'paper', yref: 'paper',
+                      showarrow: false, font: { size: 13, color: '#495057' } }
+                ]
+            };
+
+            Plotly.newPlot('plot', [tracePDF, traceCDF, traceMarkers, traceHaz],
+                           layout, { responsive: true, displayModeBar: false });
+        }
+
+        shapeSlider.addEventListener('input', updatePlot);
+        scaleSlider.addEventListener('input', updatePlot);
+        updatePlot();
+    </script>
+</body>
+</html>
