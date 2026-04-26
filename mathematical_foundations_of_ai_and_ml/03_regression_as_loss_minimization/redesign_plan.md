@@ -18,7 +18,7 @@
 - **Target file:** `mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.qmd`
 - **Render verification command (full):** `cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -30`
 - **Render verification command (fast):** `cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto check 01_intro.qmd 2>&1 | tail -10`
-- **Slide-count check:** `grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.qmd` (target: 49 at the end; section comment markers do not count).
+- **Slide-count check:** `grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.qmd` (target: **48** `## ` headings at the end. The spec says 49 *visible* slides; the auto-title slide generated from the YAML `title:` field is slide 1 (no `## ` heading), so the expected `## ` count is one less than the spec's slide count throughout this plan.).
 - **Commits:** No `Co-Authored-By: Claude` trailer (per repo convention).
 - **Backup of old content:** the current `01_intro.qmd` is checked into `main` at commit `09384b1d` (or whatever HEAD is at Task 1 start). Use `git show HEAD:<path>` to retrieve original content during port tasks.
 - **Section markers** in the scaffolded file use HTML comments: `<!-- ===== §N. Section Name ===== -->` so they're invisible in the rendered HTML and easy to find via `grep`.
@@ -115,20 +115,14 @@ git commit -m "unit 03 redesign: scaffold new file with section markers"
 **Files:**
 - Modify: `mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.qmd`
 
-- [ ] **Step 1: Replace the §1 marker with the four setup slides**
+**Note on slide 1:** Spec slide 1 is "Title — standard MFML title-slide partial," which is the auto-generated title slide from the YAML `title:` field — it is NOT a `## ` heading. So §1 contributes **3** `## ` headings (slides 2, 3, 4 of the spec), plus the auto-title for visible slide 1.
+
+- [ ] **Step 1: Replace the §1 marker with the three setup `## ` slides**
 
 Use `Edit` to replace `<!-- ===== §1. Setup & framing ===== -->` with:
 
 ````markdown
 <!-- ===== §1. Setup & framing ===== -->
-
-## Regression and Classification as Loss Minimization
-
-::: {.incremental}
-- **The bridge** from data analysis (Unit 2) to learning: turn modeling into an optimization problem.
-- **Today's thesis:** loss → optimizer → model class — three threads that unify in the exponential family.
-- **Scope:** the mathematical scaffolding behind every supervised learner you'll meet for the rest of this course.
-:::
 
 ## Where we are in the triad
 
@@ -182,7 +176,7 @@ By the end of this unit, students can:
 - [ ] **Step 2: Verify slide count**
 
 Run: `grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.qmd`
-Expected: `4` (slides for §1).
+Expected: `3` (`## ` slides for §1; auto-title is slide 1).
 
 - [ ] **Step 3: Render check**
 
@@ -305,7 +299,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 9 (4 + 5 new). Render succeeds.
+Expected: slide count = 8 (3 + 5 new). Render succeeds.
 
 - [ ] **Step 4: Commit**
 
@@ -389,7 +383,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 14 (9 + 5 new; the interactive placeholder is a comment, not a `## `). Render succeeds.
+Expected: slide count = 13 (8 + 5 new; the interactive placeholder is a comment, not a `## `). Render succeeds.
 
 - [ ] **Step 3: Commit**
 
@@ -509,7 +503,7 @@ Expected: render succeeds. Open `_site/.../01_intro.html` (or run `quarto previe
   - GD trajectory (orange) visibly oscillates as `a` is increased to ~20.
 
 Run: `grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.qmd`
-Expected: 15.
+Expected: 14.
 
 - [ ] **Step 3: Commit**
 
@@ -562,7 +556,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 16. Render succeeds.
+Expected: slide count = 15. Render succeeds.
 
 - [ ] **Step 3: Commit**
 
@@ -656,7 +650,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 22. Render succeeds. Manually verify the drag-the-outlier interactive still works.
+Expected: slide count = 21. Render succeeds. Manually verify the drag-the-outlier interactive still works.
 
 - [ ] **Step 5: Commit**
 
@@ -729,7 +723,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 26. Render succeeds. Manually verify the cross-entropy interactive's three sliders + decision boundary work.
+Expected: slide count = 25. Render succeeds. Manually verify the cross-entropy interactive's three sliders + decision boundary work.
 
 - [ ] **Step 5: Commit**
 
@@ -822,7 +816,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 32 (26 + 6 new; placeholders are comments). Render succeeds.
+Expected: slide count = 31 (25 + 6 new; placeholders are comments). Render succeeds.
 
 - [ ] **Step 3: Commit**
 
@@ -865,7 +859,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 33. Render succeeds. Increase the polynomial-degree slider in the rendered HTML and visually confirm the boundary oscillation appears (Runge's phenomenon).
+Expected: slide count = 32. Render succeeds. Increase the polynomial-degree slider in the rendered HTML and visually confirm the boundary oscillation appears (Runge's phenomenon).
 
 - [ ] **Step 4: Commit**
 
@@ -1058,7 +1052,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -10
 ```
 
-Expected: slide count = 34. Render succeeds. Manually verify in the rendered HTML:
+Expected: slide count = 33. Render succeeds. Manually verify in the rendered HTML:
 - The radio button toggles between three bases.
 - Increasing # basis fns shows the fit getting more flexible.
 - For RBF, σ slider visibly controls width.
@@ -1163,7 +1157,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 38. Render succeeds.
+Expected: slide count = 37. Render succeeds.
 
 - [ ] **Step 3: Commit**
 
@@ -1231,7 +1225,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 41. Render succeeds.
+Expected: slide count = 40. Render succeeds.
 
 - [ ] **Step 3: Commit**
 
@@ -1338,7 +1332,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -5
 ```
 
-Expected: slide count = 46. Render succeeds. Visually inspect the unification table renders correctly with mathjax.
+Expected: slide count = 45. Render succeeds. Visually inspect the unification table renders correctly with mathjax.
 
 - [ ] **Step 3: Commit**
 
@@ -1406,7 +1400,7 @@ grep -c '^## ' mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minim
 cd mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization && QUARTO_PYTHON=../../.venv/bin/python quarto render 01_intro.qmd 2>&1 | tail -10
 ```
 
-Expected: slide count = 49. Render succeeds with no errors.
+Expected: slide count = 48 `## ` headings (49 visible slides incl. the auto-title). Render succeeds with no errors.
 
 - [ ] **Step 3: Commit**
 
@@ -1462,7 +1456,7 @@ grep -c '^## ' 01_intro.qmd
 Expected:
 - Render succeeds with no errors.
 - Line count is roughly 700–900 (down from 1148).
-- `## ` count is exactly 49.
+- `## ` count is exactly 48 (49 visible slides incl. the auto-title).
 
 - [ ] **Step 4: Manual smoke test of the rendered HTML**
 
