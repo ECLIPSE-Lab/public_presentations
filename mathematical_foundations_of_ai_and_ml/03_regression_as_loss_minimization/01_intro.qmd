@@ -1,4 +1,4 @@
-﻿---
+---
 title: |
   Mathematical Foundations of AI & ML<br>Unit 3: Regression and Classification as Loss Minimization
 bibliography: ref.bib
@@ -6,8 +6,12 @@ author:
   - name: Prof. Dr. Philipp Pelz
     affiliation:
       - FAU Erlangen-Nürnberg
+execute:
+  eval: true
+  echo: false
 format:
   revealjs:
+    chalkboard: true
     width: 1920
     height: 1080
     template-partials:
@@ -16,10 +20,13 @@ format:
     theme: custom.scss
     slide-number: c/t
     logo: "eclipse_logo_small.png"
+    background-transition: fade
     footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
     menu:
       side: left
       loadIcons: true
+    navigationMode: default   # Enable arrow navigation/progression
+    controls: true           # Show next/prev arrows for slides
 ---
 
 ## Title: Regression and Classification as Loss Minimization
@@ -27,7 +34,7 @@ format:
 ::: {.incremental}
 - **The Learning Objective**: Moving from static data analysis to predictive modeling.
 - **Unit Role**: Establishing the "Supervised Learning" framework where models are trained by minimizing discrepancies.
-- **Scope**: From simple Mean Squared Error to advanced regularization techniques.
+- **Scope**: From simple Mean Squared Error to advanced regularization techniques. 
 :::
 
 ## Learning outcomes
@@ -35,9 +42,10 @@ format:
 By the end of this unit, students can:
 
 ::: {.incremental}
+- Apply **Optimization Algorithms** like Gradient Descent, Minibatch SGD, and Adam to traverse loss landscapes.
 - Formulate regression and classification as **Empirical Risk Minimization** problems.
 - Explain the geometric and probabilistic meaning of **MSE**, **MAE**, and **Cross-Entropy**.
-- Derive the **Normal Equations** and understand **Gradient Descent** update rules.
+- Understand advanced optimization update rules.
 - Balance model complexity using **L1/L2 regularization** and the **Bias-Variance tradeoff**.
 :::
 
@@ -47,6 +55,154 @@ By the end of this unit, students can:
 - **Linear Projections**: We saw that least-squares regression is a projection onto the column space of the feature matrix $\mathbf{X}$.
 - **Matrix Calculus**: We'll use gradients of quadratic forms to find optimal parameters $\mathbf{w}$.
 - **Geometry**: Inner products define our similarity measures and similarity in feature space (Gram matrices).
+:::
+
+## Optimization vs. Generalization
+
+::: {.incremental}
+- **Optimization**: Minimizing the loss on the **training set**. The goal is simply to find parameters $\mathbf{w}$ that fit the observed data.
+- **Generalization**: The model's ability to perform well and minimize the risk on **unseen data** (test set).
+- **The Dilemma**: We can often optimize training loss to zero (perfect fit/overfitting), but that usually destroys generalization.
+- Our primary tool for learning is optimization, but we must use it carefully (with regularization, early stopping) to ensure generalization.
+:::
+
+## The Optimization Landscape
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.incremental}
+- **Convex Functions**: Have a single, global minimum point. Any local minimum is guaranteed to be the global minimum.
+  - E.g., MSE for Linear Regression.
+- **Non-Convex Functions**: Have local minima, flat regions, and **saddle points**.
+- **Saddle Points**: Zero gradient, but dips in one direction and rises in another. These stall optimization in high dimensions.
+:::
+:::
+
+::: {.column width="50%"}
+```{ojs}
+//| fig-align: center
+Plot.plot({
+  grid: true,
+  x: {domain: [-3, 3]},
+  y: {domain: [-1, 10]},
+  aspectRatio: 1,
+  marks: [
+    Plot.line(Array.from({length: 100}, (_, i) => {
+      let x = -3 + i * 6 / 99;
+      return {x: x, y: x*x};
+    }), {x: "x", y: "y", stroke: "blue"}),
+    Plot.line(Array.from({length: 100}, (_, i) => {
+      let x = -3 + i * 6 / 99;
+      return {x: x, y: x*x + 3*Math.cos(2*x) + 3};
+    }), {x: "x", y: "y", stroke: "red"}),
+    Plot.text([{x: 0, y: -0.5, text: "Convex"}], {x: "x", y: "y", text: "text", fill: "blue"}),
+    Plot.text([{x: 1.5, y: 8, text: "Non-Convex"}], {x: "x", y: "y", text: "text", fill: "red"})
+  ]
+})
+```
+:::
+:::
+
+## Gradient Descent (GD)
+
+::: {.incremental}
+- **Intuition**: To find the minimum of a valley, look at the slope (gradient) and take a step in the steepest downward direction.
+- **Taylor Expansion**: $f(\mathbf{x} - \eta \nabla f(\mathbf{x})) \approx f(\mathbf{x}) - \eta \|\nabla f(\mathbf{x})\|^2$, which is strictly less than $f(\mathbf{x})$ for small $\eta > 0$.
+- **Update Rule**: $$\mathbf{w}_{t+1} = \mathbf{w}_t - \eta \nabla f(\mathbf{w}_t)$$
+- $\eta$ is the **Learning Rate**: Determines the step size.
+  - Too small: Very slow convergence.
+  - Too large: Overshoots the minimum and diverges.
+:::
+
+## Interactive: Learning Rate Dynamics
+
+::: {.columns}
+::: {.column width="30%"}
+Adjust the learning rate $\eta$ and see the trajectory of Gradient Descent on a 2D convex bowl: $f(x, y) = 0.5x^2 + 2y^2$. Notice how the $y$-direction (steeper) causes oscillation when $\eta$ is too high.
+
+```{ojs}
+//| echo: false
+viewof lr = Inputs.range([0.01, 1.1], {value: 0.1, step: 0.01, label: "Learning Rate (η)"})
+```
+:::
+
+::: {.column width="70%"}
+```{ojs}
+//| echo: false
+//| fig-align: center
+chart_gd = {
+  const pts = [];
+  let w_x = -4, w_y = 3;
+  pts.push({x: w_x, y: w_y, iter: 0});
+  
+  for(let i=1; i<=20; i++) {
+    let grad_x = w_x;     // df/dx = x
+    let grad_y = 4 * w_y; // df/dy = 4y
+    w_x = w_x - lr * grad_x;
+    w_y = w_y - lr * grad_y;
+    pts.push({x: w_x, y: w_y, iter: i});
+    if(Math.abs(w_x) > 10 || Math.abs(w_y) > 10) break; // diverge bound
+  }
+  
+  const contours = [];
+  for(let c=0.5; c<=12; c+=2) {
+    for(let t=0; t<Math.PI*2; t+=0.1) {
+      contours.push({
+        x: Math.sqrt(2*c) * Math.cos(t),
+        y: Math.sqrt(c/2) * Math.sin(t),
+        level: c
+      });
+    }
+  }
+
+  return Plot.plot({
+    grid: true,
+    x: {domain: [-5, 5]},
+    y: {domain: [-5, 5]},
+    aspectRatio: 1,
+    marks: [
+      Plot.dot(contours, {x: "x", y: "y", r: 1, fill: "lightgray"}),
+      Plot.line(pts, {x: "x", y: "y", stroke: "red", strokeWidth: 2, markerEnd: "arrow"}),
+      Plot.dot(pts, {x: "x", y: "y", fill: "red", r: 4}),
+      Plot.dot([{x: 0, y: 0}], {x: "x", y: "y", fill: "blue", r: 5})
+    ]
+  });
+}
+```
+:::
+:::
+
+## Stochastic Gradient Descent (SGD)
+
+::: {.incremental}
+- **The Problem**: Standard GD computes the gradient over the **entire dataset** (size $n$). This is extremely slow per update: $\mathcal{O}(n)$.
+- **Stochastic Shift**: Pick a **single** random data point $i$ and compute the gradient:
+  $$\mathbf{w}_{t+1} = \mathbf{w}_t - \eta \nabla L_i(\mathbf{w}_t)$$
+- **Why it works**: In expectation, the stochastic gradient is equal to the true full gradient: $\mathbb{E}_i[\nabla L_i] = \nabla f$.
+- **Behavior**: It bounces randomly around the minimum but makes extremely fast initial progress.
+:::
+
+## Minibatch SGD
+
+::: {.incremental}
+- **Compromise**: Instead of 1 point (too noisy, poor hardware utilization) or $n$ points (too slow computation), we pick a **minibatch** of size $b$ (e.g., 32 to 256).
+- **Update**:
+  $$\mathbf{w}_{t+1} = \mathbf{w}_t - \frac{\eta}{b} \sum_{i \in \mathcal{B}_t} \nabla L_i(\mathbf{w}_t)$$
+- **Advantages**:
+  1. **Variance Reduction**: Averages out the noise of individual samples.
+  2. **Vectorization**: Modern GPUs shine at matrix-matrix products. Processing $b$ samples in parallel is almost as fast as processing 1.
+- **This is the workhorse of modern Deep Learning.**
+:::
+
+## Accelerating Convergence (Momentum & Adam)
+
+::: {.incremental}
+- **The Challenge**: Ill-conditioned loss functions (like narrow ravines) cause SGD to oscillate across the ravine and move sluggishly along the minimum.
+- **Momentum**: Mimics physics. Add a "velocity" term to remember past gradients.
+  $$\mathbf{v}_{t} = \beta \mathbf{v}_{t-1} + \nabla L(\mathbf{w}_{t})$$
+  $$\mathbf{w}_{t+1} = \mathbf{w}_t - \eta \mathbf{v}_t$$
+  - Smooths out oscillations and accelerates descent exactly where gradients point in the same direction consistently.
+- **Adam (Adaptive Moment Estimation)**: Automatically adjusts the learning rate *per parameter* by keeping moving averages of both the gradient (1st moment) and the squared gradient (2nd moment).
 :::
 
 ## Empirical risk minimization (ERM)
@@ -495,28 +651,6 @@ chart4 = {
 - **Geometry**: The constraint is a hypersphere.
 - **Industrial Stability**: Helps handle correlated features by spreading the "blame" across them.
 
-## Normal equations derivation
-
-::: {.fragment}
-1. **Objective**: Minimize $\mathcal{L}(\mathbf{w}) = \frac{1}{2} \|\mathbf{y} - \mathbf{Xw}\|_2^2$
-:::
-
-::: {.fragment}
-2. **Gradient**: $\nabla_{\mathbf{w}} \mathcal{L} = -\mathbf{X}^T (\mathbf{y} - \mathbf{Xw})$
-:::
-
-::: {.fragment}
-3. **Optimality**: Set $\nabla_{\mathbf{w}} \mathcal{L} = \mathbf{0}$
-:::
-
-::: {.fragment}
-4. **Normal Equations**: $\mathbf{X}^T \mathbf{Xw} = \mathbf{X}^T \mathbf{y}$
-:::
-
-::: {.fragment}
-5. **Solve**: $\hat{\mathbf{w}} = (\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\mathbf{y}$ [@bishop2006pattern]
-:::
-
 ## L1 regularization (Lasso)
 
 - **Penalty**: $\Omega(\mathbf{w}) = \|\mathbf{w}\|_1$.
@@ -524,155 +658,6 @@ chart4 = {
 - **Effect**: Promotes **Sparsity**. Many weights will be set to *exactly zero*.
 - **Geometry**: The constraint is a hyper-diamond with sharp corners.
 - **Feature Selection**: Effectively tells you which inputs are irrelevant for the task [@murphy2012machine].
-
-## Interactive: Geometry of Regularization
-
-::: {.columns}
-::: {.column width="30%"}
-The objective is to find where the contours of our loss function touch the constraint boundary of the regularization.
-
-```{ojs}
-//| echo: false
-viewof reg_lambda = Inputs.range([0.1, 4], {value: 1.5, step: 0.1, label: "Radius (1/λ)"})
-
-viewof reg_type = Inputs.radio(["L1 (Lasso)", "L2 (Ridge)"], {value: "L1 (Lasso)", label: "Penalty Type"})
-```
-
-- **L1 (Diamond)**: The sharp corners mean the loss contour often hits exactly on an axis ($w_1=0$ or $w_2=0$), inducing **sparsity** (feature selection).
-- **L2 (Circle)**: The smooth boundary means the weights shrink together, but rarely to exactly zero.
-:::
-
-::: {.column width="70%"}
-```{ojs}
-//| echo: false
-//| fig-height: 500
-
-chart2 = {
-  const width = 600;
-  const height = 500;
-  const margin = {top: 20, right: 30, bottom: 30, left: 40};
-
-  const x = d3.scaleLinear().domain([-4, 4]).range([margin.left, width - margin.right]);
-  const y = d3.scaleLinear().domain([-4, 4]).range([height - margin.bottom, margin.top]);
-
-  const svg = d3.create("svg")
-      .attr("viewBox", [0, 0, width, height])
-      .style("background", "none"); 
-
-  svg.append("g")
-      .attr("transform", `translate(0,${y(0)})`) 
-      .call(d3.axisBottom(x).ticks(5))
-      .attr("color", "#7f8c8d");
-
-  svg.append("g")
-      .attr("transform", `translate(${x(0)},0)`) 
-      .call(d3.axisLeft(y).ticks(5))
-      .attr("color", "#7f8c8d");
-
-  const cx = 2;
-  const cy = 2.5;
-  const a = 1;
-  const b = 0.5;
-  const angle = Math.PI / 4; 
-  
-  const loss_val = (_w1, _w2) => {
-    const dx = _w1 - cx;
-    const dy = _w2 - cy;
-    const u = dx * Math.cos(angle) + dy * Math.sin(angle);
-    const v = -dx * Math.sin(angle) + dy * Math.cos(angle);
-    return (u*u / a + v*v / b);
-  };
-
-  for (let c = 0.5; c <= 10; c+=1.2) {
-    const pts = [];
-    for(let t=0; t<Math.PI*2; t+=0.1) {
-      const u = Math.sqrt(c * a) * Math.cos(t);
-      const v = Math.sqrt(c * b) * Math.sin(t);
-      const dx = u * Math.cos(-angle) + v * Math.sin(-angle);
-      const dy = -u * Math.sin(-angle) + v * Math.cos(-angle);
-      pts.push([dx + cx, dy + cy]);
-    }
-    pts.push(pts[0]);
-    svg.append("path")
-       .datum(pts)
-       .attr("fill", "none")
-       .attr("stroke", d3.interpolateBlues(0.3 + c*0.05))
-       .attr("stroke-width", 1.5)
-       .attr("d", d3.line().x(d => x(d[0])).y(d => y(d[1])));
-  }
-  
-  const r = reg_lambda;
-  if (reg_type === "L1 (Lasso)") {
-    const diamondPts = [[r, 0], [0, r], [-r, 0], [0, -r], [r, 0]];
-    svg.append("path")
-       .datum(diamondPts)
-       .attr("fill", "rgba(231, 76, 60, 0.2)")
-       .attr("stroke", "#e74c3c")
-       .attr("stroke-width", 3)
-       .attr("d", d3.line().x(d => x(d[0])).y(d => y(d[1])));
-  } else {
-    svg.append("circle")
-       .attr("cx", x(0))
-       .attr("cy", y(0))
-       .attr("r", Math.abs(x(r) - x(0))) 
-       .attr("fill", "rgba(46, 204, 113, 0.2)")
-       .attr("stroke", "#2ecc71")
-       .attr("stroke-width", 3);
-  }
-
-  svg.append("circle").attr("cx", x(cx)).attr("cy", y(cy)).attr("r", 6).attr("fill", "#f39c12");
-  svg.append("text").attr("x", x(cx) + 12).attr("y", y(cy) - 6).text("w* (Unregularized)").attr("fill", "#ecf0f1").style("font-size", "14px");
-  
-  let min_loss = Infinity;
-  let opt_w = [0, 0];
-  
-  if (r > 0.05) {
-      if (reg_type === "L1 (Lasso)") {
-        for(let _w1=-r; _w1<=r; _w1+=0.02) {
-            let pts = [[_w1, r - Math.abs(_w1)], [_w1, -(r - Math.abs(_w1))]];
-            for(let p of pts) {
-                const v = loss_val(p[0], p[1]);
-                if(v < min_loss) { min_loss = v; opt_w = p; }
-            }
-        }
-      } else {
-        for(let t=0; t<Math.PI*2; t+=0.02) {
-            const _w1 = r * Math.cos(t);
-            const _w2 = r * Math.sin(t);
-            const v = loss_val(_w1, _w2);
-            if(v < min_loss) { min_loss = v; opt_w = [_w1, _w2]; }
-        }
-      }
-      
-      svg.append("circle").attr("cx", x(opt_w[0])).attr("cy", y(opt_w[1])).attr("r", 7).attr("fill", "#e74c3c");
-      svg.append("text").attr("x", x(opt_w[0]) + 12).attr("y", y(opt_w[1]) + 20).text("w* (Regularized)").attr("fill", "#e74c3c").style("font-size", "14px");
-      
-      svg.append("defs").append("marker")
-        .attr("id", "arrow")
-        .attr("viewBox", "0 -5 10 10")
-        .attr("refX", 8)
-        .attr("refY", 0)
-        .attr("markerWidth", 5)
-        .attr("markerHeight", 5)
-        .attr("orient", "auto")
-        .append("path")
-        .attr("fill", "#e74c3c")
-        .attr("d", "M0,-5L10,0L0,5");
-
-      svg.append("line")
-         .attr("x1", x(0)).attr("y1", y(0))
-         .attr("x2", x(opt_w[0])).attr("y2", y(opt_w[1]))
-         .attr("stroke", "#e74c3c")
-         .attr("stroke-width", 2)
-         .attr("stroke-dasharray", "4,4")
-         .attr("marker-end", "url(#arrow)");
-  }
-
-  return svg.node();
-}
-```
-:::
-:::
 
 ## Elastic net
 
