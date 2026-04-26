@@ -1421,11 +1421,11 @@ git commit -m "unit 03 redesign: §8 wrap-up slides 47-49"
 - [ ] **Step 1: Re-read the redesigned deck end-to-end**
 
 Use `Read` to scan the entire `01_intro.qmd` from top to bottom. Verify:
-- Exactly 49 `## ` headings.
+- Exactly 48 `## ` headings (auto-title slide brings the visible count to 49).
 - Section markers (`<!-- ===== §N ===== -->`) all in correct positions.
 - All cross-references (Unit 2/6/7/8, ML-PC Unit 2 §26-28) appear in the slide text.
 - All five preserved interactives (#2 drag-the-outlier, #3 cross-entropy, #4 polynomial, #5 convex/non-convex) plus #6 Newton-vs-GD and #7 basis explorer are present.
-- Bibliography callouts (`[@neuer2024machine]`, `[@bishop2006pattern]`, etc.) still resolve — `ref.bib` is unchanged.
+- Bibliography callouts that *do* appear in the new content (notably `[@neuer2024machine]` in the Huber slide) still resolve — `ref.bib` is unchanged. Citations from the dropped baseline content (e.g. `[@bishop2006pattern]`, `[@ryan2021machine]`) may not appear in the redesign; that's expected, not a defect.
 
 - [ ] **Step 2: Update or delete `missing_topics_analysis.md`**
 
