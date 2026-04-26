@@ -318,6 +318,214 @@ chart_newton_vs_gd = {
 
 <!-- ===== §3. Loss functions for regression ===== -->
 
+## Loss as decision proxy
+
+::: {.incremental}
+- A loss $L(\hat y, y)$ is a *quantitative penalty* for being wrong — not a fundamental quantity. We design it.
+- Different application contexts → different penalties:
+    - Should errors grow quadratically (smooth tails) or linearly (robust to outliers)?
+    - Are false positives and false negatives equally costly?
+    - Do we need calibrated probabilities, or just labels?
+- The loss encodes the *engineering question* you're asking.
+:::
+
+## Mean squared error (MSE)
+
+::: {.incremental}
+- $L_{\text{MSE}}(\hat y, y) = (\hat y - y)^2$.
+- **Geometry:** smooth convex bowl — gradient descent's ideal landscape.
+- **Probabilistic identity:** minimizing MSE = MLE assuming iid Gaussian residuals $\varepsilon \sim \mathcal{N}(0, \sigma^2)$.
+- See **ML-PC Unit 2 §26** for the full Gaussian → MSE derivation; see **Unit 8** for the formal MLE machinery.
+:::
+
+## Mean absolute error (MAE)
+
+::: {.incremental}
+- $L_{\text{MAE}}(\hat y, y) = |\hat y - y|$.
+- **Linear penalty** → much less sensitive to outliers than MSE.
+- **Probabilistic identity:** MLE under Laplacian residuals.
+- **Optimization caveat:** non-differentiable at zero. Use sub-gradient methods, or smooth via Huber.
+:::
+
+## Huber loss
+
+::: {.incremental}
+- Piecewise definition with parameter $\delta$:
+$$L_\delta(\hat y, y) = \begin{cases} \tfrac{1}{2}(\hat y - y)^2 & |\hat y - y| \le \delta \\ \delta(|\hat y - y| - \tfrac{1}{2}\delta) & |\hat y - y| > \delta \end{cases}$$
+- **Quadratic** in the small-error regime (smooth optimization), **linear** in the tails (outlier-robust).
+- **Standard tool** for industrial / engineering data where most points are clean but occasional glitches occur [@neuer2024machine].
+:::
+
+## Interactive: Drag-the-outlier (MSE / MAE / Huber)
+
+::: {.columns}
+::: {.column width="25%"}
+We have a dataset with a few points. Try dragging the red "outlier" point up and down.
+
+```{ojs}
+//| echo: false
+viewof huber_delta = Inputs.range([0.1, 5], {value: 1, step: 0.1, label: "Huber δ"})
+```
+
+Notice how:
+- **MSE** (Blue) is pulled strongly by the outlier to minimize the huge quadratic penalty.
+- **MAE** (Green) ignores the outlier completely, picking the median line.
+- **Huber** (Orange) compromises based on $\delta$.
+:::
+
+::: {.column width="75%"}
+```{ojs}
+//| echo: false
+//| fig-height: 500
+
+
+// Initial data
+initialData1 = [
+  {id: 0, x: 1, y: 1, isOutlier: false},
+  {id: 1, x: 2, y: 2.2, isOutlier: false},
+  {id: 2, x: 3, y: 2.8, isOutlier: false},
+  {id: 3, x: 4, y: 4.1, isOutlier: false},
+  {id: 4, x: 5, y: 4.8, isOutlier: false},
+  {id: 5, x: 7, y: 10, isOutlier: true} // Initial outlier
+]
+
+mutable data1 = initialData1
+
+// Regression helper functions
+function fit_mse(pts) {
+  const n = pts.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let p of pts) {
+    sumX += p.x; sumY += p.y;
+    sumXY += p.x * p.y; sumX2 += p.x * p.x;
+  }
+  const denominator = (n * sumX2 - sumX * sumX);
+  if (denominator === 0) return [0, sumY / n];
+  const m = (n * sumXY - sumX * sumY) / denominator;
+  const b = (sumY - m * sumX) / n;
+  return [m, b];
+}
+
+function fit_gd(pts, loss_grad_fn, lr=0.01, epochs=1000) {
+  let m = 1, b = 0;
+  const mse_p = fit_mse(pts);
+  m = mse_p[0]; b = mse_p[1];
+  
+  for(let i=0; i<epochs; i++) {
+    let gm = 0, gb = 0;
+    for(let p of pts) {
+      let y_pred = m * p.x + b;
+      let err = y_pred - p.y;
+      let grad = loss_grad_fn(err);
+      gm += grad * p.x;
+      gb += grad;
+    }
+    m -= lr * (gm / pts.length);
+    b -= lr * (gb / pts.length);
+  }
+  return [m, b];
+}
+
+mae_grad = (err) => err > 0 ? 1 : (err < 0 ? -1 : 0)
+
+huber_grad = (err, d=huber_delta) => Math.abs(err) <= d ? err : (err > 0 ? d : -d)
+
+
+mse_params = fit_mse(data1)
+mae_params = fit_gd(data1, mae_grad, 0.05, 1000)
+huber_params = fit_gd(data1, (e) => huber_grad(e, huber_delta), 0.05, 1000)
+
+chart1 = {
+  const width = 800;
+  const height = 500;
+  const margin = {top: 20, right: 30, bottom: 30, left: 40};
+
+  const x = d3.scaleLinear().domain([0, 8]).range([margin.left, width - margin.right]);
+  const y = d3.scaleLinear().domain([0, 12]).range([height - margin.bottom, margin.top]);
+
+  const svg = d3.create("svg")
+      .attr("viewBox", [0, 0, width, height])
+      .style("background", "none"); 
+
+  svg.append("g")
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x))
+      .attr("color", "#ccc");
+
+  svg.append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y))
+      .attr("color", "#ccc");
+
+  const drawLine = (params, color, dash="") => {
+    return svg.append("line")
+        .attr("x1", x(0))
+        .attr("y1", y(params[1]))
+        .attr("x2", x(8))
+        .attr("y2", y(params[0] * 8 + params[1]))
+        .attr("stroke", color)
+        .attr("stroke-width", 3)
+        .attr("stroke-dasharray", dash);
+  };
+
+  drawLine(mse_params, "#3498db"); 
+  drawLine(mae_params, "#2ecc71"); 
+  drawLine(huber_params, "#e67e22", "5,5"); 
+
+  const dragBehavior = d3.drag()
+      .on("drag", function(event, d) {
+          if(!d.isOutlier) return;
+          const newY = Math.max(0, Math.min(12, y.invert(event.y)));
+          
+          mutable data1 = data1.map(p => {
+            if (p.id === d.id) return {...p, y: newY};
+            return p;
+          });
+      });
+
+  svg.append("g")
+      .selectAll("circle")
+      .data(data1)
+      .join("circle")
+        .attr("cx", d => x(d.x))
+        .attr("cy", d => y(d.y))
+        .attr("r", 8)
+        .attr("fill", d => d.isOutlier ? "#e74c3c" : "#ecf0f1")
+        .attr("stroke", d => d.isOutlier ? "#c0392b" : "#bdc3c7")
+        .attr("stroke-width", 2)
+        .attr("cursor", d => d.isOutlier ? "ns-resize" : "default")
+        .call(dragBehavior);
+
+  const legend = svg.append("g")
+      .attr("transform", `translate(${margin.left + 20}, ${margin.top + 10})`)
+      .attr("font-family", "sans-serif")
+      .attr("font-size", 16)
+      .attr("fill", "#ecf0f1");
+      
+  legend.append("rect").attr("x", 0).attr("y", 0).attr("width", 15).attr("height", 3).attr("fill", "#3498db");
+  legend.append("text").attr("x", 25).attr("y", 5).text("MSE");
+  
+  legend.append("rect").attr("x", 0).attr("y", 25).attr("width", 15).attr("height", 3).attr("fill", "#2ecc71");
+  legend.append("text").attr("x", 25).attr("y", 30).text("MAE");
+  
+  legend.append("rect").attr("x", 0).attr("y", 50).attr("width", 15).attr("height", 3).attr("fill", "#e67e22");
+  legend.append("text").attr("x", 25).attr("y", 55).text("Huber");
+
+  return svg.node();
+}
+```
+:::
+:::
+
+## Beyond Gaussian: heteroscedastic and count data
+
+::: {.incremental}
+- **Heteroscedastic noise** (variance varies with signal): predict $\sigma^2$ alongside $\hat y$; loss becomes $\frac{(y - \hat y)^2}{2\hat\sigma^2} + \tfrac{1}{2}\log\hat\sigma^2$.
+- **Poisson / count data** (low-dose imaging, photon counting): use **Poisson NLL** $L = \hat\mu - y\log\hat\mu$, *not* MSE. See **ML-PC Unit 2 §27**.
+- **Heavy-tailed noise:** use Student-$t$ or log-cosh.
+- **The principle:** loss = NLL of the noise model. We'll formalize this in §7.
+:::
+
 <!-- ===== §4. Loss functions for classification ===== -->
 
 <!-- ===== §5. Expanding linear models — basis functions ===== -->
