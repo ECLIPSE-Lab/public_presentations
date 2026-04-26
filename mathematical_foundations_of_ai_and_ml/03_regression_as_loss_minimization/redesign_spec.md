@@ -8,7 +8,7 @@
 
 ## 1. Goal
 
-Replace the current ~1148-line, ~60-slide unit 03 with a tight 90-minute, ~47-slide lecture that:
+Replace the current ~1148-line, ~60-slide unit 03 with a tight 90-minute, **49-slide** lecture (47 content + 2 checkpoint mini-quiz slides) that:
 
 1. Devotes the first 20 minutes to optimization, including **second-order methods** (Newton, IRLS, quasi-Newton) — currently absent from the curriculum.
 2. Adds a formal treatment of **basis function expansion**, **Runge's phenomenon**, **RBFs**, and **splines** — currently absent.
@@ -49,7 +49,7 @@ Topics genuinely absent from the curriculum and therefore owned by unit 03:
 
 ## 4. Section-by-section design
 
-Total: 90 minutes, 47 slides, 8 sections.
+Total: 90 minutes, **49 slides** (47 content + 2 checkpoint mini-quiz slides), 8 sections. Section budgets below include the checkpoints in their respective sections.
 
 ### §1. Setup & framing — 5 min, 4 slides
 
@@ -60,7 +60,7 @@ Total: 90 minutes, 47 slides, 8 sections.
 | 3 | Learning outcomes (Bloom-staged) | Recall ERM; Apply GD/SGD/Newton; Derive Newton update from 2nd-order Taylor; Identify the right loss for a given noise model; Analyze why GLMs unify regression & classification. |
 | 4 | The supervised learning framework | $f_\mathbf{w}(\mathbf x)$, dataset $\mathcal D$, population vs empirical risk, ERM. |
 
-### §2. Optimization: from first to second order — 20 min, 11 slides
+### §2. Optimization: from first to second order — 20 min, 12 slides (incl. 1 checkpoint)
 
 This is the user's stated "first 20 min" and the largest new content block.
 
@@ -71,58 +71,60 @@ This is the user's stated "first 20 min" and the largest new content block.
 | 7 | Stochastic gradient descent | Stochastic gradient is unbiased estimator of full gradient. |
 | 8 | Minibatch SGD | Variance reduction + GPU vectorization; the workhorse. |
 | 9 | Forward-pointer to unit 06 | "Momentum, Nesterov, RMSProp, Adam, conditioning, saddle points → unit 06." 1 compact slide, no derivations. |
-| 10 | The Hessian: when 1st-order is slow | Ill-conditioned ravines; condition number $\kappa$ sets convergence rate. Anchor for the next slide. |
+| 10 | The Hessian: when 1st-order is slow | Ill-conditioned ravines; condition number $\kappa$ sets convergence rate. **Motivates** Newton via curvature; **does not** redo the full conditioning treatment (that's unit 06). Single-slide framing only. Anchor for the next slide. |
 | 11 | Newton's method | 2nd-order Taylor → $\mathbf w \leftarrow \mathbf w - \mathbf H^{-1} \nabla f$. Single-step convergence on quadratics (this is the key intuition). |
 | 12 | **Interactive #6: Newton vs GD** | 2D ill-conditioned bowl ($f = ax^2 + by^2$, $a \gg b$); toggle GD/Newton step. Newton converges in one step from any start. |
 | 13 | The catch | $\mathcal O(D^2)$ memory, $\mathcal O(D^3)$ inversion; not viable for deep nets. |
 | 14 | Quasi-Newton (BFGS / L-BFGS) | Approximate $\mathbf H^{-1}$ from gradient differences. Classical workhorse for medium-dim convex problems. |
 | 15 | IRLS preview | "Newton on a GLM has a closed-form per-iteration solve — return to this in §7." Plants the seed for the §7 payoff. |
+| 16 | **Checkpoint #1: Optimization** | 3-question mini-quiz (multiple choice). Sample: (a) when does GD diverge? (b) why does Newton converge in one step on a quadratic? (c) why is Newton not used to train deep nets? |
 
 ### §3. Loss functions for regression — 12 min, 6 slides
 
 | # | Slide | Notes |
 |---|---|---|
-| 16 | Loss as decision proxy | Different tasks, different penalties; outliers, asymmetry, cost. |
-| 17 | MSE | Quadratic geometry; one-line "= Gaussian MLE under iid Gaussian noise" with forward-pointers to ML-PC §26 and unit 08. |
-| 18 | MAE | Linear penalty, $\ell_1$ robustness, Laplacian MLE; sub-gradient at zero. |
-| 19 | Huber | Quadratic core, linear tails. |
-| 20 | **Interactive #2: Drag-the-outlier** | Existing interactive (lines 271–430 of current file) — keep largely verbatim. |
-| 21 | Beyond Gaussian | 1-slide pointer: heteroscedastic / Poisson NLL / robust regression → ML-PC §27. |
+| 17 | Loss as decision proxy | Different tasks, different penalties; outliers, asymmetry, cost. |
+| 18 | MSE | Quadratic geometry; one-line "= Gaussian MLE under iid Gaussian noise" with forward-pointers to ML-PC §26 and unit 08. |
+| 19 | MAE | Linear penalty, $\ell_1$ robustness, Laplacian MLE; sub-gradient at zero. |
+| 20 | Huber | Quadratic core, linear tails. |
+| 21 | **Interactive #2: Drag-the-outlier** | Existing interactive (lines 271–430 of current file) — keep largely verbatim. |
+| 22 | Beyond Gaussian | 1-slide pointer: heteroscedastic / Poisson NLL / robust regression → ML-PC §27. |
 
 ### §4. Loss functions for classification — 8 min, 4 slides
 
 | # | Slide | Notes |
 |---|---|---|
-| 22 | The 0–1 loss problem | Non-differentiable → need surrogate. |
-| 23 | Cross-entropy | = Bernoulli/Categorical NLL (one-line; forward to unit 08 for MLE framework). |
-| 24 | **Interactive #3: Cross-entropy & decision boundary** | Existing interactive (lines 448–590) — keep verbatim. |
-| 25 | Margin-based view | Hinge / SVM in 1 slide; brief mention of calibration / proper scoring. |
+| 23 | The 0–1 loss problem | Non-differentiable → need surrogate. |
+| 24 | Cross-entropy | = Bernoulli/Categorical NLL (one-line; forward to unit 08 for MLE framework). |
+| 25 | **Interactive #3: Cross-entropy & decision boundary** | Existing interactive (lines 448–590) — keep verbatim. |
+| 26 | Margin-based view | Hinge / SVM in 1 slide; brief mention of calibration / proper scoring. |
 
-### §5. Expanding linear models — basis functions — 22 min, 11 slides
+### §5. Expanding linear models — basis functions — 22 min, 12 slides (incl. 1 checkpoint)
 
 This is the second-largest new content block.
 
 | # | Slide | Notes |
 |---|---|---|
-| 26 | The linearity principle | Linear *in parameters*, not in inputs. $f_{\mathbf w}(\mathbf x) = \mathbf w^T \boldsymbol\phi(\mathbf x)$. |
-| 27 | Formal basis function expansion | Notation $\boldsymbol\phi: \mathbb R^d \to \mathbb R^M$; OLS in feature space — same normal equations as unit 02, applied to $\boldsymbol\phi$. |
-| 28 | Polynomial basis | $\boldsymbol\phi(x) = (1, x, x^2, \ldots, x^M)^T$; design matrix is the Vandermonde. |
-| 29 | Runge's phenomenon | Why high-degree global polynomials oscillate at boundaries; static figure showing degree-15 fit on $1/(1+25x^2)$. |
-| 30 | **Interactive #4: Polynomial fitting & overfitting** | Existing interactive (lines 756–1003); keep but **relabel** so it reads as a Runge demo and a basis-function demo, not just an "overfitting" demo. |
-| 31 | Radial basis functions | $\phi_k(x) = \exp(-\|x - \boldsymbol\mu_k\|^2/2\sigma^2)$; local support; how center placement matters. |
-| 32 | Splines | Piecewise polynomials with continuity at knots; local control fixes Runge. Brief mention of B-spline basis. |
-| 33 | **Interactive #7: Basis function explorer** | Radio button {polynomial / RBF / B-spline}, slider for # basis functions / knots, on noisy sin-wave dataset. Side panel shows the basis functions themselves. |
-| 34 | Bias-variance picture | 1-slide diagram only (U-shape vs complexity), forward-pointer to unit 07 for full decomposition. |
-| 35 | Connection to kernels | 1-line: "if $M$ is huge, use the kernel trick — see unit 02 §kernel hint." |
-| 36 | Bridge: complex models need constraint | Motivates the regularization bridge in §6. |
+| 27 | The linearity principle | Linear *in parameters*, not in inputs. $f_{\mathbf w}(\mathbf x) = \mathbf w^T \boldsymbol\phi(\mathbf x)$. |
+| 28 | Formal basis function expansion | Notation $\boldsymbol\phi: \mathbb R^d \to \mathbb R^M$; OLS in feature space — same normal equations as unit 02, applied to $\boldsymbol\phi$. |
+| 29 | Polynomial basis | $\boldsymbol\phi(x) = (1, x, x^2, \ldots, x^M)^T$; design matrix is the Vandermonde. |
+| 30 | Runge's phenomenon | Why high-degree global polynomials oscillate at boundaries; static figure showing degree-15 fit on $1/(1+25x^2)$. |
+| 31 | **Interactive #4: Polynomial fitting & overfitting** | Existing interactive (lines 756–1003); keep but **relabel** so it reads as a Runge demo and a basis-function demo, not just an "overfitting" demo. |
+| 32 | Radial basis functions | $\phi_k(x) = \exp(-\|x - \boldsymbol\mu_k\|^2/2\sigma^2)$; local support; how center placement matters. |
+| 33 | Splines | Piecewise polynomials with continuity at knots; local control fixes Runge. Brief mention of B-spline basis. |
+| 34 | **Interactive #7: Basis function explorer** | Radio button {polynomial / RBF / B-spline}, slider for # basis functions / knots, on noisy sin-wave dataset. Side panel shows the basis functions themselves. |
+| 35 | Bias-variance picture | 1-slide diagram only (U-shape vs complexity), forward-pointer to unit 07 for full decomposition. |
+| 36 | Connection to kernels | 1-line: "if $M$ is huge, use the kernel trick — see unit 02 §kernel hint." |
+| 37 | Bridge: complex models need constraint | Motivates the regularization bridge in §6. |
+| 38 | **Checkpoint #2: Basis functions** | 3-question mini-quiz. Sample: (a) is RBF regression linear or nonlinear, and in what sense? (b) why does Runge's phenomenon happen? (c) what stays the same and what changes when we go from polynomial to RBF basis? |
 
 ### §6. Regularization bridge — 5 min, 3 slides
 
 | # | Slide | Notes |
 |---|---|---|
-| 37 | Recap from unit 02 | Ridge closed form $(\mathbf X^T\mathbf X + \lambda \mathbf I)^{-1}\mathbf X^T \mathbf y$ + L1/L2 constraint geometry. **Do not rederive.** |
-| 38 | The MAP interpretation | Gaussian prior on $\mathbf w$ → L2; Laplace prior → L1. Every regularizer is a prior; every loss is an NLL. Forward to ML-PC §28 table; unit 08 for full Bayesian. |
-| 39 | What lives elsewhere | Explicit list: dropout / batch-norm / label smoothing / focal / early stopping → deep-learning units; full bias-variance → unit 07; full Bayes → unit 08. (This sets honest expectations.) |
+| 39 | Recap from unit 02 | Ridge closed form $(\mathbf X^T\mathbf X + \lambda \mathbf I)^{-1}\mathbf X^T \mathbf y$ + L1/L2 constraint geometry. **Do not rederive.** |
+| 40 | The MAP interpretation | Gaussian prior on $\mathbf w$ → L2; Laplace prior → L1. Every regularizer is a prior; every loss is an NLL. Forward to ML-PC §28 table; unit 08 for full Bayesian. |
+| 41 | What lives elsewhere | Explicit list: dropout / batch-norm / label smoothing / focal / early stopping → deep-learning units; full bias-variance → unit 07; full Bayes → unit 08. (This sets honest expectations.) |
 
 ### §7. Unification — Exponential Family & GLMs — 13 min, 5 slides
 
@@ -130,19 +132,21 @@ The mathematical-foundations payoff. Closes the loop with §2.
 
 | # | Slide | Notes |
 |---|---|---|
-| 40 | Exponential family canonical form | $p(y\mid\eta) = h(y)\exp(\eta^T T(y) - A(\eta))$. Define natural parameter $\eta$, sufficient statistic $T(y)$, log-partition $A(\eta)$, base measure $h(y)$. |
-| 41 | Examples in canonical form | Gaussian (with known $\sigma^2$), Bernoulli, Poisson — derive $\eta$, $T(y)$, $A(\eta)$ for each. |
-| 42 | Link function | $g(\mu) = \eta$; canonical link; mean-parameter relation $\mu = A'(\eta)$; variance $\mathrm{Var}(y) = A''(\eta)$ (the cumulant connection). |
-| 43 | The unification table | Rows: {Gaussian / Bernoulli / Poisson}. Columns: {distribution, $T$ and $A$, canonical link, $\mu(\eta)$, recovered loss}. Recovers MSE / cross-entropy / Poisson NLL as three rows of one framework. Forward to ML-PC §26-28. |
-| 44 | IRLS = Newton on the GLM log-likelihood | Show that the Newton step on the GLM NLL has the form $\mathbf w \leftarrow (\mathbf X^T \mathbf W \mathbf X)^{-1} \mathbf X^T \mathbf W \mathbf z$ for a working response $\mathbf z$ and weight matrix $\mathbf W$ — i.e., a weighted least-squares problem. **This closes the loop with §2's Newton material.** |
+| 42 | Exponential family canonical form | $p(y\mid\eta) = h(y)\exp(\eta^T T(y) - A(\eta))$. Define natural parameter $\eta$, sufficient statistic $T(y)$, log-partition $A(\eta)$, base measure $h(y)$. |
+| 43 | Examples in canonical form | Gaussian (with known $\sigma^2$), Bernoulli, Poisson — derive $\eta$, $T(y)$, $A(\eta)$ for each. |
+| 44 | Link function | $g(\mu) = \eta$; canonical link; mean-parameter relation $\mu = A'(\eta)$; variance $\mathrm{Var}(y) = A''(\eta)$ (the cumulant connection). |
+| 45 | The unification table | Rows: {Gaussian / Bernoulli / Poisson}. Columns: {distribution, $T$ and $A$, canonical link, $\mu(\eta)$, recovered loss}. Recovers MSE / cross-entropy / Poisson NLL as three rows of one framework. Forward to ML-PC §26-28. |
+| 46 | IRLS = Newton on the GLM log-likelihood | Show that the Newton step on the GLM NLL has the form $\mathbf w \leftarrow (\mathbf X^T \mathbf W \mathbf X)^{-1} \mathbf X^T \mathbf W \mathbf z$ for a working response $\mathbf z$ and weight matrix $\mathbf W$ — i.e., a weighted least-squares problem. **This closes the loop with §2's Newton material.** |
 
 ### §8. Wrap-up — 5 min, 3 slides
 
 | # | Slide | Notes |
 |---|---|---|
-| 45 | Summary table | Loss → noise assumption → optimizer cheat-sheet for the lecture. |
-| 46 | Forward links | Unit 06 (deep optimization), unit 07 (bias-variance), unit 08 (full probabilistic), ML-PC §26-28 (physical noise → loss). |
-| 47 | Notebook companion | Ai4MatLectures Week 3 link. Also: 2 checkpoint mini-quiz slides interspersed (one after §2, one after §5) — these are *additional* to the 47-slide count if needed, or can replace forward-pointer slides depending on rendering. |
+| 47 | Summary table | Loss → noise assumption → optimizer cheat-sheet for the lecture. |
+| 48 | Forward links | Unit 06 (deep optimization), unit 07 (bias-variance), unit 08 (full probabilistic), ML-PC §26-28 (physical noise → loss). |
+| 49 | Notebook companion | Ai4MatLectures Week 3 link. |
+
+**Slide count audit:** 4 (§1) + 12 (§2 incl. ckpt #1) + 6 (§3) + 4 (§4) + 12 (§5 incl. ckpt #2) + 3 (§6) + 5 (§7) + 3 (§8) = **49 slides**.
 
 ### Pedagogical structure (best-practice teaching choices)
 
@@ -150,7 +154,7 @@ The mathematical-foundations payoff. Closes the loop with §2.
 - **Forward and backward references on every section header** so students know where each topic is anchored in the curriculum and where it goes deeper.
 - **One big idea per slide.** The current unit has crammed slides (e.g., 3+ ideas on the regularization-motivation slide); split where needed.
 - **Interactives at every conceptual peak**: Newton (§2), Huber (§3), CE (§4), Runge (§5), basis explorer (§5).
-- **Two checkpoint / mini-quiz slides** — one after §2 (optimization), one after §5 (basis functions) — to flag misconceptions before pressing on.
+- **Two checkpoint / mini-quiz slides** — slide 16 (after §2 optimization) and slide 38 (after §5 basis functions) — to flag misconceptions before pressing on. Counted inside the 49-slide budget.
 - **Visible scaffolding**: each new section opens with "what we're going to do" and closes with "what we just did" framing.
 - **Speaker notes**: keep the rich speaker-notes pattern from unit 02 — derivations, alternatives, common-misconception flags, "for the instructor" expansions.
 
@@ -185,16 +189,18 @@ The mathematical-foundations payoff. Closes the loop with §2.
 
 ## 6. What gets cut from the current file
 
-Listed for traceability. Total cut: ~600 lines / ~30 slides.
+Listed by section name (line numbers approximate; intent is unambiguous from headings). Total cut: ~600 lines / ~30 slides.
 
-- All deep-learning regularization grab-bag: dropout, batch-norm, label smoothing, focal loss, noise injection, data augmentation as regularizer, early stopping (current lines ~668–706).
-- Three materials-example slides: rare-defect cost, smooth property regression, sparse feature model (lines ~1037–1078).
-- Empty / skeleton "Exercise scaffolds" (lines ~1093–1109).
-- Hyperparameter-tuning / validation / model-selection slides (lines ~706–720).
-- Calibration, structured losses, multi-label slides (lines ~600–631) — replaced by 1-line forward-pointers.
-- "Double descent hint", "robust optimization preview", "loss landscape intuition", "optimization interaction" (lines ~1003–1024) — already deeper coverage in unit 06.
-- Existing interactive #1 (LR dynamics, lines ~117–173) — duplicate of unit 06's "LR sensitivity demo".
-- Bias-variance framing as a multi-slide topic (lines ~721–755) — pruned to a single forward-pointer slide.
+- All deep-learning regularization grab-bag: `Early stopping`, `Data augmentation as regularizer`, `Dropout intuition`, `Batch norm side effects`, `Label smoothing`, `Noise injection methods`.
+- Three materials-example slides: `Materials example: rare defect cost`, `Materials example: smooth property regression`, `Materials example: sparse feature model`.
+- Empty / skeleton `Exercise N scaffold` slides.
+- `Hyperparameter tuning`, `Validation-driven model selection`.
+- `Class imbalance handling`, `Multi-label loss setup`, `Structured losses (light)` — replaced by 1-line forward-pointers in §4.
+- `Double descent hint`, `Robust optimization preview`, `Loss landscape intuition`, `Optimization interaction` — already deeper coverage in unit 06.
+- `Calibration and loss choice`, `Domain-specific loss design` — pruned (1-line in §4).
+- Existing interactive #1 ("Interactive: Learning Rate Dynamics", lines ~117–173 of current file) — duplicate of unit 06's "LR sensitivity demo".
+- Multi-slide bias-variance framing (`Bias-variance framing`, `Underfit vs overfit diagnostics`) — pruned to a single forward-pointer slide (§5 slide 35).
+- Common pitfalls / checklist / exam-statements / unit summary slabs collapsed into one summary table (§8 slide 47).
 
 ## 7. What gets kept verbatim or near-verbatim
 
@@ -239,7 +245,7 @@ Final estimated file length: ~700–800 lines (down from 1148), driven primarily
 ## 12. Acceptance criteria
 
 - The redesigned `01_intro.qmd` renders cleanly with `QUARTO_PYTHON=.venv/bin/python quarto preview ... --no-browser --no-watch-inputs` from the unit folder.
-- All 47 designated slides are present in the order specified in §4.
+- All 49 designated slides are present in the order specified in §4.
 - All five kept interactives still render and respond to inputs.
 - The two new interactives (#6 Newton vs GD, #7 basis-function explorer) render and respond to all controls listed in §5.
 - Forward / backward cross-references named in §4 are present in the slide text.
