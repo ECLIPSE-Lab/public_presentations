@@ -1005,7 +1005,167 @@ $$\phi_k(\mathbf{x}) = \exp\!\left(-\tfrac{\|\mathbf{x} - \boldsymbol\mu_k\|^2}{
 - **Why splines fix Runge:** the basis is *local*. Increasing complexity adds knots, not global oscillation modes.
 :::
 
-<!-- INTERACTIVE_BASIS_EXPLORER: filled in by Task 11 -->
+## Interactive: Basis function explorer
+
+::: {.columns}
+::: {.column width="28%"}
+Same data, three bases. Notice that **all three** fits use the *same normal equations* $\hat{\mathbf{w}} = (\boldsymbol\Phi^T\boldsymbol\Phi)^{-1}\boldsymbol\Phi^T\mathbf{y}$ — only $\boldsymbol\Phi$ changes.
+
+```{ojs}
+//| echo: false
+viewof basis_kind = Inputs.radio(["Polynomial", "Gaussian RBF", "B-spline (cubic)"], {value: "Polynomial", label: "Basis"})
+viewof n_basis = Inputs.range([2, 25], {value: 8, step: 1, label: "# basis fns"})
+viewof rbf_sigma = Inputs.range([0.03, 0.5], {value: 0.12, step: 0.01, label: "RBF σ (RBF only)"})
+viewof show_basis = Inputs.toggle({value: true, label: "Show basis fns"})
+```
+
+- **Polynomial** → global, prone to Runge.
+- **RBF** → localized; bandwidth $\sigma$ trades smoothness vs flexibility.
+- **B-spline** → piecewise polynomial with local support; clean conditioning.
+:::
+
+::: {.column width="72%"}
+```{ojs}
+//| echo: false
+//| fig-align: center
+chart_basis = {
+  // Fixed seeded dataset: noisy sin(2 pi x)
+  function rng(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+  const rand = rng(42);
+  function nrand() {
+    // Box-Muller
+    let u = 0, v = 0;
+    while (u === 0) u = rand();
+    while (v === 0) v = rand();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  const N = 30, sigma_y = 0.15;
+  const data = [];
+  for (let i = 0; i < N; i++) {
+    const x = i / (N - 1);
+    const y = Math.sin(2 * Math.PI * x) + sigma_y * nrand();
+    data.push({x, y});
+  }
+
+  function buildPhi(xs, M, kind) {
+    const Phi = xs.map(() => new Array(M).fill(0));
+    if (kind === "Polynomial") {
+      for (let i = 0; i < xs.length; i++)
+        for (let j = 0; j < M; j++) Phi[i][j] = Math.pow(xs[i], j);
+    } else if (kind === "Gaussian RBF") {
+      const centers = M === 1 ? [0.5] : Array.from({length: M}, (_, k) => k / (M - 1));
+      for (let i = 0; i < xs.length; i++)
+        for (let j = 0; j < M; j++)
+          Phi[i][j] = Math.exp(-((xs[i] - centers[j]) ** 2) / (2 * rbf_sigma * rbf_sigma));
+    } else {
+      // Cubic B-spline basis with M basis functions and uniform knots on [0,1].
+      // Use de Boor recursion; clamp endpoints by extending knots.
+      const k = 3; // cubic
+      const nKnots = M + k + 1;
+      // Open uniform knot vector on [0, 1]:
+      const knots = [];
+      for (let i = 0; i < nKnots; i++) {
+        if (i <= k) knots.push(0);
+        else if (i >= nKnots - 1 - k) knots.push(1);
+        else knots.push((i - k) / (M - k));
+      }
+      function N_jk(j, k_, x) {
+        if (k_ === 0) {
+          return (knots[j] <= x && x < knots[j + 1]) || (x === 1 && j === M - 1) ? 1 : 0;
+        }
+        const d1 = knots[j + k_] - knots[j];
+        const d2 = knots[j + k_ + 1] - knots[j + 1];
+        const t1 = d1 > 0 ? (x - knots[j]) / d1 * N_jk(j, k_ - 1, x) : 0;
+        const t2 = d2 > 0 ? (knots[j + k_ + 1] - x) / d2 * N_jk(j + 1, k_ - 1, x) : 0;
+        return t1 + t2;
+      }
+      for (let i = 0; i < xs.length; i++)
+        for (let j = 0; j < M; j++) Phi[i][j] = N_jk(j, k, xs[i]);
+    }
+    return Phi;
+  }
+
+  // Solve normal equations via QR-ish path; small system, use Cholesky-style direct solve.
+  function solveNormal(Phi, y) {
+    const N = Phi.length, M = Phi[0].length;
+    const A = Array.from({length: M}, () => new Array(M).fill(0));
+    const b = new Array(M).fill(0);
+    for (let i = 0; i < M; i++) {
+      for (let j = 0; j < M; j++) {
+        let s = 0;
+        for (let n = 0; n < N; n++) s += Phi[n][i] * Phi[n][j];
+        A[i][j] = s;
+      }
+      let s = 0;
+      for (let n = 0; n < N; n++) s += Phi[n][i] * y[n];
+      b[i] = s;
+      A[i][i] += 1e-8; // tiny ridge for numerical stability
+    }
+    // Gaussian elimination
+    for (let i = 0; i < M; i++) {
+      let piv = i;
+      for (let r = i + 1; r < M; r++) if (Math.abs(A[r][i]) > Math.abs(A[piv][i])) piv = r;
+      [A[i], A[piv]] = [A[piv], A[i]];
+      [b[i], b[piv]] = [b[piv], b[i]];
+      for (let r = i + 1; r < M; r++) {
+        const f = A[r][i] / A[i][i];
+        for (let c = i; c < M; c++) A[r][c] -= f * A[i][c];
+        b[r] -= f * b[i];
+      }
+    }
+    const w = new Array(M).fill(0);
+    for (let i = M - 1; i >= 0; i--) {
+      let s = b[i];
+      for (let j = i + 1; j < M; j++) s -= A[i][j] * w[j];
+      w[i] = s / A[i][i];
+    }
+    return w;
+  }
+
+  const xs = data.map(p => p.x);
+  const ys = data.map(p => p.y);
+  const Phi = buildPhi(xs, n_basis, basis_kind);
+  const w = solveNormal(Phi, ys);
+
+  // Curve
+  const grid = Array.from({length: 200}, (_, i) => i / 199);
+  const Phigrid = buildPhi(grid, n_basis, basis_kind);
+  const yhat = Phigrid.map(row => row.reduce((s, v, j) => s + v * w[j], 0));
+  const fit = grid.map((x, i) => ({x, y: yhat[i]}));
+
+  // Basis fns curves (only if toggled)
+  const basisCurves = [];
+  if (show_basis) {
+    for (let j = 0; j < n_basis; j++) {
+      for (let i = 0; i < grid.length; i++) {
+        basisCurves.push({x: grid[i], y: Phigrid[i][j], k: j});
+      }
+    }
+  }
+
+  return Plot.plot({
+    grid: true,
+    width: 950,
+    height: 600,
+    x: {domain: [0, 1]},
+    y: {domain: [-1.4, 1.4]},
+    marks: [
+      Plot.line(grid.map(x => ({x, y: Math.sin(2 * Math.PI * x)})), {x: "x", y: "y", stroke: "#bdc3c7", strokeWidth: 2, strokeDasharray: "3,3"}),
+      ...(show_basis ? [Plot.line(basisCurves, {x: "x", y: "y", z: "k", stroke: "lightblue", strokeOpacity: 0.6})] : []),
+      Plot.dot(data, {x: "x", y: "y", fill: "#e74c3c", r: 4}),
+      Plot.line(fit, {x: "x", y: "y", stroke: "#2c3e50", strokeWidth: 3})
+    ]
+  });
+}
+```
+:::
+:::
 
 <!-- ===== §6. Regularization bridge ===== -->
 
