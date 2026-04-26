@@ -528,6 +528,178 @@ chart1 = {
 
 <!-- ===== §4. Loss functions for classification ===== -->
 
+## The 0–1 loss problem
+
+::: {.incremental}
+- For binary classification with $y \in \{0, 1\}$, the natural loss is $L = \mathbf{1}\{\hat y \ne y\}$.
+- **The bug:** non-differentiable, gradient is zero almost everywhere — gradient descent has nothing to follow.
+- **The fix:** use a *surrogate loss* — a smooth differentiable function that bounds the 0–1 loss from above.
+- Surrogates also let us output **calibrated probabilities**, not just labels.
+:::
+
+## Cross-entropy = Bernoulli / Categorical NLL
+
+::: {.incremental}
+- **Binary:** model $p(y=1\mid\mathbf{x}) = \sigma(\mathbf{w}^T\mathbf{x})$ with sigmoid $\sigma$.
+- **Cross-entropy loss:** $L = -[y \log p + (1-y)\log(1-p)]$.
+- **Identity:** this is the negative log-likelihood of a Bernoulli$(p)$ on $y$.
+- **Multi-class:** softmax + categorical cross-entropy = NLL of a Categorical distribution.
+- **Behaviour:** *confident-but-wrong* predictions are punished hugely (NLL → ∞). See **Unit 8** for the full MLE framework.
+:::
+
+## Interactive: Cross-entropy & decision boundary
+
+::: {.columns}
+::: {.column width="30%"}
+Adjust the logistic regression model's weights to classify the blue ($y=1$) and red ($y=0$) points.
+
+```{ojs}
+//| echo: false
+viewof w1 = Inputs.range([-5, 5], {value: 1.5, step: 0.1, label: "Weight w₁"})
+
+viewof w2 = Inputs.range([-5, 5], {value: 1.5, step: 0.1, label: "Weight w₂"})
+
+viewof bias = Inputs.range([-15, 10], {value: -8, step: 0.2, label: "Bias b"})
+```
+
+The background color shows predicted probability $P(y=1|\mathbf{x}) = \sigma(w_1 x_1 + w_2 x_2 + b)$.
+Notice how strongly the loss explodes if you push a red point deep into the "confident blue" region!
+:::
+
+::: {.column width="70%"}
+```{ojs}
+//| echo: false
+//| fig-height: 500
+
+chart4 = {
+  const width = 600;
+  const height = 500;
+  const margin = {top: 40, right: 30, bottom: 30, left: 40};
+
+  const x = d3.scaleLinear().domain([0, 10]).range([margin.left, width - margin.right]);
+  const y = d3.scaleLinear().domain([0, 10]).range([height - margin.bottom, margin.top]);
+
+  const svg = d3.create("svg")
+      .attr("viewBox", [0, 0, width, height])
+      .style("background", "none");
+
+  const pts = [
+    {x: 2, y: 3, c: 0}, {x: 3, y: 2, c: 0}, {x: 4, y: 4, c: 0},
+    {x: 2, y: 5, c: 0}, {x: 5, y: 2, c: 0}, {x: 3, y: 4, c: 0},
+    {x: 7, y: 8, c: 1}, {x: 8, y: 7, c: 1}, {x: 6, y: 9, c: 1},
+    {x: 8, y: 9, c: 1}, {x: 9, y: 6, c: 1}, {x: 7, y: 6, c: 1},
+    {x: 5, y: 6, c: 1}
+  ];
+
+  const sigmoid = (z) => 1 / (1 + Math.exp(-z));
+
+  const res = 40;
+  const dx = 10 / res;
+  const dy = 10 / res;
+
+  const grid = [];
+  for(let i=0; i<res; i++) {
+    for(let j=0; j<res; j++) {
+        let gx = i * dx;
+        let gy = j * dy;
+        let p = sigmoid(w1 * gx + w2 * gy + bias);
+        grid.push({x: gx, y: gy, p: p});
+    }
+  }
+
+  svg.append("g")
+      .selectAll("rect")
+      .data(grid)
+      .join("rect")
+      .attr("x", d => x(d.x))
+      .attr("y", d => y(d.y + dy))
+      .attr("width", x(dx) - x(0) + 1)
+      .attr("height", y(0) - y(dy) + 1)
+      .attr("fill", d => d3.interpolateRdBu(1 - d.p))
+      .attr("opacity", 0.6);
+
+  svg.append("g")
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x))
+      .attr("color", "#ecf0f1");
+
+  svg.append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y))
+      .attr("color", "#ecf0f1");
+
+  if (Math.abs(w2) > 0.01) {
+      let x1 = 0, y1 = (-w1 * x1 - bias) / w2;
+      let x2 = 10, y2 = (-w1 * x2 - bias) / w2;
+
+      svg.append("line")
+         .attr("x1", x(x1)).attr("y1", y(y1))
+         .attr("x2", x(x2)).attr("y2", y(y2))
+         .attr("stroke", "#f1c40f")
+         .attr("stroke-width", 3)
+         .attr("stroke-dasharray", "5,5");
+  } else if (Math.abs(w1) > 0.01) {
+      let x1 = -bias / w1;
+      svg.append("line")
+         .attr("x1", x(x1)).attr("y1", y(0))
+         .attr("x2", x(x1)).attr("y2", y(10))
+         .attr("stroke", "#f1c40f")
+         .attr("stroke-width", 3)
+         .attr("stroke-dasharray", "5,5");
+  }
+
+  svg.append("g")
+      .selectAll("circle")
+      .data(pts)
+      .join("circle")
+      .attr("cx", d => x(d.x))
+      .attr("cy", d => y(d.y))
+      .attr("r", 8)
+      .attr("fill", d => d.c === 1 ? "#3498db" : "#e74c3c")
+      .attr("stroke", "#ecf0f1")
+      .attr("stroke-width", 2);
+
+  let ce_sum = 0;
+  for(let p of pts) {
+      let prob = sigmoid(w1 * p.x + w2 * p.y + bias);
+      prob = Math.max(1e-15, Math.min(1 - 1e-15, prob));
+      if (p.c === 1) ce_sum += -Math.log(prob);
+      else ce_sum += -Math.log(1 - prob);
+  }
+  let ce_loss = ce_sum / pts.length;
+
+  svg.append("rect")
+     .attr("x", width - margin.right - 250)
+     .attr("y", margin.top - 30)
+     .attr("width", 240)
+     .attr("height", 40)
+     .attr("fill", "rgba(44, 62, 80, 0.8)")
+     .attr("rx", 5);
+
+  svg.append("text")
+     .attr("x", width - margin.right - 240)
+     .attr("y", margin.top - 5)
+     .text(`Cross-Entropy Loss: ${ce_loss.toFixed(3)}`)
+     .attr("fill", "#ecf0f1")
+     .attr("font-size", 18)
+     .attr("font-weight", "bold")
+     .attr("font-family", "monospace");
+
+  return svg.node();
+}
+```
+:::
+:::
+
+## Margin-based view: hinge & calibration
+
+::: {.incremental}
+- **Hinge loss** ($y \in \{-1,+1\}$): $L = \max(0, 1 - y\hat y)$. **Goal:** correct classification *with a margin*, not just correct labels — the SVM principle.
+- **Once correctly classified beyond the margin**, the gradient is zero — no further "improvement" is needed. Crisp decision-boundary geometry, but no probabilities.
+- **Proper scoring rules** (Brier, log-loss): the loss is *minimized in expectation by the true probability*. Cross-entropy is proper; misclassification rate is not.
+- **Choose the loss to match what you need** — labels (hinge) or calibrated probabilities (cross-entropy).
+:::
+
 <!-- ===== §5. Expanding linear models — basis functions ===== -->
 
 <!-- ===== §6. Regularization bridge ===== -->
