@@ -40,12 +40,16 @@ format:
 By the end of this unit, you can:
 
 ::: {.fragment}
-1. Explain the information loss in classical stereological metrics
-2. Describe the architecture of the Perceptron and MLP
-3. Explain why non-linear activation functions are necessary
-4. Trace forward propagation through a multi-layer network
-5. Distinguish between hand-crafted and learned feature representations
-6. Choose appropriate activation functions for different tasks
+1. Quantify the **information loss** when condensing a micrograph into a stereological scalar
+2. Choose between **hand-crafted descriptors** and **learned representations** for a given materials task
+3. Encode a microstructure as input to a neural network (raw pixels, feature vectors, n-point statistics)
+4. Apply the MFML neural-network toolkit to a tabular materials-property prediction task
+5. Interpret what an MLP "learns" about a microstructure — and where this differs from human-readable descriptors
+6. Recognize the failure modes of MLPs on micrographs that motivate next week's CNN material
+:::
+
+::: {.callout-note}
+This morning's MFML lecture covered the architecture, forward pass, and activation taxonomy of MLPs. We'll recap that in 3 slides and then spend the rest of the lecture on what's specific to **materials data**.
 :::
 
 ---
@@ -177,663 +181,361 @@ The model decides what features matter — not the scientist.
 
 ## {background-color="#1a1a2e"}
 
-### Part 2: The Foundational Neuron {style="text-align: center; margin-top: 15%;"}
+### Part 2: MFML Recap — The NN Toolkit {style="text-align: center; margin-top: 15%;"}
 
-*Slides 11–22*
+*Slides 11–14*
 
-## 11. Biological Inspiration
+## 11. What MFML covered this morning
 
 ::: {.fragment}
-- The human brain: **86 billion neurons**, each connected to thousands of others
-- Nature's information processor: learn, adapt, generalize
-- Can we build a mathematical model that does the same?
+- **Neuron** = affine map + non-linear activation: $a = \sigma(\mathbf{w}^T\mathbf{x} + b)$
+- **MLP** = stack of such layers; learns its own features instead of relying on hand-crafted ones
+- **Universal approximation**: an MLP with one hidden layer can approximate any continuous function — given enough neurons and data
+- **Training** by gradient descent on a loss function — the chain rule ("backprop") gives gradients efficiently
 :::
 
-::: {.fragment}
-![](images/neuron.png){width=80%}
+::: {.callout-note}
+We will not re-derive these here. If anything is unclear, the MFML deck (Unit 4) is your reference.
 :::
 
-## 12. The Neuron as Information Processor
+## 12. Activation function cheat-sheet
 
 ::: {.fragment}
-- **Dendrites**: Receive input signals from other neurons
-- **Soma**: Aggregates inputs and makes a "decision"
-- **Axon**: Transmits the output signal
-- **Synapses**: Connection points — their **strength** changes during learning
-:::
-
-::: {.fragment}
-> "Neurons that fire together, wire together" — Hebb's Rule (1949)
-
-Synaptic plasticity = learning
-:::
-
-## 13. The McCulloch-Pitts (MCP) Neuron (1943)
-
-::: {.fragment}
-The first computational model of a neuron:
-
-- **Binary inputs**: $x_i \in \{0, 1\}$
-- **Unweighted sum**: $a = \sum x_i$
-- **Threshold activation**: $y = 1$ if $a \geq \theta$, else $0$
+| Layer | Task | Activation | Why |
+|:---|:---|:---|:---|
+| Hidden | General | ReLU / Leaky ReLU | Cheap, no saturation for $z > 0$ |
+| Output | Regression (e.g., hardness) | Linear | Predictions span $\mathbb{R}$ |
+| Output | Binary classification | Sigmoid | Output ∈ (0, 1) interpreted as probability |
+| Output | Multi-class classification | Softmax | Outputs sum to 1 over $C$ classes |
 :::
 
 ::: {.fragment}
-A "Threshold Logic Unit" — the simplest possible decision maker.
+**Materials example**: phase classification — Softmax outputs $P(\text{FCC}) = 0.72$, $P(\text{BCC}) = 0.25$, $P(\text{HCP}) = 0.03$.
 :::
 
-## 14. MCP for Boolean Decisions
-
-::: {.columns}
-::: {.column width="50%"}
-::: {.fragment}
-**AND** ($\theta = 2$):
-
-| $x_1$ | $x_2$ | $a$ | $y$ |
-|:---:|:---:|:---:|:---:|
-| 0 | 0 | 0 | 0 |
-| 0 | 1 | 1 | 0 |
-| 1 | 0 | 1 | 0 |
-| 1 | 1 | 2 | **1** |
-:::
-:::
-
-::: {.column width="50%"}
-::: {.fragment}
-**OR** ($\theta = 1$):
-
-| $x_1$ | $x_2$ | $a$ | $y$ |
-|:---:|:---:|:---:|:---:|
-| 0 | 0 | 0 | 0 |
-| 0 | 1 | 1 | **1** |
-| 1 | 0 | 1 | **1** |
-| 1 | 1 | 2 | **1** |
-:::
-:::
-:::
-
-## 15. Limits of MCP
-
-::: {.fragment}
-- All inputs are **equally important** (unweighted)
-- In reality, some features matter more than others:
-  - Carbon content matters more than trace impurities for steel hardness
-  - Grain boundary density matters more than average grain size for fatigue
-- We need **weights** to encode feature importance
-:::
-
-## 16. The Rosenblatt Perceptron (1958)
-
-::: {.fragment}
-Introducing **weights** ($w_i$) and **bias** ($b$):
-
-$$a = \sum_{i=1}^{n} w_i x_i + b = \mathbf{w}^T \mathbf{x} + b$$
-
-- Weights: learned importance of each feature
-- Bias: shifts the decision threshold
-- Activation: step function $y = 1$ if $a \geq 0$, else $0$
-:::
-
-::: {.fragment}
-The foundation of supervised learning.
-:::
-
-## 17. Perceptron Architecture
+## 13. The training loop in one slide
 
 ::: {.fragment}
 ```{mermaid}
 graph LR
-    x1["x₁"] -- "w₁" --> S["Σ + b"]
-    x2["x₂"] -- "w₂" --> S
-    x3["x₃"] -- "w₃" --> S
-    S --> A["Step<br>Function"]
-    A --> y["y"]
+    D["Materials data<br>(features X, labels y)"] --> F["Forward pass:<br>ŷ = f(X; θ)"]
+    F --> L["Loss J(ŷ, y)<br>(MSE / cross-entropy)"]
+    L --> B["Backward pass:<br>∇θ J via chain rule"]
+    B --> U["θ ← θ − η ∇θ J<br>(SGD / Adam)"]
+    U --> F
+    style L fill:#e7ad52,color:#000
 ```
 :::
 
 ::: {.fragment}
-- Inputs can now be **continuous** (temperature, pixel intensity, composition)
-- Weights are **real-valued** — learned from data
-- The step function makes a hard binary decision
+The pieces — loss, gradient, update rule — are universal. **What changes between materials problems is what goes into X, what y means, and how we encode the structure.** That's the rest of this lecture.
 :::
 
-## 18. The Perceptron Learning Rule
+## 14. Why we use this toolkit on materials data
 
 ::: {.fragment}
-How do we find the right weights?
+The MFML deck showed *that* an MLP can fit any function. The materials questions are:
 
-$$\mathbf{w} \leftarrow \mathbf{w} + \eta (d - y) \mathbf{x}$$
-
-- $\eta$: **Learning rate** (step size)
-- $d$: Desired output (label)
-- $y$: Current output (prediction)
-- If correct ($d = y$): no update. If wrong: adjust weights.
+- What should we feed it? — micrograph pixels? hand-crafted descriptors? n-point statistics?
+- How do we label it? — labels are scarce and expert-time-bounded
+- How do we know it learned something physical? — interpretability matters in science
+- When does the toolkit *break* on real micrographs? — motivates CNNs (next week)
 :::
 
-## 19. Geometric Interpretation
-
-::: {.fragment}
-The Perceptron defines a **hyperplane** (decision boundary) in feature space:
-
-$$\mathbf{w}^T \mathbf{x} + b = 0$$
-
-- In 2D: a line
-- In 3D: a plane
-- In $n$D: a hyperplane
-:::
-
-::: {.fragment}
-Everything on one side → class 0. Everything on the other side → class 1.
-
-![](images/linear_boundary.png){width=80%}
-:::
-
-## 20. Think About This: Can a Perceptron Do This?
-
-::: {.fragment}
-**Task**: Classify steel samples as "pass" or "fail" based on carbon content and cooling rate.
-
-The pass/fail boundary looks like a line in 2D space.
-
-**Can a single Perceptron solve this?**
-:::
-
-::: {.fragment}
-**Yes!** If the classes are **linearly separable**, a Perceptron will converge to the correct boundary. This is guaranteed by the Perceptron Convergence Theorem.
-:::
-
-## 21. ADALINE: Adaptive Linear Neuron (1960)
-
-::: {.fragment}
-**Key difference**: Training uses the *linear* output $a$ (before the step function)
-
-$$J = \frac{1}{2}(d - a)^2 = \frac{1}{2}(d - \mathbf{w}^T\mathbf{x} - b)^2$$
-
-- The **Delta Rule** (Widrow-Hoff): minimize Mean Squared Error
-- Provides a "smoother" optimization landscape
-:::
-
-## 22. Part 2 Recap
-
-::: {.fragment}
-1. **MCP neuron**: Binary inputs, threshold, no learning
-2. **Perceptron**: Weighted inputs, bias, simple learning rule
-3. **ADALINE**: Continuous error, smooth optimization landscape
-4. All three can only solve **linearly separable** problems
-5. Next: How to break the linear barrier
-:::
+---
 
 ---
 
 ## {background-color="#1a1a2e"}
 
-### Part 3: Gradient Descent {style="text-align: center; margin-top: 15%;"}
+### Part 3: Encoding Microstructures for ML {style="text-align: center; margin-top: 15%;"}
 
-*Slides 23–30*
+*Slides 15–24*
 
-## 23. The Cost Surface
+## 15. The encoding question
 
 ::: {.fragment}
-The error $J(w, b)$ forms a surface in parameter space:
-
-- For ADALINE (MSE loss): a smooth **bowl** (convex)
-- We want to reach the bottom of the bowl: the minimum error
+Before any network can learn from a microstructure, we must turn it into a vector or tensor. **The choice of encoding decides what the model can learn.**
 :::
 
 ::: {.fragment}
-![](images/cost_surface.png){width=80%}
-:::
-
-## 24. Introduction to Gradient Descent
-
-::: {.fragment}
-"Walk downhill" in parameter space:
-
-$$\nabla J = \left(\frac{\partial J}{\partial w_1}, \frac{\partial J}{\partial w_2}, \ldots, \frac{\partial J}{\partial b}\right)$$
-:::
-
-::: {.fragment}
-Update rule:
-
-$$\mathbf{w}_{\text{new}} = \mathbf{w}_{\text{old}} - \eta \nabla J$$
-
-- The gradient $\nabla J$ points **uphill** → we go in the opposite direction
-- $\eta$: learning rate (step size)
-:::
-
-## 25. The Learning Rate $\eta$
-
-::: {.columns}
-::: {.column width="50%"}
-::: {.fragment}
-**Too large**:
-
-- Oscillations around the minimum
-- May diverge entirely
-- "Jumping over the valley"
-:::
-:::
-
-::: {.column width="50%"}
-::: {.fragment}
-**Too small**:
-
-- Extremely slow convergence
-- May get stuck in flat regions
-- Wastes computational resources
-:::
-:::
-:::
-
-::: {.fragment}
-**The Goldilocks zone**: Large enough to make progress, small enough to converge. In practice: use learning rate schedulers or adaptive methods (Adam).
-:::
-
-## 26. Batch, Mini-Batch, and Stochastic GD
-
-::: {.fragment}
-- **Batch GD**: Compute gradient over the entire dataset → stable but slow
-- **Stochastic GD (SGD)**: Compute gradient from one sample → fast but noisy
-- **Mini-Batch GD**: Compute gradient from a small subset (e.g., 32 samples) → best trade-off
-:::
-
-::: {.fragment}
-```{mermaid}
-graph LR
-    B["Batch<br>(all data)"] --- MB["Mini-Batch<br>(32-256)"]
-    MB --- S["Stochastic<br>(1 sample)"]
-    B -.- BL["Stable,<br>Slow"]
-    S -.- SL["Noisy,<br>Fast"]
-    MB -.- ML["Best<br>Trade-off"]
-    style MB fill:#e7ad52,color:#000
-```
-:::
-
-## 27. Convergence and the Loss Curve
-
-::: {.fragment}
-- Plot loss $J$ vs. training iteration (epoch)
-- **Healthy training**: Loss decreases smoothly, then plateaus
-- **Warning signs**:
-  - Loss oscillates wildly → learning rate too high
-  - Loss plateaus immediately → learning rate too low or model too simple
-  - Train loss drops but validation loss increases → **overfitting**
-:::
-
-## 28. Think About This: Linear Limits
-
-::: {.fragment}
-**Question**: You want to classify microstructures as "acceptable" or "reject" based on grain size and porosity. Acceptable means grain size < 50 µm AND porosity < 2%.
-
-Can a single Perceptron solve this?
-:::
-
-::: {.fragment}
-**Answer**: Yes — this is a rectangular boundary, which is linearly separable (can be done with 2 Perceptrons combined, or one with appropriate features). But what if the boundary is curved (e.g., small grains tolerate more porosity)? Then you need non-linearity.
-:::
-
-## 29. The Linear Limit
-
-::: {.fragment}
-Single Perceptrons and ADALINEs can only solve **linearly separable** problems.
-
-They can draw a line, but not a curve or a circle.
-:::
-
-::: {.fragment}
-**In materials**: Most structure-property relationships are **non-linear**.
-
-- Yield strength vs. temperature (complex curve)
-- Phase stability vs. composition (non-convex boundaries)
-- Fatigue life vs. stress amplitude (power law)
-:::
-
-## 30. The XOR Problem
-
-::: {.fragment}
-| $x_1$ | $x_2$ | XOR |
-|:---:|:---:|:---:|
-| 0 | 0 | 0 |
-| 0 | 1 | **1** |
-| 1 | 0 | **1** |
-| 1 | 1 | 0 |
-
-No single line can separate the 1s from the 0s!
-:::
-
-::: {.fragment}
-![](images/xor_problem.png){width=80%}
-
-**Minsky & Papert (1969)** proved a single Perceptron fails here → triggered the "AI Winter."
-:::
-
-## 31. Part 3 Recap
-
-::: {.fragment}
-1. **Gradient descent** = "walk downhill" in parameter space
-2. The **learning rate** controls speed vs. stability
-3. **Mini-batch GD** is the practical standard
-4. Single-layer networks can only solve **linearly separable** problems
-5. The **XOR problem** proves we need something more
-:::
-
----
-
-## {background-color="#1a1a2e"}
-
-### Part 4: Multi-Layer Networks {style="text-align: center; margin-top: 15%;"}
-
-*Slides 31–40*
-
-## 32. The Solution: Hidden Layers
-
-::: {.fragment}
-- Combine multiple neurons into **layers**
-- Insert "hidden" layers between input and output
-- Each hidden neuron creates a new **learned feature**
-:::
-
-::: {.fragment}
-```{mermaid}
-graph LR
-    subgraph Input
-    x1["x₁"]
-    x2["x₂"]
-    end
-    subgraph "Hidden Layer"
-    h1["h₁"]
-    h2["h₂"]
-    end
-    subgraph Output
-    y["ŷ"]
-    end
-    x1 --> h1
-    x1 --> h2
-    x2 --> h1
-    x2 --> h2
-    h1 --> y
-    h2 --> y
-```
-:::
-
-## 33. Solving XOR with Two Hidden Neurons
-
-::: {.fragment}
-- Hidden neuron 1: Learns a line separating (0,0) from (0,1) and (1,0)
-- Hidden neuron 2: Learns a line separating (1,1) from (0,1) and (1,0)
-- Output combines both: XOR = "either but not both"
-:::
-
-::: {.fragment}
-![](images/xor_solution.png){width=80%}
-:::
-
-::: {.fragment}
-Two lines combine to "sandwich" the XOR outputs → **non-linear boundary** from linear components!
-:::
-
-## 34. Multi-Layer Perceptrons (MLP)
-
-::: {.fragment}
-Stacking neurons in layers:
-
-- **Input Layer**: Your features (pixels, composition, sensor readings)
-- **Hidden Layer(s)**: Increasingly abstract representations
-- **Output Layer**: Your prediction (hardness, phase ID, defect probability)
-:::
-
-::: {.fragment}
-The "hidden" features are the model's **internal representation** of the material — its learned "language."
-:::
-
-## 35. Forward Propagation: From Input to Output
-
-::: {.fragment}
-**Layer 1** (hidden):
-$$\mathbf{h} = \phi(\mathbf{W}^{(1)} \mathbf{x} + \mathbf{b}^{(1)})$$
-
-**Layer 2** (output):
-$$\hat{y} = \mathbf{W}^{(2)} \mathbf{h} + \mathbf{b}^{(2)}$$
-:::
-
-::: {.fragment}
-In matrix notation — efficient on GPUs:
-
-$$\hat{y} = \mathbf{W}^{(2)} \cdot \phi(\mathbf{W}^{(1)} \mathbf{x} + \mathbf{b}^{(1)}) + \mathbf{b}^{(2)}$$
-:::
-
-::: {.callout-note}
-Forward propagation is just matrix multiplications + element-wise non-linear functions. This is why GPUs excel at it.
-:::
-
-## 36. Hidden Layers as Feature Extractors
-
-::: {.fragment}
-- **Early layers**: Detect simple patterns (edges, intensity gradients)
-- **Middle layers**: Combine simple patterns into complex ones (shapes, textures)
-- **Deep layers**: Combine complex patterns into abstractions (phase morphology, defect types)
-:::
-
-::: {.fragment}
-Each layer adds a level of **abstraction** — from pixels to physics.
-:::
-
-## 37. Neural Networks as Universal Approximators
-
-::: {.fragment}
-**Cybenko's Theorem (1989)**: A network with one hidden layer and a non-linear activation can approximate **any** continuous function to arbitrary accuracy.
-:::
-
-::: {.fragment}
-*Materials interpretation*: There exists a neural network that can map any microstructure to its property — **provided** we have:
-
-- Enough neurons
-- Enough data
-- The right training procedure
-:::
-
-::: {.callout-note}
-Universal approximation is a theoretical guarantee. In practice, finding the right network is the challenge.
-:::
-
-## 38. Interpreting the Hidden Features
-
-::: {.fragment}
-- Can we understand what the hidden neurons "see"?
-- In image models: visualize the learned filters
-- In materials: map hidden activations back to physical features
-:::
-
-::: {.fragment}
-*Discussion*: If hidden neuron 7 activates strongly for images with large precipitates, it has learned a "precipitate detector" without being told what precipitates are!
-:::
-
-## 39. Deep Neural Networks
-
-::: {.fragment}
-"Deep" simply means **many hidden layers**.
-
-- 2-3 layers: "Shallow" (MLPs)
-- 10-100+ layers: "Deep" (ResNets, Transformers)
-- Each layer adds abstraction but also:
-  - More parameters to train
-  - Risk of vanishing/exploding gradients
-  - Need for more data
-:::
-
-## 40. Case Study: ASTM Grain Size vs. Neural Network
-
-::: {.fragment}
-**Task**: Predicting tensile strength from micrographs.
-
-| Method | Features | R² |
+| Encoding | Input shape | What the model sees |
 |:---|:---|:---|
-| **Baseline** | Mean grain size (ASTM) | 0.72 |
-| **Hand-crafted** | Grain size + aspect ratio + porosity | 0.81 |
-| **MLP** | Raw image statistics | 0.88 |
+| Hand-crafted descriptors | $\mathbb{R}^{D}$ (small) | Pre-distilled features |
+| Raw flattened image | $\mathbb{R}^{H \cdot W}$ (huge) | Every pixel, no spatial prior |
+| Patch / windowed statistics | $\mathbb{R}^{N \times D}$ | Local texture distributions |
+| n-point statistics | $\mathbb{R}^{D}$ | Spatial correlations, translation-invariant |
+| Raw image with conv inductive bias | $\mathbb{R}^{H \times W \times C}$ | Spatial features (next week) |
+:::
+
+## 16. Hand-crafted descriptors revisited
+
+::: {.fragment}
+The classical features from Part 1 — grain size, aspect ratio, phase fraction, ODF coefficients — are **just one possible vector representation** of the microstructure.
 :::
 
 ::: {.fragment}
-The neural network finds that "largest grain" and "pore distribution" matter more than the average — information the ASTM number throws away.
+Their advantage: **physically interpretable**. You can name every component of the input vector.
+
+Their disadvantage: **information lossy and biased**. Whatever physics you didn't think to encode, the model cannot recover.
 :::
 
-## 41. Part 4 Recap
+## 17. Two-point statistics
 
 ::: {.fragment}
-1. **Hidden layers** enable non-linear decision boundaries
-2. **XOR** is solvable with just 2 hidden neurons
-3. **Forward propagation** = matrix multiplications + non-linear functions
-4. **Universal approximation**: NNs can approximate any function (in theory)
-5. Each layer adds a level of **abstraction** — from pixels to physics
+The two-point correlation function $S_2(\mathbf{r})$:
+
+$$S_2(\mathbf{r}) = P\bigl(\text{phase}(\mathbf{x}) = \alpha \;\wedge\; \text{phase}(\mathbf{x}+\mathbf{r}) = \alpha\bigr)$$
+
+- Probability that two points separated by $\mathbf{r}$ are both in phase $\alpha$
+- Captures characteristic length scales, anisotropy, ordering
+:::
+
+::: {.fragment}
+**Why this is a good NN input**: it's translation-invariant by construction, low-dimensional (a few hundred numbers), and physically meaningful.
+:::
+
+## 18. n-point statistics and microstructure functions
+
+::: {.fragment}
+- $S_2$ is the simplest of a family of $n$-point correlation functions
+- Higher-order $S_n$ capture more morphological detail at the cost of dimensionality
+- Frameworks like **MKS** (Materials Knowledge System) use $S_2$ as the input to a learned property-prediction network
+:::
+
+::: {.fragment}
+A practical compromise: feed the network $S_2$ (informative, compact) rather than raw pixels (noisy, huge).
+:::
+
+## 19. Compositional and process descriptors
+
+::: {.fragment}
+For many materials problems, the input is **not an image at all** — it's tabular:
+
+- **Composition**: 5–20 element fractions (e.g., for a steel: C, Mn, Si, Cr, Ni, Mo, ...)
+- **Process parameters**: cooling rate, anneal temperature, hold time, atmosphere
+- **Heat-treatment history**: ordered list of process steps
+:::
+
+::: {.fragment}
+This is the natural setting for an MLP. The input vector is small ($D \sim 10$–$50$), interpretable, and has well-defined physical units. Standardize each feature ($\mu = 0$, $\sigma = 1$) before feeding the network.
+:::
+
+## 20. Tabular vs structural inputs
+
+::: {.fragment}
+| Input type | Typical $D$ | Best architecture | Example task |
+|:---|:---|:---|:---|
+| Composition + process (tabular) | 10–50 | **MLP** (this lecture) | Predict hardness from alloy + treatment |
+| Hand-crafted morphological descriptors | 5–50 | MLP | Predict fatigue life from grain stats |
+| n-point statistics | 100–1000 | MLP / 1D conv | MKS-style property prediction |
+| Raw 2D micrograph | $10^4$–$10^7$ | **CNN** (next week) | Phase segmentation, defect detection |
+:::
+
+## 21. The information bottleneck, revisited
+
+::: {.fragment}
+- **Classical pipeline**: micrograph → 1 scalar (e.g., ASTM grain size) → linear regression → property
+- **MLP on hand-crafted features**: micrograph → 5–10 descriptors → MLP → property
+- **MLP on $S_2$**: micrograph → ~$10^2$ correlation values → MLP → property
+- **End-to-end CNN** (next week): micrograph → CNN → property, no hand-crafted features
+:::
+
+::: {.fragment}
+Each step retains more of the $\sim 10^6$ pixels of original information. **More information ≠ better model unless you have data to support it** — this trade-off drives the rest of the course.
+:::
+
+## 22. Standardization is non-negotiable
+
+::: {.fragment}
+A composition feature in [0, 1] (mass fraction) and a temperature in [300, 1500] K cannot be fed to the same MLP unscaled.
+:::
+
+::: {.fragment}
+- The loss landscape becomes severely ill-conditioned (recall MFML on Hessian conditioning, next week's MFML lecture)
+- Gradient descent oscillates in the steep direction and crawls in the flat one
+- **Always**: $\tilde{x}_i = (x_i - \mu_i) / \sigma_i$, where $\mu, \sigma$ are computed on the **training set only** and reused at test time
+:::
+
+## 23. Splitting materials data — the specimen rule
+
+::: {.fragment}
+- **Don't** split crops or pixels randomly — multiple crops from one specimen are not independent
+- **Do** split by **specimen / sample / processing batch**
+- Training set, validation set, and test set must come from disjoint physical samples
+:::
+
+::: {.fragment}
+This is the single most common mistake in published materials-ML papers. We will revisit it formally in Unit 6 (transfer learning) and in MFML's generalization week.
+:::
+
+## 24. Part 3 Recap
+
+::: {.fragment}
+1. The choice of **input encoding** determines what physics the model can capture
+2. **Hand-crafted descriptors** are interpretable but biased
+3. **n-point statistics** are a principled middle ground for microstructures
+4. For composition + process data, **tabular MLP input** is the natural choice
+5. **Always standardize** features and **split by specimen** — both have direct consequences for gradient flow and generalization
 :::
 
 ---
 
 ## {background-color="#1a1a2e"}
 
-### Part 5: Activation Functions {style="text-align: center; margin-top: 15%;"}
+### Part 4: Case Study — ASTM Grain Size vs. MLP {style="text-align: center; margin-top: 15%;"}
 
-*Slides 41–50*
+*Slides 25–34*
 
-## 42. Why Non-Linearity Is Essential
+## 25. The task
 
 ::: {.fragment}
-Without activation functions, layers collapse:
+Predict tensile strength of a polycrystalline alloy from its microstructure.
 
-$$\mathbf{W}_2(\mathbf{W}_1 \mathbf{x}) = (\mathbf{W}_2 \mathbf{W}_1)\mathbf{x} = \mathbf{W}_{\text{eff}} \mathbf{x}$$
+- 200 specimens, each with one calibrated SEM micrograph and a measured tensile strength
+- Goal: build a model that generalizes to *new* specimens, not new crops of seen specimens
+:::
 
-Two linear layers = one linear layer. No matter how deep the network!
+## 26. Three competing models
+
+::: {.fragment}
+| Model | Input | Parameters |
+|:---|:---|:---:|
+| **Linear (Hall-Petch)** | Mean grain size $d^{-1/2}$ | 2 |
+| **Linear + descriptors** | $d^{-1/2}$, aspect ratio, porosity, pore-size dispersion | 5 |
+| **MLP** | All 12 hand-crafted descriptors | $\sim 1{,}000$ |
 :::
 
 ::: {.fragment}
-Materials physics is **non-linear**: yielding, phase transitions, diffusion. Activation functions let the model capture this complexity.
+We use the **same** 12 descriptors for the linear-extended model and the MLP — so the only difference is *how* the inputs are combined.
 :::
 
-## 43. The Step Function (Perceptron)
+## 27. Results
 
 ::: {.fragment}
-$$y = \begin{cases} 1 & \text{if } a \geq 0 \\ 0 & \text{if } a < 0 \end{cases}$$
-
-- Hard binary decision
-- **Problem**: Not differentiable at $a = 0$
-- Gradient = 0 everywhere else → gradient descent **doesn't work**!
-:::
-
-## 44. The Sigmoid (Logistic) Function
-
-::: {.fragment}
-$$\sigma(x) = \frac{1}{1 + e^{-x}}$$
-
-- S-shaped curve, maps any input to $(0, 1)$
-- Differentiable everywhere: $\sigma'(x) = \sigma(x)(1 - \sigma(x))$
-- **Good for**: Output layer of binary classification (interpret as probability)
-:::
-
-::: {.fragment}
-**Problem**: For large $|x|$, gradient $\approx 0$ → **vanishing gradient problem** in deep networks.
-:::
-
-## 45. The Hyperbolic Tangent (tanh)
-
-::: {.fragment}
-$$\tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}$$
-
-- Maps to $(-1, 1)$ — **zero-centered** (unlike sigmoid)
-- Steeper gradients than sigmoid → faster learning
-- Still suffers from vanishing gradients for large $|x|$
-:::
-
-## 46. The ReLU Revolution
-
-::: {.fragment}
-$$f(x) = \max(0, x) = \begin{cases} x & \text{if } x > 0 \\ 0 & \text{if } x \leq 0 \end{cases}$$
-
-- The **industry standard** for hidden layers since ~2012
-- Gradient = 1 for $x > 0$ → no vanishing gradient!
-- Computationally cheap: just a comparison
-:::
-
-::: {.callout-note}
-ReLU enabled the deep learning revolution by solving the vanishing gradient problem.
-:::
-
-## 47. The Vanishing Gradient Problem
-
-::: {.fragment}
-- **Sigmoid/tanh**: For large $|x|$, gradient $\to 0$
-- In a 10-layer network, gradients get multiplied: $0.25^{10} \approx 10^{-6}$
-- Early layers receive **near-zero gradients** → stop learning
-:::
-
-::: {.fragment}
-- **ReLU**: Gradient = 1 for $x > 0$ → gradients flow unchanged through layers
-- This is why deep learning became practical
-:::
-
-## 48. Leaky ReLU and Variants
-
-::: {.fragment}
-**Problem with ReLU**: "Dying neurons" — if a neuron's input is always negative, its gradient is always 0 → it never learns again.
-:::
-
-::: {.fragment}
-**Leaky ReLU**: $f(x) = \begin{cases} x & \text{if } x > 0 \\ \alpha x & \text{if } x \leq 0 \end{cases}$
-
-- Small slope $\alpha$ (typically 0.01) for negative inputs
-- Neurons can "recover" from negative regions
-:::
-
-## 49. Softmax: For Multi-Class Classification
-
-::: {.fragment}
-$$\text{Softmax}(z_i) = \frac{e^{z_i}}{\sum_{j=1}^{C} e^{z_j}}$$
-
-- Normalizes output to a **probability distribution** over $C$ classes
-- All outputs sum to 1
-- Used in the **final layer** of classification models
-:::
-
-::: {.fragment}
-**Materials example**: Phase classification — Softmax outputs $P(\text{FCC}) = 0.72$, $P(\text{BCC}) = 0.25$, $P(\text{HCP}) = 0.03$.
-:::
-
-## 50. Choosing the Right Activation
-
-::: {.fragment}
-| Layer | Task | Activation |
+| Method | Features | R² (test) |
 |:---|:---|:---|
-| **Hidden** | General | ReLU (or Leaky ReLU) |
-| **Output** | Regression | Linear (no activation) |
-| **Output** | Binary classification | Sigmoid |
-| **Output** | Multi-class classification | Softmax |
+| Hall-Petch | Mean grain size only | 0.72 |
+| Linear + descriptors | 12 hand-crafted | 0.81 |
+| **MLP** | 12 hand-crafted | **0.88** |
 :::
 
 ::: {.fragment}
-**Rule of thumb**: Start with ReLU for hidden layers. Only change if you have a specific reason.
+The MLP gains 7 R² points on the **same input** as the linear model — the gain comes purely from non-linear feature combinations.
 :::
 
-## 51. Unit 4 Summary & Next Steps
+## 28. What did the MLP discover?
+
+::: {.fragment}
+Permutation importance reveals which inputs the MLP actually relies on:
+
+- **Largest grain size** (not the mean) is the dominant feature — consistent with weakest-link fracture mechanics
+- **Pore-size dispersion** matters more than total porosity — clusters of pores are more harmful than uniformly distributed ones
+- **Mean grain size** appears mid-importance — it captures bulk Hall-Petch behavior but is not the single best predictor
+:::
+
+::: {.fragment}
+**Physical reading**: the network rediscovered weakest-link statistics on its own. Hall-Petch was an *average*; failure is a *tail-of-distribution* phenomenon.
+:::
+
+## 29. Where the linear model fails
+
+::: {.fragment}
+A linear model in $d^{-1/2}$ predicts the same strength gain whether you halve the *mean* grain size or halve the *largest* grain. Physically these are different operations — thermomechanical processing affects the tail of the grain-size distribution differently from the mean.
+:::
+
+::: {.fragment}
+The MLP captures this because it can compose features non-linearly: e.g., $\sigma_y \approx f(\bar{d}, d_{\max}, \mathrm{Var}[d])$ with $f$ free to be non-additive.
+:::
+
+## 30. Discussion: when to *prefer* the linear model
+
+::: {.fragment}
+- **Tiny dataset** ($N < 50$): the MLP overfits; linear regularizes by structure
+- **Need for extrapolation** to compositions/processing outside the training range: linear is more honest about its uncertainty
+- **Regulatory or safety contexts**: linear coefficients can be audited and reported; MLP weights cannot
+:::
+
+::: {.fragment}
+**Materials practice**: try the linear baseline first. Only adopt the MLP if it improves cross-validation R² *and* you can defend its predictions on out-of-distribution test cases.
+:::
+
+## 31. Failure mode: train/test split done wrong
+
+::: {.fragment}
+A common but invalid protocol:
+
+1. Take 200 micrographs, cut each into 16 crops → 3,200 crops
+2. Shuffle all 3,200 crops, hold out 20% as test
+3. Report 0.95 R² on the test set
+:::
+
+::: {.fragment}
+- The model has seen *another crop of the same specimen* during training
+- The reported R² overstates real-world performance by a wide margin
+- A **specimen-level split** (Part 3, slide 23) on the same data drops R² from 0.95 to 0.72
+:::
+
+## 32. Failure mode: distribution shift across labs
+
+::: {.fragment}
+- Train on micrographs from microscope A: R² = 0.88
+- Test on the same alloy imaged with microscope B: R² collapses to 0.45
+- Why? The MLP latched onto contrast and brightness statistics that differ between detectors
+:::
+
+::: {.fragment}
+**Mitigation**: feature engineering that normalizes out instrument-specific statistics, or — more powerfully — domain-randomized training, which we'll revisit in Unit 6 (transfer learning).
+:::
+
+## 33. Failure mode: scaling to high-resolution micrographs
+
+::: {.fragment}
+What if we don't have hand-crafted descriptors, only the raw image?
+
+- A $1024 \times 1024$ micrograph flattened into an MLP needs $\sim 10^9$ parameters in its first layer
+- 200 specimens are nowhere near enough to constrain that many weights
+- The MLP memorizes pixel patterns rather than learning physics
+:::
+
+::: {.fragment}
+**This is the failure mode that motivates next week's lecture.** CNNs use weight sharing and locality to make the parameter count manageable, allowing us to learn directly from pixels.
+:::
+
+## 34. Part 4 Recap
+
+::: {.fragment}
+1. On the **same descriptors**, an MLP beats linear regression because it captures non-linear interactions
+2. The MLP rediscovered **weakest-link** statistics — physical insight emerged from learning
+3. Linear baselines remain valuable for **small data**, **extrapolation**, and **auditability**
+4. The two showstopping pitfalls — **specimen-level splitting** and **cross-lab distribution shift** — apply to *any* MLP on materials data
+5. MLPs hit a hard wall on raw images — the motivation for **CNNs next week**
+:::
+
+---
+
+## 35. Unit 4 Summary & Next Steps
 
 ::: {.fragment}
 **Key Takeaways:**
 
-1. Classical metrics are interpretable but **lose information**
-2. The Perceptron learns a **linear** decision boundary
-3. **Hidden layers** enable non-linear modeling
-4. **Activation functions** (especially ReLU) make deep learning possible
-5. **Gradient descent** is the universal training algorithm
+1. **Classical metrics** are interpretable but lossy — pick them when the physics is well-understood
+2. **Hand-crafted descriptors + MLP** is a pragmatic upgrade and the right starting point for tabular materials data
+3. **n-point statistics** are the principled bridge between morphology and learned representations
+4. **Specimen-level splits** and **feature standardization** are non-negotiable for honest evaluation
+5. **MLPs fail on raw images** — that failure is the motivation for CNNs (Unit 5)
 :::
 
 ::: {.fragment}
 **Reading:**
 
 - Sandfeld (2024): Ch. 17 (Neural Networks) [@sandfeld_materials_data_science]
-- McClarren (2021): Ch. 2, 5 (Linear Models, Feed-Forward NNs) [@mcclarren2021machine]
-- Neuer (2024): Ch. 4 (Neural Networks) [@neuer2024machine]
+- McClarren (2021): Ch. 5 (Feed-Forward NNs) [@mcclarren2021machine]
+- Neuer (2024): Ch. 4.5 (already read for MFML this morning) [@neuer2024machine]
 :::
 
 ::: {.fragment}
-**Next Week**: Unit 5 — Deep Learning for Images: Convolutional Neural Networks (CNNs)
+**Next Week**: Unit 5 — Convolutional Neural Networks for Microstructure Analysis
 :::
 
 ---
