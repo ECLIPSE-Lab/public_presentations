@@ -26,519 +26,1025 @@ format:
       loadIcons: true
 ---
 
-## 01. The Language of Microstructures
+## 01. Where We Are
 
-::: {.fragment}
-- How do we describe what we see in a microscope?
-- **Traditionally**: Human-driven metrics (grain size, phase fraction)
-- **Modern approach**: Algorithm-driven representations (embeddings)
-- **Goal**: Capture the link between structure and properties — automatically
+::: {.columns}
+::: {.column width="50%"}
+**Recap — Unit 3**
+
+- Cleaning, scaling, transforms, leakage-safe validation.
+- Every preprocessing choice is a **modelling decision** [@sandfeld_materials_data_science].
+:::
+
+::: {.column width="50%"}
+**Today — Unit 4**
+
+- Turn microstructure into **vectors** a model can use.
+- Classical scalars → hand-crafted vectors → $S_2$ / MKS → (next week) CNNs on pixels.
+:::
+:::
+
+::: {.notes}
+**Anchor.** Unit 2 gave the measurement chain; Unit 3 gave honest tensors and splits. Today is the bridge to architectures (MFML) and to spatial models (Unit 5).
+**Connect.** Standardisation and group splits from Unit 3 reappear in §3 and §4 as non-negotiables.
 :::
 
 ## 02. Learning Outcomes
 
 By the end of this unit, you can:
 
+::: {.columns}
+::: {.column width="50%"}
 ::: {.fragment}
-1. Quantify the **information loss** when condensing a micrograph into a stereological scalar
-2. Choose between **hand-crafted descriptors** and **learned representations** for a given materials task
-3. Encode a microstructure as input to a neural network (raw pixels, feature vectors, n-point statistics)
-4. Apply the MFML neural-network toolkit to a tabular materials-property prediction task
-5. Interpret what an MLP "learns" about a microstructure — and where this differs from human-readable descriptors
-6. Recognize the failure modes of MLPs on micrographs that motivate next week's CNN material
+1. Quantify **information loss** when a micrograph becomes one stereological scalar.
+2. Choose **hand-crafted descriptors** vs **learned / correlation-based** inputs for a task.
+3. Encode microstructure as **tabular**, **$S_2$**, or **image** input (and know which architecture matches).
 :::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+4. Apply the **MFML MLP toolkit** to tabular materials prediction [@mcclarren2021machine].
+5. Interpret what an MLP emphasises vs what a human would report (e.g. tail vs mean grain size).
+6. Name **failure modes** (split, shift, labels, imbalance, raw pixels) that motivate **CNNs** (Unit 5).
+:::
+:::
+:::
+
+::: {.notes}
+**Anchor.** Outcomes 4–6 assume MFML Unit 4 (forward pass, activations, backprop) — this deck does not re-derive them.
+**Pitfall.** If students skipped MFML, point them to the MFML deck before the case study in §4.
+:::
+
+## 03. The Language of Microstructures
+
+::: {.columns}
+::: {.column width="50%"}
+**Traditional**
+
+- Human-defined metrics: grain size, phase fraction, $S_V$.
+- Standards-driven (ASTM, DIN) — reproducible, auditable.
+:::
+
+::: {.column width="50%" .fragment}
+**Modern**
+
+- **Embeddings**: algorithm-built vectors that retain task-relevant structure.
+- **Goal:** link processing → structure → property with less hand-picked loss [@sandfeld_materials_data_science].
 
 ::: {.callout-note}
-This morning's MFML lecture covered the architecture, forward pass, and activation taxonomy of MLPs. We'll recap that in 3 slides and then spend the rest of the lecture on what's specific to **materials data**.
+MFML this morning: MLP forward pass, activations, training loop. We recap in §2, then focus on **materials encodings**.
+:::
+:::
 :::
 
----
-
-## {background-color="#1a1a2e"}
-
-### Part 1: Classical Microstructure Metrics {style="text-align: center; margin-top: 15%;"}
-
-*Slides 03–10*
-
-## 03. Stereology: Quantifying Structure
-
-::: {.fragment}
-**Stereology**: The science of estimating 3D properties from 2D sections.
-
-- **Volume fractions** ($V_V$): How much of each phase?
-- **Surface area per volume** ($S_V$): Interface density
-- **Mean intercept length**: Grain size estimation
+::: {.notes}
+**War story.** Same micrograph, three different segmentations → three different “grain sizes.” The number is not objective; the pipeline is.
+**Connect.** §1 makes the lossy scalar explicit; §3 adds vectors that keep more morphology.
 :::
 
-::: {.fragment}
-How we've characterized structure for over a century — the backbone of materials standards (ASTM, DIN).
+# §1 · Classical Microstructure Metrics {.section}
+
+## 04. Stereology: Quantifying Structure
+
+::: {.columns}
+::: {.column width="50%"}
+**Stereology** — estimate 3D quantities from 2D sections.
+
+- **$V_V$** — volume fraction per phase.
+- **$S_V$** — interface area per unit volume.
+- **Mean intercept** — linked to grain size (standards).
 :::
 
-## 04. Stereological Descriptors in Practice
+::: {.column width="50%" .fragment}
+**Anchor in Unit 2**
 
-::: {.fragment}
-![](images/sem_grains.png){width=80%}
+- A section is one draw from a 3D microstructure; estimators have variance.
+- Reporting **$N$** sections and **how** boundaries were detected matters as much as the number.
+:::
 :::
 
-::: {.fragment}
-Scalar features that condense complex 3D structures into **single numbers**:
-
-- Grain size → one number
-- Phase fraction → one number
-- Porosity → one number
-
-These are our "hand-crafted features."
+::: {.notes}
+**Anchor.** Tie stereology to the sensing chain: thresholding and edge detection are part of the “instrument.”
+**Pitfall.** Never compare ASTM numbers across labs without the segmentation protocol.
 :::
 
-## 05. Hand-Crafted Shape Descriptors
+## 05. Stereological Descriptors in Practice
 
-::: {.fragment}
-Features based on human intuition:
-
-- **Shape**: Aspect ratio, circularity, tortuosity
-- **Distribution**: Nearest-neighbor distances, clustering index
-- **Texture**: Orientation distribution function (ODF)
+::: {.columns}
+::: {.column width="50%"}
+![SEM after grain segmentation; mean intercept collapses morphology to one $\bar{d}$.](images/sem_grains.png){width=85% fig-alt="SEM micrograph showing grain structure after segmentation."}
 :::
 
-::: {.fragment}
-- **Strength**: Physically interpretable — you can explain them to a colleague
-- **Weakness**: Biased — you only find what you look for. What if the key descriptor hasn't been invented yet?
+::: {.column width="50%" .fragment}
+**Scalars from rich images**
+
+- $\bar{d}$, $\phi_\alpha$, $V_V^{\text{pore}}$ — each is **one** summary.
+- **Hand-crafted features**: named, interpretable, **lossy**.
+- Segmentation choices feed directly into every scalar [@sandfeld_materials_data_science].
+:::
 :::
 
-## 06. The Information Bottleneck
-
-::: {.fragment}
-- A high-resolution micrograph: $10^6$ pixels of information
-- ASTM grain size: reduces this to **one number**
-- We discard **99.99%** of the information
+::: {.notes}
+**Anchor.** Unit 3: choosing $\bar{d}$ is as much a model as choosing an MLP — it encodes what you think matters.
+**Pitfall.** `sem_grains.png` is modest resolution; we keep display width moderate to avoid ugly upscaling on 1920×1080.
+**Connect.** §3 replaces “one number” with correlation vectors ($S_2$) and later with spatial nets.
 :::
 
-::: {.fragment}
-*Question*: Can we keep more information while remaining computationally efficient?
+## 06. Hand-Crafted Shape Descriptors
 
-*Answer*: Yes — learned representations (embeddings) compress images into vectors that preserve the task-relevant information.
+::: {.columns}
+::: {.column width="50%"}
+**Families**
+
+- **Shape:** aspect ratio, circularity, tortuosity.
+- **Distribution:** nearest-neighbour spacing, clustering indices.
+- **Texture:** ODF coefficients, pole figures.
 :::
 
-## 07. PSPP as a Feature Space
+::: {.column width="50%" .fragment}
+**Trade-off**
 
-::: {.fragment}
-Processing → Structure (Metric $d$) → Property (Hardness $H$)
-
-**Hall-Petch**: $H = H_0 + k \cdot d^{-1/2}$
-
-A linear model using a physical descriptor — works well for simple cases!
+- **Strength:** physical names, peer-reviewable.
+- **Weakness:** you only recover structure you **designed the scalar to see** — unknown mechanisms stay invisible.
+:::
 :::
 
-::: {.fragment}
+::: {.notes}
+**Materials example.** Fatigue life often correlates with tail grain size and pore clusters — not with a single mean intercept.
+**Connect.** §4 shows an MLP finding tail-sensitive combinations on the *same* 12 scalars a linear model uses.
+:::
+
+## 07. The Information Bottleneck
+
+::: {.columns}
+::: {.column width="50%"}
+- Micrograph: $\mathcal{O}(10^6)$ pixels of state (before compression).
+- ASTM-style scalar: **one** number per channel of interest.
+- Order-of-magnitude: **vast** compression — most spatial detail discarded **by construction**.
+:::
+
+::: {.column width="50%" .fragment}
+**Question:** keep more information without $10^6$-dim raw pixels?
+
+**Answer:** structured **vectors** — $S_2$, descriptor stacks, learned embeddings — sized to data and task.
+:::
+:::
+
+::: {.notes}
+**Pitfall.** “More features” without more specimens or regularisation → overfit (see §4 failure modes).
+**Connect.** MKS and eigen-microstructures (§3) are two disciplined ways to grow $D$ without jumping to full pixels yet.
+:::
+
+## 08. PSPP as a Feature Space
+
+::: {.columns}
+::: {.column width="50%"}
+Processing $\to$ structure (metric $d$) $\to$ property (e.g. hardness $H$).
+
+**Hall–Petch (illustrative):**
+
+$$H = H_0 + k\, d^{-1/2}$$
+
+Linear in $d^{-1/2}$ — a **physics-first** coordinate choice.
+:::
+
+::: {.column width="50%" .fragment}
 ```{mermaid}
+%%| echo: false
+%%| fig-align: center
 graph LR
-    P["Processing<br>(cooling rate)"] --> S["Structure<br>(grain size d)"]
-    S --> Pr["Property<br>(hardness H)"]
+    P["Processing"] --> S["Structure d"]
+    S --> Prop["Property H"]
     style S fill:#e7ad52,color:#000
 ```
+
+**Role of ML:** learn $H = f(\mathbf{s})$ when the true $\mathbf{s}$ is **not** one scalar [@mcclarren2021machine].
+:::
 :::
 
-## 08. Why Not Just Metrics?
-
-::: {.fragment}
-Modern materials defy simple descriptions:
-
-- **High-entropy alloys**: 5+ principal elements, complex phase mixtures
-- **Nanocomposites**: Multi-scale structures spanning nm to µm
-- **Additive manufacturing**: Spatially varying microstructures, not statistically homogeneous
+::: {.notes}
+**Anchor.** PSPP is the course backbone — today we only upgrade the “S” box from one number to a vector representation.
+**Pitfall.** Hall–Petch breaks outside its validity window; a linear fit is not a law of nature everywhere in process space.
 :::
 
-::: {.fragment}
-Simple metrics are insufficient to describe the "S" in PSPP completely. We need **richer representations**.
+## 09. Why Not Just Metrics?
+
+::: {.columns}
+::: {.column width="50%"}
+**Systems that break “one scalar per mechanism”**
+
+- **High-entropy alloys** — multi-phase, partitioning, sluggish diffusion.
+- **Nanocomposites** — nm–µm hierarchy in one image.
+- **Additive manufacturing** — **spatially varying** solidification, not a single stationary field.
 :::
 
-## 09. The Paradigm Shift
+::: {.column width="50%" .fragment}
+**Consequence**
 
-::: {.fragment}
-| Approach | Input | Features | Limitations |
-|:---|:---|:---|:---|
-| **Classical** | Micrograph → Metrics | Hand-crafted | Information loss |
-| **Modern** | Micrograph → Network | Learned (embedding) | Need data |
+- Scalar summaries assume **stationarity** and **known relevant descriptors**.
+- When morphology is multi-scale or path-dependent, the “S” in PSPP needs a **richer basis** than ASTM charts alone [@sandfeld_materials_data_science].
+:::
 :::
 
-::: {.fragment}
-From **"Predicting with Descriptors"** to **"Learning Representations"**
-
-The model decides what features matter — not the scientist.
+::: {.notes}
+**War story.** Plot hardness vs mean $d$ only — looks noisy. Add tail diameter and pore clustering features (or $S_2$) — structure appears. The noise was **missing coordinates**, not the lab.
+**Connect.** Same theme as weakest-link in §4.
 :::
 
-## 10. Part 1 Recap
+## 10. The Paradigm Shift
 
-::: {.fragment}
-1. Classical metrics (stereology) are interpretable but **lossy**
-2. Hand-crafted features encode human knowledge — but may miss key descriptors
-3. The information bottleneck: $10^6$ pixels → 1 number
-4. Modern materials need **richer representations** than scalar metrics
-5. The solution: let the model **learn** the representation
+::: {.columns}
+::: {.column width="50%"}
+| | Classical | Modern |
+|:---|:---|:---|
+| **Input** | Image $\to$ metrics | Image / field $\to$ representation |
+| **Features** | Hand-crafted | Learned or correlation-based |
+| **Limit** | Information loss | Data + compute + validation discipline |
 :::
 
----
+::: {.column width="50%" .fragment}
+**Shift in practice**
 
-## {background-color="#1a1a2e"}
-
-### Part 2: MFML Recap — The NN Toolkit {style="text-align: center; margin-top: 15%;"}
-
-*Slides 11–14*
-
-## 11. What MFML covered this morning
-
-::: {.fragment}
-- **Neuron** = affine map + non-linear activation: $a = \sigma(\mathbf{w}^T\mathbf{x} + b)$
-- **MLP** = stack of such layers; learns its own features instead of relying on hand-crafted ones
-- **Universal approximation**: an MLP with one hidden layer can approximate any continuous function — given enough neurons and data
-- **Training** by gradient descent on a loss function — the chain rule ("backprop") gives gradients efficiently
+- From “**predict with descriptors**” to “**learn (or engineer) a representation**, then predict.”
+- Scientist still owns **labels, splits, metrics, physics checks** [@neuer2024machine].
+:::
 :::
 
-::: {.callout-note}
-We will not re-derive these here. If anything is unclear, the MFML deck (Unit 4) is your reference.
+::: {.notes}
+**Pitfall.** “Let the network find features” does not remove responsibility for leakage, shift, or nonsense correlations (Unit 3 + §4).
+**Connect.** Unit 5 adds the right inductive bias for **pixels** (locality + weight sharing).
 :::
 
-## 12. Activation function cheat-sheet
+## 11. §1 Recap
 
-::: {.fragment}
-| Layer | Task | Activation | Why |
-|:---|:---|:---|:---|
-| Hidden | General | ReLU / Leaky ReLU | Cheap, no saturation for $z > 0$ |
-| Output | Regression (e.g., hardness) | Linear | Predictions span $\mathbb{R}$ |
-| Output | Binary classification | Sigmoid | Output ∈ (0, 1) interpreted as probability |
-| Output | Multi-class classification | Softmax | Outputs sum to 1 over $C$ classes |
+::: {.columns}
+::: {.column width="50%"}
+1. Stereology = **standards-grade** 3D inference from 2D — with estimator variance.
+2. Hand-crafted scalars = **interpretable** and **biased** by what you measured.
+3. **Bottleneck:** $10^6$ pixels $\to$ one number is extreme compression.
 :::
 
-::: {.fragment}
-**Materials example**: phase classification — Softmax outputs $P(\text{FCC}) = 0.72$, $P(\text{BCC}) = 0.25$, $P(\text{HCP}) = 0.03$.
+::: {.column width="50%" .fragment}
+4. PSPP + Hall–Petch = **toy** for linear structure–property links.
+5. Complex materials need **richer “S”** than a single chart metric.
+6. Next: **MFML toolkit** (§2) then **encodings** (§3).
+:::
 :::
 
-## 13. The training loop in one slide
+::: {.notes}
+**Use as checkpoint.** 60-second pair share: name one material where a single ASTM number is known to be misleading — and what extra coordinate you would add.
+:::
 
-::: {.fragment}
+# §2 · MFML Recap — The NN Toolkit {.section}
+
+## 12. What MFML Covered This Morning
+
+::: {.columns}
+::: {.column width="50%"}
+- **Neuron:** $a = \sigma(\mathbf{w}^\top \mathbf{x} + b)$.
+- **MLP:** stack of layers; composes nonlinear features from $\mathbf{x}$.
+- **Universal approximation:** wide enough shallow net + nonlinearity → dense in continuous functions (hypotheses on domain / regularity) [@mcclarren2021machine].
+:::
+
+::: {.column width="50%" .fragment}
+- **Training:** minimise loss $J(\hat{y}, y)$ by gradient-based updates; **backprop** = efficient chain rule [@neuer2024machine].
+- **No re-derivation here** — MFML Unit 4 deck is the reference.
+:::
+:::
+
+::: {.notes}
+**Anchor.** This slide is signposting only; depth lives in MFML.
+**Connect.** §4 uses the same toolkit on **tabular** microstructure descriptors — fair comparison to linear baselines.
+:::
+
+## 13. Activation Cheat-Sheet
+
+::: {.columns}
+::: {.column width="50%"}
+| Location | Task | Activation |
+|:---|:---|:---|
+| Hidden | Generic | ReLU / Leaky ReLU |
+| Output | Regression | Linear ($\mathbb{R}$) |
+| Output | Binary | Sigmoid $(0,1)$ |
+| Output | Multi-class | Softmax (simplex) |
+:::
+
+::: {.column width="50%" .fragment}
+**Materials example**
+
+- Phase ID: $\bigl(P_{\mathrm{FCC}}, P_{\mathrm{BCC}}, P_{\mathrm{HCP}}\bigr)$ from softmax — **not** argmax until you understand calibration needs [@goodfellow2016deep].
+:::
+:::
+
+::: {.notes}
+**Pitfall.** Softmax “probabilities” are only well-calibrated under correct modelling assumptions — treat as scores first, then calibrate if needed (later units).
+**Connect.** Unit 12 revisits probabilistic outputs more seriously.
+:::
+
+## 14. The Training Loop in One Slide
+
+::: {.columns}
+::: {.column width="50%"}
 ```{mermaid}
+%%| echo: false
+%%| fig-align: center
 graph LR
-    D["Materials data<br>(features X, labels y)"] --> F["Forward pass:<br>ŷ = f(X; θ)"]
-    F --> L["Loss J(ŷ, y)<br>(MSE / cross-entropy)"]
-    L --> B["Backward pass:<br>∇θ J via chain rule"]
-    B --> U["θ ← θ − η ∇θ J<br>(SGD / Adam)"]
+    D["Data X, y"] --> F["Forward: y-hat = f(X, theta)"]
+    F --> L["Loss J(y-hat, y)"]
+    L --> B["Backward grad on theta"]
+    B --> U["SGD parameter update"]
     U --> F
     style L fill:#e7ad52,color:#000
 ```
 :::
 
-::: {.fragment}
-The pieces — loss, gradient, update rule — are universal. **What changes between materials problems is what goes into X, what y means, and how we encode the structure.** That's the rest of this lecture.
+::: {.column width="50%" .fragment}
+**Invariant across domains**
+
+- Same loop for steel design sheets and for $S_2$ vectors.
+
+**What changes in materials ML**
+
+- **What is in $X$** (encoding), **what $y$ means** (measurement chain), **how you split** (specimens, not crops) — rest of this lecture [@sandfeld_materials_data_science].
+:::
 :::
 
-## 14. Why we use this toolkit on materials data
-
-::: {.fragment}
-The MFML deck showed *that* an MLP can fit any function. The materials questions are:
-
-- What should we feed it? — micrograph pixels? hand-crafted descriptors? n-point statistics?
-- How do we label it? — labels are scarce and expert-time-bounded
-- How do we know it learned something physical? — interpretability matters in science
-- When does the toolkit *break* on real micrographs? — motivates CNNs (next week)
+::: {.notes}
+**Anchor.** Loss choice ties to Unit 3 metrics lecture (MAE vs RMSE vs classification metrics) — same $J$, different reporting emphasis.
+**Pitfall.** Fitting normalisers on all data before split → leakage (Unit 3); applies unchanged to tabular microstructure inputs.
 :::
 
----
+## 15. Why This Toolkit on Materials Data
 
----
+::: {.columns}
+::: {.column width="50%"}
+The MFML deck proves **flexibility**. Materials questions:
 
-## {background-color="#1a1a2e"}
-
-### Part 3: Encoding Microstructures for ML {style="text-align: center; margin-top: 15%;"}
-
-*Slides 15–24*
-
-## 15. The encoding question
-
-::: {.fragment}
-Before any network can learn from a microstructure, we must turn it into a vector or tensor. **The choice of encoding decides what the model can learn.**
+1. What feeds $\mathbf{x}$? — pixels, descriptors, $S_2$, process vector?
+2. Who labels $y$? — scarce expert time; label error budgets.
+3. Did we learn **physics** or **nuisance**? — probes, etching, detector gain.
+4. When does an MLP on **raw** micrographs fail? — parameter count vs $N$ → **CNNs** (Unit 5).
 :::
 
-::: {.fragment}
-| Encoding | Input shape | What the model sees |
+::: {.column width="50%" .fragment}
+::: {.callout-note}
+If any MFML step is fuzzy, pause here and reopen the MFML deck — §3–§4 assume the vocabulary above is fluent.
+:::
+:::
+:::
+
+::: {.notes}
+**Connect.** This list is the rubric for reading papers: always ask those four before trusting a leaderboard score.
+:::
+
+# §3 · Encoding Microstructures for ML {.section}
+
+## 16. The Encoding Question
+
+::: {.columns}
+::: {.column width="50%"}
+Before training: map microstructure to **tensor** $\mathbf{X}$.
+
+**Principle:** encoding **upper-bounds** what physics the hypothesis class can express — garbage encoding, garbage in [@neuer2024machine].
+:::
+
+::: {.column width="50%" .fragment}
+| Encoding | Shape | Model sees |
 |:---|:---|:---|
-| Hand-crafted descriptors | $\mathbb{R}^{D}$ (small) | Pre-distilled features |
-| Raw flattened image | $\mathbb{R}^{H \cdot W}$ (huge) | Every pixel, no spatial prior |
-| Patch / windowed statistics | $\mathbb{R}^{N \times D}$ | Local texture distributions |
-| n-point statistics | $\mathbb{R}^{D}$ | Spatial correlations, translation-invariant |
-| Raw image with conv inductive bias | $\mathbb{R}^{H \times W \times C}$ | Spatial features (next week) |
+| Hand-crafted | $\mathbb{R}^{D}$, small | Pre-distilled features |
+| Flattened image | $\mathbb{R}^{HW}$ | Pixels, no locality prior |
+| $S_2$ / patches | $\mathbb{R}^{D'}$ | Correlations / local stats |
+| Image + conv | $\mathbb{R}^{H\times W\times C}$ | Spatial features (Unit 5) |
+:::
 :::
 
-## 16. Hand-crafted descriptors revisited
-
-::: {.fragment}
-The classical features from Part 1 — grain size, aspect ratio, phase fraction, ODF coefficients — are **just one possible vector representation** of the microstructure.
+::: {.notes}
+**Pitfall.** Using $10^4$-dim flattened pixels with $N=200$ specimens → memorisation (§4, slide 38).
+**Connect.** Rows are ordered by increasing inductive bias + increasing engineering for spatial data.
 :::
 
-::: {.fragment}
-Their advantage: **physically interpretable**. You can name every component of the input vector.
+## 17. Hand-Crafted Descriptors Revisited
 
-Their disadvantage: **information lossy and biased**. Whatever physics you didn't think to encode, the model cannot recover.
+::: {.columns}
+::: {.column width="50%"}
+Part 1 features — grain stats, ODF coefficients, porosity summaries — are **one legitimate vectorisation** $\mathbf{x} \in \mathbb{R}^D$.
+
+- Every component has a **name** and (often) a unit.
+- Good for **audits**, baselines, and physics storytelling.
 :::
 
-## 17. Two-point statistics
+::: {.column width="50%" .fragment}
+**Limits**
 
-::: {.fragment}
-The two-point correlation function $S_2(\mathbf{r})$:
-
-$$S_2(\mathbf{r}) = P\bigl(\text{phase}(\mathbf{x}) = \alpha \;\wedge\; \text{phase}(\mathbf{x}+\mathbf{r}) = \alpha\bigr)$$
-
-- Probability that two points separated by $\mathbf{r}$ are both in phase $\alpha$
-- Captures characteristic length scales, anisotropy, ordering
+- **Biased** toward what metrologists historically measured.
+- **Information** you never encoded **cannot** be invented by an MLP on that fixed $\mathbf{x}$ — you need richer inputs or a different architecture.
+:::
 :::
 
-::: {.fragment}
-**Why this is a good NN input**: it's translation-invariant by construction, low-dimensional (a few hundred numbers), and physically meaningful.
+::: {.notes}
+**War story.** Same 12 numbers, linear vs MLP (§4): nonlinearity discovers **interactions**, not new measurements. New physics requires new columns or new representation.
 :::
 
-## 18. n-point statistics and microstructure functions
+## 18. Two-Point Statistics $S_2$
 
-::: {.fragment}
-- $S_2$ is the simplest of a family of $n$-point correlation functions
-- Higher-order $S_n$ capture more morphological detail at the cost of dimensionality
-- Frameworks like **MKS** (Materials Knowledge System) use $S_2$ as the input to a learned property-prediction network
+::: {.columns}
+::: {.column width="50%"}
+$$S_2(\mathbf{r}) = P\bigl(\text{phase}(\mathbf{x})=\alpha \;\wedge\; \text{phase}(\mathbf{x}+\mathbf{r})=\alpha\bigr)$$
+
+- **Translation-averaged** microstructural correlation.
+- Captures length scales, anisotropy, clustering — **more** than one scalar, still **compact** vs pixels.
 :::
 
-::: {.fragment}
-A practical compromise: feed the network $S_2$ (informative, compact) rather than raw pixels (noisy, huge).
+::: {.column width="50%" .fragment}
+**Why MLP-friendly**
+
+- Fixed-length vector after binning $\mathbf{r}$ on a grid in the unit cell / ROI.
+- Pairs well with **standardised** inputs (Unit 3) before stacking layers [@sandfeld_materials_data_science].
+:::
 :::
 
-## 19. Compositional and process descriptors
-
-::: {.fragment}
-For many materials problems, the input is **not an image at all** — it's tabular:
-
-- **Composition**: 5–20 element fractions (e.g., for a steel: C, Mn, Si, Cr, Ni, Mo, ...)
-- **Process parameters**: cooling rate, anneal temperature, hold time, atmosphere
-- **Heat-treatment history**: ordered list of process steps
+::: {.notes}
+**Anchor.** $S_2$ is the same “summary of spatial dependence” idea as covariance structure — but for phases / fields, not Gaussian assumptions only.
+**Pitfall.** Binning choice and ROI size change $S_2$; document them like any other preprocessing step.
 :::
 
-::: {.fragment}
-This is the natural setting for an MLP. The input vector is small ($D \sim 10$–$50$), interpretable, and has well-defined physical units. Standardize each feature ($\mu = 0$, $\sigma = 1$) before feeding the network.
+## 19. $n$-Point Statistics and Microstructure Functions
+
+::: {.columns}
+::: {.column width="50%"}
+- $S_2$ is the **lowest** nontrivial correlation in the $S_n$ family.
+- Higher $S_n$ → **more** morphological detail, **higher** $D$, heavier data requirements.
+- Many microstructure analyses stop at $S_2$ + maybe a few higher terms **deliberately** [@sandfeld_materials_data_science].
 :::
 
-## 20. Tabular vs structural inputs
+::: {.column width="50%" .fragment}
+**Pragmatic rule**
 
-::: {.fragment}
-| Input type | Typical $D$ | Best architecture | Example task |
-|:---|:---|:---|:---|
-| Composition + process (tabular) | 10–50 | **MLP** (this lecture) | Predict hardness from alloy + treatment |
-| Hand-crafted morphological descriptors | 5–50 | MLP | Predict fatigue life from grain stats |
-| n-point statistics | 100–1000 | MLP / 1D conv | MKS-style property prediction |
-| Raw 2D micrograph | $10^4$–$10^7$ | **CNN** (next week) | Phase segmentation, defect detection |
+- Prefer $S_2$ + good labels + honest CV over raw pixels + tiny $N$.
+- Escalate representation complexity only when CV **and** physics checks justify it.
+:::
 :::
 
-## 21. The information bottleneck, revisited
-
-::: {.fragment}
-- **Classical pipeline**: micrograph → 1 scalar (e.g., ASTM grain size) → linear regression → property
-- **MLP on hand-crafted features**: micrograph → 5–10 descriptors → MLP → property
-- **MLP on $S_2$**: micrograph → ~$10^2$ correlation values → MLP → property
-- **End-to-end CNN** (next week): micrograph → CNN → property, no hand-crafted features
+::: {.notes}
+**Connect.** Next slide: MKS operationalises $S_2 \to$ property with a learned map — the standard “physics-informed compression” pattern in computational materials.
 :::
 
-::: {.fragment}
-Each step retains more of the $\sim 10^6$ pixels of original information. **More information ≠ better model unless you have data to support it** — this trade-off drives the rest of the course.
+## 20. Materials Knowledge System (MKS) — Pipeline View
+
+::: {.columns}
+::: {.column width="50%"}
+**Typical MKS-style chain**
+
+1. **Segment / phase-label** microstructure (or use phase-field output on a grid).
+2. **Compute** $S_2$ (and optional higher correlations) on a fixed grid of $\mathbf{r}$.
+3. **Standardise** correlation components **using train statistics only** (Unit 3).
+4. **Train** MLP (or linear map) $g_\theta(S_2) \approx$ property or homogenised modulus.
 :::
 
-## 22. Standardization is non-negotiable
+::: {.column width="50%" .fragment}
+**Why it works**
 
-::: {.fragment}
-A composition feature in [0, 1] (mass fraction) and a temperature in [300, 1500] K cannot be fed to the same MLP unscaled.
+- Bakes in **translation invariance** before the net sees data.
+- Keeps $D$ in the **hundreds**, not millions — matches materials sample counts [@sandfeld_materials_data_science].
+:::
 :::
 
-::: {.fragment}
-- The loss landscape becomes severely ill-conditioned (recall MFML on Hessian conditioning, next week's MFML lecture)
-- Gradient descent oscillates in the steep direction and crawls in the flat one
-- **Always**: $\tilde{x}_i = (x_i - \mu_i) / \sigma_i$, where $\mu, \sigma$ are computed on the **training set only** and reused at test time
+::: {.notes}
+**Pitfall.** Treating simulation voxels and SEM pixels as interchangeable without resolution and noise models — domain shift in disguise (Unit 6 theme).
+**Connect.** Eigen-microstructures (next slide) are the PCA twin idea: orthogonal modes of **field** variation instead of explicit $S_2$ bins.
 :::
 
-## 23. Splitting materials data — the specimen rule
+## 21. Eigen-Microstructures — Preview
 
-::: {.fragment}
-- **Don't** split crops or pixels randomly — multiple crops from one specimen are not independent
-- **Do** split by **specimen / sample / processing batch**
-- Training set, validation set, and test set must come from disjoint physical samples
+::: {.columns}
+::: {.column width="50%"}
+**Idea:** stack registered microstructure **fields** (phase indicator, orientation channel, etc.) into a big design matrix; **PCA** on **standardised** columns/voxels yields dominant **modes of variation** — “eigen-microstructures.”
 :::
 
-::: {.fragment}
-This is the single most common mistake in published materials-ML papers. We will revisit it formally in Unit 6 (transfer learning) and in MFML's generalization week.
+::: {.column width="50%" .fragment}
+**Why standardise first?** (Unit 3)
+
+- Without it, PC1 often tracks **brightness / thickness / detector gain** — not microstructure.
+- With per-feature z-scores fit on **train** only, PCs more often reflect **shape** variation [@sandfeld_materials_data_science].
+
+**Connect:** Unit 5 CNNs learn spatial features **end-to-end** when $N$ and inductive bias allow; eigen-modes are a **linear** compression baseline.
+:::
 :::
 
-## 24. Part 3 Recap
-
-::: {.fragment}
-1. The choice of **input encoding** determines what physics the model can capture
-2. **Hand-crafted descriptors** are interpretable but biased
-3. **n-point statistics** are a principled middle ground for microstructures
-4. For composition + process data, **tabular MLP input** is the natural choice
-5. **Always standardize** features and **split by specimen** — both have direct consequences for gradient flow and generalization
+::: {.notes}
+**Pitfall.** Alignment / cropping must be consistent across specimens; misregistration creates fake “modes.”
+**Connect.** This is the same “right coordinates before PCA” lesson as Unit 3 on tabular data — different object, same discipline.
 :::
 
----
+## 22. Compositional and Process Descriptors
 
-## {background-color="#1a1a2e"}
+::: {.columns}
+::: {.column width="50%"}
+Often **no image** in $X$ — tabular only:
 
-### Part 4: Case Study — ASTM Grain Size vs. MLP {style="text-align: center; margin-top: 15%;"}
-
-*Slides 25–34*
-
-## 25. The task
-
-::: {.fragment}
-Predict tensile strength of a polycrystalline alloy from its microstructure.
-
-- 200 specimens, each with one calibrated SEM micrograph and a measured tensile strength
-- Goal: build a model that generalizes to *new* specimens, not new crops of seen specimens
+- **Composition** — mass or atomic fractions in $\mathbb{R}^{d_{\mathrm{el}}}$.
+- **Process** — temperatures, times, cooling rate, atmosphere.
+- **History** — ordered steps (encoding choices: embeddings, discretised time bins, …).
 :::
 
-## 26. Three competing models
+::: {.column width="50%" .fragment}
+**MLP is natural here**
 
-::: {.fragment}
-| Model | Input | Parameters |
+- $D \sim 10$–$50$, well-defined units.
+- **Standardise** each column from **training** folds; same $(\mu,\sigma)$ at inference [@neuer2024machine].
+:::
+:::
+
+::: {.notes}
+**Materials example.** Steel strength from C–Mn–Cr–Ni–Mo + tempering recipe — classic MLP tabular regression benchmarked against thermodynamic/knowledge-based models.
+**Pitfall.** Composition features that sum to 1 are collinear — drop one element or use compositional geometry if you go beyond naive z-scores.
+:::
+
+## 23. Tabular vs Structural Inputs
+
+::: {.columns}
+::: {.column width="50%"}
+| Input type | Typical $D$ | First-line architecture |
+|:---|:---:|:---|
+| Composition + process | 10–50 | MLP |
+| Morphology scalars | 5–50 | MLP |
+| $S_2$ / MKS vector | $10^2$–$10^3$ | MLP / shallow 1D conv |
+| Raw 2D micrograph | $10^4$–$10^7$ | **CNN** (Unit 5) |
+:::
+
+::: {.column width="50%" .fragment}
+**Decision rule**
+
+- Start with the **smallest** $X$ that passes physics + CV tests.
+- Add representation capacity when **grouped CV** shows a persistent gap, not when train loss wants it [@mcclarren2021machine].
+:::
+:::
+
+::: {.notes}
+**War story.** Teams that jump to CNNs on 200 JPEGs without specimen splits — pretty training curves, useless deployment (§4, slide 34).
+:::
+
+## 24. The Information Bottleneck — Revisited
+
+::: {.columns}
+::: {.column width="50%"}
+| Pipeline | Information retained (sketch) |
+|:---|:---|
+| 1 scalar (ASTM $G$) | Minimal |
+| 12 hand-crafted + MLP | Low–mid |
+| $S_2$ + MLP | Mid |
+| CNN end-to-end | High — if data allow |
+:::
+
+::: {.column width="50%" .fragment}
+**Trade-off**
+
+- **More coordinates** $\not\Rightarrow$ better test error without **more independent specimens** and careful validation.
+- This tension sets the agenda for Units **5–8** [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Anchor.** Same “bias–variance” language as Unit 3 — richer $X$ reduces bias but increases variance unless $N$ grows or structure is regularised.
+:::
+
+## 25. Standardisation Is Non-Negotiable
+
+::: {.columns}
+::: {.column width="50%"}
+- Mass fraction in $[0,1]$ vs temperature in $[300,1500]$ K → **conditioned** optimisation problem; gradients fight anisotropic curvature [@neuer2024machine].
+- **Recipe:** $\tilde{x}_j = (x_j - \mu_j)/\sigma_j$ with $(\mu_j,\sigma_j)$ from **train only**; apply frozen values to val/test.
+:::
+
+::: {.column width="50%" .fragment}
+**Link to leakage (Unit 3)**
+
+- Recomputing $\mu,\sigma$ on train+test before split **leaks** test marginals into $X_{\mathrm{train}}$.
+- Put scaler + model in one **pipeline** object when using sklearn-style tooling [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Connect.** Eigen-microstructures (slide 21) fail the same way if “standardise on all images” before CV.
+:::
+
+## 26. Splitting Materials Data — The Specimen Rule
+
+::: {.columns}
+::: {.column width="50%"}
+- **Do not** IID-split **crops** or **patches** from the same coupon — they share processing, thickness, imaging session.
+- **Do** split by **specimen / batch / furnace load** — whatever is the exchangeable unit for deployment.
+:::
+
+::: {.column width="50%" .fragment}
+**Why papers explode**
+
+- Random patch split → optimistic $R^2$; specimen split reveals truth (§4, slide 34) [@sandfeld_materials_data_science].
+
+**Forward:** Unit 6 — transfer and domain shift formalise **when** train and test are not exchangeable.
+:::
+:::
+
+::: {.notes}
+**War story.** 16 crops × 200 specimens → 3200 rows feels big; effective $N$ is still **200** physical draws from process variability.
+**Pitfall.** Time-ordered processing (heat-treatment line) also forbids naive shuffle — use temporal splits when causality matters (MFML + Unit 7 later).
+:::
+
+## 27. §3 Recap
+
+::: {.columns}
+::: {.column width="50%"}
+1. Encoding = **hard ceiling** on learnable physics (for fixed architecture).
+2. Hand-crafted vectors = auditable; **$S_2$ / MKS** = structured spatial stats without pixels.
+3. Eigen-microstructures = **PCA** on registered, **standardised** fields — linear bridge to CNN week.
+:::
+
+::: {.column width="50%" .fragment}
+4. Tabular composition/process = default **MLP** turf.
+5. **Standardise** and **split by specimen** — same ethics as Unit 3, different column names.
+6. Next: **case study** — same 12 numbers, linear vs MLP (§4).
+:::
+:::
+
+::: {.notes}
+**Checkpoint.** One minute: students write down their own dataset’s natural **group ID** for GroupKFold-style splits.
+:::
+
+# §4 · Case Study — ASTM Grain Size vs. MLP {.section}
+
+## 28. The Task
+
+::: {.columns}
+::: {.column width="50%"}
+**Predict** tensile strength of a polycrystalline alloy from microstructure + measured strength labels.
+
+- **$N_{\mathrm{spec}}}=200$** — one calibrated SEM + one tensile coupon each.
+- **Goal:** generalise to **new** specimens, not new crops of old ones.
+:::
+
+::: {.column width="50%" .fragment}
+**Experimental discipline**
+
+- Same polishing / etching protocol; document **magnification** and **segmentation** version.
+- Strength measured with traceable gauge length / strain rate (Unit 2 chain).
+:::
+:::
+
+::: {.notes}
+**Pitfall.** If strength labels come from different test standards, you are mixing $y$ distributions — structure signal dilutes.
+:::
+
+## 29. Three Competing Models
+
+::: {.columns}
+::: {.column width="50%"}
+| Model | Input | \# params (order) |
 |:---|:---|:---:|
-| **Linear (Hall-Petch)** | Mean grain size $d^{-1/2}$ | 2 |
-| **Linear + descriptors** | $d^{-1/2}$, aspect ratio, porosity, pore-size dispersion | 5 |
-| **MLP** | All 12 hand-crafted descriptors | $\sim 1{,}000$ |
+| Linear Hall–Petch | $d^{-1/2}$ only | 2 |
+| Linear + descriptors | 12 scalars | 13 |
+| MLP | **Same** 12 scalars | $\sim 10^3$ |
+:::
+
+::: {.column width="50%" .fragment}
+**Fair comparison**
+
+- Identical $X$ columns for the two supervised learners — only the **composition rule** $f$ changes [@mcclarren2021machine].
+:::
+:::
+
+::: {.notes}
+**Anchor.** This isolates **nonlinearity** vs **new measurements** — pedagogically clean.
+**Pitfall.** If the MLP had extra hidden inputs not given to linear models, the comparison is unfair — avoid.
+:::
+
+## 30. Results (Illustrative)
+
+::: {.columns}
+::: {.column width="50%"}
+| Method | Features | $R^2$ (test) |
+|:---|:---|:---:|
+| Hall–Petch | Mean grain only | 0.72 |
+| Linear + 12 | Hand-crafted | 0.81 |
+| **MLP** | **Same** 12 | **0.88** |
+:::
+
+::: {.column width="50%" .fragment}
+**Reading**
+
+- +0.07 $R^2$ vs linear on **identical** $X$ → gains from **feature interactions**, not from sneaking in extra pixels.
+- Still need **specimen-level** CV and uncertainty — table alone is not a publication [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Pitfall.** One lucky train/test split — always show CV spread or bootstrap CI on $R^2$.
+:::
+
+## 31. What Did the MLP Discover?
+
+::: {.columns}
+::: {.column width="50%"}
+**Permutation importance (storyline)**
+
+- **Largest** grain features dominate → **weakest-link** fracture thinking, not mean-only Hall–Petch.
+- **Pore-size dispersion** beats total porosity → clustered damage matters.
+- **Mean** grain size mid-ranked → bulk strengthening present but not sufficient statistic.
+:::
+
+::: {.column width="50%" .fragment}
+**Physical reading**
+
+- Network **re-weighted** known scalars toward **tail-sensitive** combinations humans often under-report in tables.
+:::
+:::
+
+::: {.notes}
+**Connect.** Same moral as slide 06 — tail morphology matters; linear models in $d^{-1/2}$ alone cannot express that without extra constructed features (which the MLP implicitly builds).
+:::
+
+## 32. Where the Linear Model Fails
+
+::: {.columns}
+::: {.column width="50%"}
+Linear in $d^{-1/2}$ ties strength change to **one** aggregated size channel — cannot distinguish “halve mean $d$” vs “halve **largest** $d$” when processing paths differ in how they reshape the **distribution**.
+:::
+
+::: {.column width="50%" .fragment}
+**MLP freedom**
+
+- Can approximate $\sigma_y \approx f(\bar{d}, d_{\max}, \mathrm{Var}[d], \ldots)$ without committing to a single global index upfront — still only as good as the **12** provided columns [@mcclarren2021machine].
+:::
+:::
+
+::: {.notes}
+**Pitfall.** Students may think the MLP “invented” new microstructural information — it **recombined** existing scalars; new microphysics still needs new measurements or $S_2$/pixels.
+:::
+
+## 33. When to *Prefer* the Linear Model
+
+::: {.columns}
+::: {.column width="50%"}
+- **Very small $N$** — MLP variance dominates; linear is a strong implicit regulariser.
+- **Extrapolation** outside training process window — linear may fail honestly vs wildly confident MLPs.
+- **Regulatory / safety** — sparse linear coefficients easier to **audit** than deep weights.
+:::
+
+::: {.column width="50%" .fragment}
+**Practice**
+
+- **Always** fit a serious linear baseline + grouped CV first.
+- Upgrade to MLP only if CV gain survives **stress tests** (shift, OOD batches) [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**War story.** In licensing hearings, “black box beat linear by 2% on one split” loses to “linear model with documented coefficients and conservative bounds.”
+:::
+
+## 34. Failure Mode — Train/Test Split Done Wrong
+
+::: {.columns}
+::: {.column width="50%"}
+**Invalid protocol**
+
+1. 200 micrographs → 16 crops each → 3200 patches.
+2. Random 80/20 **patch** split.
+3. Report $R^2 \approx 0.95$.
+:::
+
+::: {.column width="50%" .fragment}
+**Reality**
+
+- Train and test share **specimens** → correlated rows; metric is **optimistic** fiction.
+- Specimen-level split on same labels can collapse $R^2$ toward **0.72** (illustrative) — the honest number [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Anchor.** Direct application of Unit 3 **group leakage** — group = specimen ID.
+**Pitfall.** Even “stratified k-fold” on patches is wrong if stratification ignores specimen.
+:::
+
+## 35. Failure Mode — Cross-Lab Distribution Shift
+
+::: {.columns}
+::: {.column width="50%"}
+- Train on microscope **A**: $R^2 \approx 0.88$.
+- Test on microscope **B** (same alloy): $R^2 \approx 0.45$.
+- Model may latch onto **contrast / brightness / noise** textures, not grains.
+:::
+
+::: {.column width="50%" .fragment}
+**Mitigations (preview)**
+
+- Physics-aware **normalisation**, harmonised imaging SOPs.
+- **Domain randomisation / adaptation** — Unit 6 when train and deployment labs differ [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Connect.** Same failure mode hits CNNs harder because they see raw nuisance textures — another reason for careful augmentation + normalisation in Unit 5.
+:::
+
+## 36. Failure Mode — Label Noise from Upstream Segmentation
+
+::: {.columns}
+::: {.column width="50%"}
+- **$y$** might be pristine tensile data while **$X$** descriptors come from a **segmentation** model or semi-automatic threshold.
+- Small systematic boundary errors → wrong grain/pore statistics → **label noise in $X$** viewed as aleatory scatter in $y$.
+:::
+
+::: {.column width="50%" .fragment}
+**Consequences**
+
+- MLP fits **segmentation artefacts** correlated with instrument or operator session.
+- **Mitigate:** inter-annotator study on a subset, report **label variance**, ensemble segmentations, or uncertainty-aware losses (forward: Unit 12) [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Anchor.** Unit 3 inter-annotator variance slide — same spirit, but here the “annotator” is a segmentation network version v1.3 vs v1.4.
+**Pitfall.** Retraining segmentation without versioning downstream strength models — silent pipeline break.
+:::
+
+## 37. Failure Mode — Class Imbalance (Defect vs Nominal)
+
+::: {.columns}
+::: {.column width="50%"}
+- If **defective** specimens are rare (say 5%), a patch-level classifier can achieve high **accuracy** by always predicting “good.”
+- **Materials goal** is often high **recall** on the rare class — different metric (Unit 3).
+:::
+
+::: {.column width="50%" .fragment}
+**Mitigations**
+
+- **Stratified** splits by defect label at **specimen** level; report precision/recall/F1, not accuracy alone [@sandfeld_materials_data_science].
+- Cost-sensitive losses, resampling **within** train only (watch leakage), or active labelling of hard negatives.
+:::
+:::
+
+::: {.notes}
+**War story.** “99% accuracy” on porosity detection when porosity appears in 2% of patches — model predicts “no pore” always; production disaster.
+**Connect.** Same metric hygiene as Unit 3 confusion-matrix lecture.
+:::
+
+## 38. Failure Mode — Raw High-Resolution Micrographs
+
+::: {.columns}
+::: {.column width="50%"}
+- $1024\times1024$ RGB → first dense layer has $\mathcal{O}(10^6)$ input dims → **$\sim 10^9$** first-layer weights if fully connected.
+- With **$N \sim 10^2$** specimens, optimisation finds **spurious** pixel correlations (coupons, scratches, brightness gradients).
+:::
+
+::: {.column width="50%" .fragment}
+**Take-away**
+
+- **CNNs** (Unit 5): locality + weight sharing shrink effective parameters and respect **2D structure** [@goodfellow2016deep].
+- Until then: **compress** to descriptors / $S_2$ / eigen-modes with honest CV.
+:::
+:::
+
+::: {.notes}
+**Connect.** This slide is the single clearest motivation for the next lecture’s architecture family.
+**Pitfall.** Downscaling JPEG to make MLP tractable destroys fine porosity — physics loss, not a numerical trick.
+:::
+
+## 39. §4 Recap
+
+::: {.columns}
+::: {.column width="50%"}
+1. Same **12** scalars: MLP **> linear** by exploiting interactions (weakest-link story).
+2. **Linear** still wins on tiny $N$, extrapolation politics, audit needs.
+3. **Specimen splits** and **lab shift** dominate reported generalisation — not hidden-layer count.
+:::
+
+::: {.column width="50%" .fragment}
+4. **Segmentation noise** and **class imbalance** can fake success metrics.
+5. **Raw pixels + MLP** = parameter–data mismatch → CNN week.
+:::
+:::
+
+::: {.notes}
+**Use as exam prompt.** “Explain why patch shuffling inflated $R^2$; propose a correct split and two metrics beyond accuracy for rare defects.”
+:::
+
+# §5 · Wrap-Up {.section}
+
+## 40. Putting It Together — A Materials Representation Recipe
+
+::: {.columns}
+::: {.column width="50%"}
+1. **Define the deployment unit** — specimen, batch, line, day.
+2. **Choose $X$** — start tabular / hand-crafted; escalate to $S_2$ / eigen-modes / CNN only with evidence.
+3. **Standardise** using **train** statistics inside CV folds; pipeline everything.
+:::
+
+::: {.column width="50%" .fragment}
+4. **Split by group IDs** that match deployment independence.
+5. **Pick metrics** that reflect cost of errors (recall on defects, not vanity accuracy).
+6. **Sanity-check** — linear baseline, permutation tests, stress on held-out lab / condition [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Closing mnemonic.** Define unit → choose coordinates → standardise → split → metric → stress-test. Loop back when any step fails diagnostics.
+:::
+
+## 41. Things Most Teams Get Wrong
+
+::: {.columns}
+::: {.column width="50%"}
+- Patch-level **IID** split with grouped data.
+- **Scaler fit on all data** before CV.
+- **Accuracy** on rare events; ignoring **precision/recall**.
+- **Segmentation v1** labels treated as ground truth forever.
+:::
+
+::: {.column width="50%" .fragment}
+- **Tuning on test** set (same as Unit 3 “optimistic final number”).
+- Declaring victory on **one** split without variance bars.
+- Skipping **cross-instrument** or **cross-site** held-out evaluation when deployment will move [@neuer2024machine].
+:::
+:::
+
+::: {.notes}
+**Use as checklist.** Ask students which items their last project violated — usually more than one.
+:::
+
+## 42. Looking Ahead — Unit 5 (CNNs)
+
+::: {.columns}
+::: {.column width="50%"}
+**Next week**
+
+- Convolutional nets for **local** patterns with **shared** filters across space.
+- **Applications:** phase segmentation, defect detection, micrograph classification — when $N$ and imaging SOPs can support pixels.
+:::
+
+::: {.column width="50%" .fragment}
+**Carry forward from today**
+
+- **Specimen splits**, **normalisation**, **shift awareness** — CNNs do not remove these obligations; they multiply debugging surface [@goodfellow2016deep].
+:::
+:::
+
+::: {.notes}
+**Teaser.** Show one CNN saliency failure in lecture if time — network attends to scale bar or vignetting; connects back to slides 35–38.
+:::
+
+## 43. Reading and Exercises
+
+::: {.columns}
+::: {.column width="50%"}
+**Reading**
+
+- Sandfeld, *Materials Data Science* — Ch. **17** (nets), microstructure / stats chapters you use for $S_2$ and CV [@sandfeld_materials_data_science].
+- McClarren — Ch. **5** (feed-forward nets, capacity) [@mcclarren2021machine].
+- Neuer — Ch. **4** (supervised learning workflow, losses) [@neuer2024machine].
+:::
+
+::: {.column width="50%" .fragment}
+**Suggested exercises**
+
+1. Reproduce **linear vs MLP** on a public tabular materials set with **GroupKFold** by alloy lot.
+2. Compute a binned **$S_2$** vector for one binary microstructure image set; compare MLP CV to 12 hand-crafted scalars.
+3. **Deliberately** leak scaler fit on full data; quantify CV inflation vs clean pipeline [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**Pacing.** Assign exercise 3 as a 20-line sklearn notebook — high pedagogical ROI vs lecture time.
+:::
+
+## 44. Key Takeaways
+
+::: {.fragment}
+- **Classical metrics** — interpretable, standardised, **lossy**; know what your scalar threw away.
 :::
 
 ::: {.fragment}
-We use the **same** 12 descriptors for the linear-extended model and the MLP — so the only difference is *how* the inputs are combined.
-:::
-
-## 27. Results
-
-::: {.fragment}
-| Method | Features | R² (test) |
-|:---|:---|:---|
-| Hall-Petch | Mean grain size only | 0.72 |
-| Linear + descriptors | 12 hand-crafted | 0.81 |
-| **MLP** | 12 hand-crafted | **0.88** |
+- **Hand-crafted + MLP** — strongest **first upgrade** when $X$ is tabular and $N$ is modest.
 :::
 
 ::: {.fragment}
-The MLP gains 7 R² points on the **same input** as the linear model — the gain comes purely from non-linear feature combinations.
-:::
-
-## 28. What did the MLP discover?
-
-::: {.fragment}
-Permutation importance reveals which inputs the MLP actually relies on:
-
-- **Largest grain size** (not the mean) is the dominant feature — consistent with weakest-link fracture mechanics
-- **Pore-size dispersion** matters more than total porosity — clusters of pores are more harmful than uniformly distributed ones
-- **Mean grain size** appears mid-importance — it captures bulk Hall-Petch behavior but is not the single best predictor
+- **$S_2$ / MKS / eigen-modes** — principled middle ground before pixel CNNs [@sandfeld_materials_data_science].
 :::
 
 ::: {.fragment}
-**Physical reading**: the network rediscovered weakest-link statistics on its own. Hall-Petch was an *average*; failure is a *tail-of-distribution* phenomenon.
-:::
-
-## 29. Where the linear model fails
-
-::: {.fragment}
-A linear model in $d^{-1/2}$ predicts the same strength gain whether you halve the *mean* grain size or halve the *largest* grain. Physically these are different operations — thermomechanical processing affects the tail of the grain-size distribution differently from the mean.
+- **Standardise + split by specimen** — same professional ethics as Unit 3; different filenames.
 :::
 
 ::: {.fragment}
-The MLP captures this because it can compose features non-linearly: e.g., $\sigma_y \approx f(\bar{d}, d_{\max}, \mathrm{Var}[d])$ with $f$ free to be non-additive.
-:::
-
-## 30. Discussion: when to *prefer* the linear model
-
-::: {.fragment}
-- **Tiny dataset** ($N < 50$): the MLP overfits; linear regularizes by structure
-- **Need for extrapolation** to compositions/processing outside the training range: linear is more honest about its uncertainty
-- **Regulatory or safety contexts**: linear coefficients can be audited and reported; MLP weights cannot
+- **Shift, segmentation noise, imbalance** — can erase real gains from better architectures [@neuer2024machine].
 :::
 
 ::: {.fragment}
-**Materials practice**: try the linear baseline first. Only adopt the MLP if it improves cross-validation R² *and* you can defend its predictions on out-of-distribution test cases.
+- **MLP on raw huge images** — wrong tool; **CNNs next week** when the physics lives at pixel scale [@goodfellow2016deep].
 :::
 
-## 31. Failure mode: train/test split done wrong
-
-::: {.fragment}
-A common but invalid protocol:
-
-1. Take 200 micrographs, cut each into 16 crops → 3,200 crops
-2. Shuffle all 3,200 crops, hold out 20% as test
-3. Report 0.95 R² on the test set
+::: {.notes}
+**End rhythm.** Six fragments — pause on the last: CNNs are not magic; they are the right inductive bias **when** data, splits, and metrics are honest.
 :::
-
-::: {.fragment}
-- The model has seen *another crop of the same specimen* during training
-- The reported R² overstates real-world performance by a wide margin
-- A **specimen-level split** (Part 3, slide 23) on the same data drops R² from 0.95 to 0.72
-:::
-
-## 32. Failure mode: distribution shift across labs
-
-::: {.fragment}
-- Train on micrographs from microscope A: R² = 0.88
-- Test on the same alloy imaged with microscope B: R² collapses to 0.45
-- Why? The MLP latched onto contrast and brightness statistics that differ between detectors
-:::
-
-::: {.fragment}
-**Mitigation**: feature engineering that normalizes out instrument-specific statistics, or — more powerfully — domain-randomized training, which we'll revisit in Unit 6 (transfer learning).
-:::
-
-## 33. Failure mode: scaling to high-resolution micrographs
-
-::: {.fragment}
-What if we don't have hand-crafted descriptors, only the raw image?
-
-- A $1024 \times 1024$ micrograph flattened into an MLP needs $\sim 10^9$ parameters in its first layer
-- 200 specimens are nowhere near enough to constrain that many weights
-- The MLP memorizes pixel patterns rather than learning physics
-:::
-
-::: {.fragment}
-**This is the failure mode that motivates next week's lecture.** CNNs use weight sharing and locality to make the parameter count manageable, allowing us to learn directly from pixels.
-:::
-
-## 34. Part 4 Recap
-
-::: {.fragment}
-1. On the **same descriptors**, an MLP beats linear regression because it captures non-linear interactions
-2. The MLP rediscovered **weakest-link** statistics — physical insight emerged from learning
-3. Linear baselines remain valuable for **small data**, **extrapolation**, and **auditability**
-4. The two showstopping pitfalls — **specimen-level splitting** and **cross-lab distribution shift** — apply to *any* MLP on materials data
-5. MLPs hit a hard wall on raw images — the motivation for **CNNs next week**
-:::
-
----
-
-## 35. Unit 4 Summary & Next Steps
-
-::: {.fragment}
-**Key Takeaways:**
-
-1. **Classical metrics** are interpretable but lossy — pick them when the physics is well-understood
-2. **Hand-crafted descriptors + MLP** is a pragmatic upgrade and the right starting point for tabular materials data
-3. **n-point statistics** are the principled bridge between morphology and learned representations
-4. **Specimen-level splits** and **feature standardization** are non-negotiable for honest evaluation
-5. **MLPs fail on raw images** — that failure is the motivation for CNNs (Unit 5)
-:::
-
-::: {.fragment}
-**Reading:**
-
-- Sandfeld (2024): Ch. 17 (Neural Networks) [@sandfeld_materials_data_science]
-- McClarren (2021): Ch. 5 (Feed-Forward NNs) [@mcclarren2021machine]
-- Neuer (2024): Ch. 4.5 (already read for MFML this morning) [@neuer2024machine]
-:::
-
-::: {.fragment}
-**Next Week**: Unit 5 — Convolutional Neural Networks for Microstructure Analysis
-:::
-
----
 
 ## References
 
