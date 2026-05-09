@@ -1,0 +1,104 @@
+# MFML Unit 2 — 50-Slide Scaffold Pack
+
+## Slide-by-slide scaffold
+
+1. **Title: Linear Algebra for ML**
+- Unit focus and dependency role.
+2. **Unit 2 learning outcomes**
+- What students should master today.
+3. **Why LA still matters in modern ML**
+- Geometry behind algorithms.
+4. **Notation contract for the semester**
+- Vectors/matrices/operators conventions.
+5. **Scalars, vectors, matrices refresher**
+- Compact notation recap.
+6. **Vector spaces and subspaces**
+- Feasible representation spaces.
+7. **Basis and change of basis**
+- Coordinate systems and interpretation.
+8. **Linear combinations and span**
+- Expressivity intuition.
+9. **Linear maps as operators**
+- Matrix as transformation.
+10. **Column space and row space**
+- What outputs are reachable.
+11. **Nullspace and identifiability**
+- When solutions are non-unique.
+12. **Rank and model capacity intuition**
+- Degrees of freedom in linear systems.
+13. **Inner products and similarity**
+- Geometry of comparisons.
+14. **Norms (L1/L2/Frobenius)**
+- Measurement choices and effects.
+15. **Distance metrics and data geometry**
+- Metric assumptions in ML.
+16. **Orthogonality and orthonormal bases**
+- Numerical stability advantages.
+17. **Projection onto subspaces**
+- Best approximation principle.
+18. **Projection matrix properties**
+- Idempotence and symmetry.
+19. **Least squares as projection**
+- Geometric interpretation.
+20. **Normal equations derivation (scaffold)**
+- Algebraic connection.
+21. **Condition number intuition**
+- Sensitivity to perturbations.
+22. **Ill-conditioning in practice**
+- Why fits can explode.
+23. **Numerical stability and scaling**
+- Practical safeguards.
+24. **Eigenvalues/eigenvectors recap**
+- Directional stretching view.
+25. **Spectral decomposition intuition**
+- Matrix behavior through spectrum.
+26. **Positive semidefinite matrices**
+- Covariance and kernels preview.
+27. **Covariance matrix geometry**
+- Variance along directions.
+28. **PCA as variance maximization**
+- Link to eigen decomposition.
+29. **SVD overview**
+- U, Sigma, V^T roles.
+30. **SVD and low-rank approximation**
+- Compression and denoising.
+31. **Eckart–Young idea (conceptual)**
+- Best low-rank approximation.
+32. **Pseudo-inverse and solvability**
+- Underdetermined/overdetermined cases.
+33. **Linear regression matrix form**
+- y = Xw + eps notation.
+34. **Regularization in matrix language**
+- Ridge as spectral shrinkage.
+35. **L1 vs L2 geometric intuition**
+- Sparsity vs smooth shrinkage.
+36. **Feature correlation and multicollinearity**
+- Instability sources.
+37. **Whitening/standardization rationale**
+- Conditioning improvement.
+38. **Gram matrix interpretation**
+- Similarity in feature space.
+39. **Kernel hint from inner products**
+- Preview of nonlinear methods.
+40. **From LA to optimization bridge**
+- Setup for Unit 3.
+41. **Materials example: process matrix X**
+- Practical feature matrix view.
+42. **Materials example: image embeddings**
+- High-dimensional vectors in practice.
+43. **Materials example: spectra basis**
+- Projection and denoising relevance.
+44. **Common pitfalls checklist**
+- Shape errors, scaling, leakage.
+45. **Mini quiz slide**
+- Conceptual checkpoint.
+46. **Lecture vs exercise split**
+- What to code vs what to memorize.
+47. **Exercise task 1 scaffold**
+- Projection + reconstruction.
+48. **Exercise task 2 scaffold**
+- SVD + low-rank approximation.
+49. **Exercise task 3 scaffold**
+- Least squares + conditioning stress test.
+50. **Summary + references + next unit link**
+- Transition to optimization/calculus.

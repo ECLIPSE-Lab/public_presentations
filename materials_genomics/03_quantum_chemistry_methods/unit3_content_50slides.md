@@ -1,0 +1,233 @@
+# Materials Genomics Unit 3 — 50-Slide Teaching Scaffold (book-backed)
+
+## Book-backed content summary (for this unit)
+- Materials Project, OQMD, AFLOW, NOMAD: scope and differences
+- What a materials record contains: composition, structure, method metadata
+- CIF vs POSCAR vs JSON schema fields
+- Thermodynamic targets: formation energy, energy above hull, free energy
+- Convex hull construction and physical interpretation
+- Metastability windows and practical screening thresholds
+- Phase stability vs synthesizability distinction
+- Computational settings (functional, cutoff, k-mesh) as hidden confounders
+- Reference states and consistent energy normalization
+- Query APIs and reproducible data snapshots
+- Database joins: structure table + property table + provenance
+- Handling duplicates, polymorphs, and near-duplicate structures
+
+## Source anchors used
+- Sandfeld 2.2
+- Neuer 4.2.2
+- Neuer 4.4.1
+- McClarren Ch4
+- Bishop 3.1–3.3
+
+## Essential equations / objects (lecture must-include)
+- $\hat{\theta}=\arg\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i),y_i)+\lambda\Omega(\theta)$
+- Train/validation/test with grouped split by chemistry/prototype
+- Generalization gap: $R_{test}-R_{train}$
+- Uncertainty decomposition: aleatoric + epistemic
+- Acquisition objective (conceptual): exploration vs exploitation
+
+## 50-slide scaffold
+
+1. **Title: Materials Databases and Thermodynamic Quantities**
+- Frame the unit in the end-to-end materials discovery workflow and state the decision problems it addresses.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+2. **Learning objectives and expected outputs**
+- State measurable outcomes (what students can explain, implement, and critique by the end of the unit).
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+3. **Recap from previous unit and dependency map**
+- Reconnect prerequisite concepts from earlier units and make dependency assumptions explicit.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+4. **Why this unit matters for materials discovery**
+- Motivate with a realistic failure/success scenario from materials discovery practice.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+5. **Reading map and chapter anchors**
+- Map slide blocks to the key book chapters so students can pre-read and post-review effectively.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+6. **Materials Project, OQMD, AFLOW, NOMAD: scope and differences**
+- Explain **materials project, oqmd, aflow, nomad: scope and differences** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+7. **What a materials record contains: composition, structure, method metadata**
+- Compare **what a materials record contains: composition, structure, method metadata** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+8. **CIF vs POSCAR vs JSON schema fields**
+- Diagnose **cif vs poscar vs json schema fields** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+9. **Thermodynamic targets: formation energy, energy above hull, free energy**
+- Apply **thermodynamic targets: formation energy, energy above hull, free energy** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+10. **Convex hull construction and physical interpretation**
+- Define **convex hull construction and physical interpretation** using one concrete materials example and one common failure mode.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+11. **Metastability windows and practical screening thresholds**
+- Explain **metastability windows and practical screening thresholds** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+12. **Phase stability vs synthesizability distinction**
+- Compare **phase stability vs synthesizability distinction** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+13. **Computational settings (functional, cutoff, k-mesh) as hidden confounders**
+- Diagnose **computational settings (functional, cutoff, k-mesh) as hidden confounders** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+14. **Reference states and consistent energy normalization**
+- Apply **reference states and consistent energy normalization** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+15. **Query APIs and reproducible data snapshots**
+- Define **query apis and reproducible data snapshots** using one concrete materials example and one common failure mode.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+16. **Database joins: structure table + property table + provenance**
+- Explain **database joins: structure table + property table + provenance** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+17. **Handling duplicates, polymorphs, and near-duplicate structures**
+- Compare **handling duplicates, polymorphs, and near-duplicate structures** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+18. **Missing-value patterns in computed materials datasets**
+- Diagnose **missing-value patterns in computed materials datasets** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+19. **Unit harmonization and dimensional consistency checks**
+- Apply **unit harmonization and dimensional consistency checks** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+20. **Data leakage via family overlap in random splits**
+- Define **data leakage via family overlap in random splits** using one concrete materials example and one common failure mode.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+21. **Grouped splits by composition family or prototype**
+- Explain **grouped splits by composition family or prototype** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+22. **Outlier detection: physics outlier vs parsing/ETL error**
+- Compare **outlier detection: physics outlier vs parsing/etl error** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+23. **Train/validation/test design for discovery tasks**
+- Diagnose **train/validation/test design for discovery tasks** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+24. **Target definition quality for bandgap and stability tasks**
+- Apply **target definition quality for bandgap and stability tasks** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+25. **Correlation traps in periodic-table-driven descriptors**
+- Define **correlation traps in periodic-table-driven descriptors** using one concrete materials example and one common failure mode.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+26. **Bias from successful-publication and stable-compound overrepresentation**
+- Explain **bias from successful-publication and stable-compound overrepresentation** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+27. **How database incompleteness affects model confidence**
+- Compare **how database incompleteness affects model confidence** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+28. **Minimal data card for a materials ML dataset**
+- Diagnose **minimal data card for a materials ml dataset** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+29. **Provenance logging for reproducibility and trust**
+- Apply **provenance logging for reproducibility and trust** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+30. **Practical ETL pipeline from raw files to model table**
+- Define **practical etl pipeline from raw files to model table** using one concrete materials example and one common failure mode.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+31. **Versioning database dumps and notebook environments**
+- Explain **versioning database dumps and notebook environments** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+32. **Sanity baselines before training any complex model**
+- Compare **sanity baselines before training any complex model** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+33. **Interpreting uncertainty when labels are computed quantities**
+- Diagnose **interpreting uncertainty when labels are computed quantities** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+34. **Quality gates before moving to representation learning**
+- Apply **quality gates before moving to representation learning** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+35. **How this unit supports Unit 4 descriptor engineering**
+- Define **how this unit supports unit 4 descriptor engineering** using one concrete materials example and one common failure mode.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+36. **Common failure mode: hull labels without consistent references**
+- Explain **common failure mode: hull labels without consistent references** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+37. **Common failure mode: hidden split leakage through polymorph IDs**
+- Compare **common failure mode: hidden split leakage through polymorph ids** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+38. **Advanced note: Materials Databases and Thermodynamic Quantities concept extension 33**
+- Diagnose **advanced note: materials databases and thermodynamic quantities concept extension 33** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+39. **Advanced note: Materials Databases and Thermodynamic Quantities concept extension 34**
+- Apply **advanced note: materials databases and thermodynamic quantities concept extension 34** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+40. **Advanced note: Materials Databases and Thermodynamic Quantities concept extension 35**
+- Define **advanced note: materials databases and thermodynamic quantities concept extension 35** using one concrete materials example and one common failure mode.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+41. **Advanced note: Materials Databases and Thermodynamic Quantities concept extension 36**
+- Explain **advanced note: materials databases and thermodynamic quantities concept extension 36** using one concrete materials example and one common failure mode.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+42. **Advanced note: Materials Databases and Thermodynamic Quantities concept extension 37**
+- Compare **advanced note: materials databases and thermodynamic quantities concept extension 37** using one concrete materials example and one common failure mode.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+43. **Advanced note: Materials Databases and Thermodynamic Quantities concept extension 38**
+- Diagnose **advanced note: materials databases and thermodynamic quantities concept extension 38** using one concrete materials example and one common failure mode.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+44. **Advanced note: Materials Databases and Thermodynamic Quantities concept extension 39**
+- Apply **advanced note: materials databases and thermodynamic quantities concept extension 39** using one concrete materials example and one common failure mode.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+45. **Exercise setup and dataset definition**
+- Define dataset, split protocol, and expected deliverables before any coding begins.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+46. **Exercise task 1 (pipeline core)**
+- Implement the core pipeline component with reproducible settings and documented assumptions.
+- Applied anchor: querying MP for bandgap+E_hull.
+- Book anchor: [Sandfeld 2.2].
+47. **Exercise task 2 (comparison/ablation)**
+- Run an ablation/comparison under identical validation protocol and interpret differences.
+- Applied anchor: joining CIF with computed targets.
+- Book anchor: [Neuer 4.2.2].
+48. **Exercise task 3 (failure analysis)**
+- Perform structured failure analysis and propose one evidence-backed mitigation.
+- Applied anchor: filtering by stability threshold.
+- Book anchor: [Neuer 4.4.1].
+49. **Exam-oriented key statements**
+- Summarize high-yield statements in concise written-exam style with definitions and caveats.
+- Applied anchor: grouped split by prototype.
+- Book anchor: [McClarren Ch4].
+50. **Summary, next-unit bridge, and references**
+- Consolidate the unit into a checklist: concepts, pitfalls, and decisions for next-unit transfer.
+- Applied anchor: detecting duplicate polymorph entries.
+- Book anchor: [Bishop 3.1–3.3].
+
