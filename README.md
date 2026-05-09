@@ -4,6 +4,7 @@ Central link index for lecture decks and units.
 
 ## Data Science for Electron Microscopy
 
+<!-- BEGIN units:data_science_for_em -->
 - **Unit 01: Intro** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/01_intro/template.html) · [Source](./data_science_for_em/01_intro/template.qmd)
 - **Unit 02: Regression** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/02_regression/template.html) · [Source](./data_science_for_em/02_regression/template.qmd)
 - **Unit 03: CNNs** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/03_cnns/template.html) · [Source](./data_science_for_em/03_cnns/template.qmd)
@@ -13,9 +14,11 @@ Central link index for lecture decks and units.
 - **Unit 07: Gaussian Processes II** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/07_gaussian_processes2/template.html) · [Source](./data_science_for_em/07_gaussian_processes2/template.qmd)
 - **Unit 08: Imaging Inverse Problems I** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/08_imaging_inverse_problems1/template.html) · [Source](./data_science_for_em/08_imaging_inverse_problems1/template.qmd)
 - **Unit 09: Imaging Inverse Problems II** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/09_imaging_inverse_problems2/template.html) · [Source](./data_science_for_em/09_imaging_inverse_problems2/template.qmd)
+<!-- END units:data_science_for_em -->
 
 ## Mathematical Foundations of AI & ML
 
+<!-- BEGIN units:mathematical_foundations_of_ai_and_ml -->
 - **Unit 01: Learning vs Data Analysis; Models, Loss Functions** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/01_learning_vs_data_analysis/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/01_learning_vs_data_analysis/01_intro.qmd)
 - **Unit 02: Linear Algebra Refresher; Covariance, PCA/SVD** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/02_linear_algebra_pca_svd/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/02_linear_algebra_pca_svd/01_intro.qmd)
 - **Unit 03: Regression as Loss Minimization** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/03_regression_as_loss_minimization/01_intro.qmd)
@@ -30,9 +33,11 @@ Central link index for lecture decks and units.
 - **Unit 12: Uncertainty in Predictions** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/12_uncertainty_in_predictions/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/12_uncertainty_in_predictions/01_intro.qmd)
 - **Unit 13: Physics-Informed & Constrained Learning** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/13_physics_informed_learning/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/13_physics_informed_learning/01_intro.qmd)
 - **Unit 14: Explainability, Limits, and Scientific Trust** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/14_explainability_limits_trust/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/14_explainability_limits_trust/01_intro.qmd)
+<!-- END units:mathematical_foundations_of_ai_and_ml -->
 
 ## Materials Genomics
 
+<!-- BEGIN units:materials_genomics -->
 - **Unit 01: What is Materials Genomics?** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/01_intro/01_intro.html) · [Source](./materials_genomics/01_intro/01_intro.qmd)
 - **Unit 02: QM Postulates, Solvable Systems, Multi-Electron Atoms** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/02_qm_postulates_and_atoms/01_intro.html) · [Source](./materials_genomics/02_qm_postulates_and_atoms/01_intro.qmd)
 - **Unit 03: Quantum Chemistry Methods (HF, MP, CC, DFT)** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/03_quantum_chemistry_methods/01_intro.html) · [Source](./materials_genomics/03_quantum_chemistry_methods/01_intro.qmd)
@@ -46,9 +51,11 @@ Central link index for lecture decks and units.
 - **Unit 11: Clustering vs Discovery in Materials Spaces** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/11_clustering_vs_discovery_in_materials_spaces/01_intro.html) · [Source](./materials_genomics/11_clustering_vs_discovery_in_materials_spaces/01_intro.qmd)
 - **Unit 12: Uncertainty-Aware Discovery & Gaussian Processes** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/12_uncertainty_aware_discovery_and_gaussian_processes/01_intro.html) · [Source](./materials_genomics/12_uncertainty_aware_discovery_and_gaussian_processes/01_intro.qmd)
 - **Unit 13: Physical Constraints, Trust, and Integration Outlook** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/13_constraints_trust_and_integration_outlook/01_intro.html) · [Source](./materials_genomics/13_constraints_trust_and_integration_outlook/01_intro.qmd)
+<!-- END units:materials_genomics -->
 
 ## Machine Learning for Characterization and Processing
 
+<!-- BEGIN units:ml_for_characterization_and_processing -->
 - **Unit 01: What makes materials data special?** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit01_intro/01_intro.html) · [Source](./ml_for_characterization_and_processing/unit01_intro/01_intro.qmd)
 - **Unit 02: Physics of data formation** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit02_physics_of_data/01_intro.html) · [Source](./ml_for_characterization_and_processing/unit02_physics_of_data/01_intro.qmd)
 - **Unit 03: Data quality, labels, and leakage** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit03_data_quality/01_intro.html) · [Source](./ml_for_characterization_and_processing/unit03_data_quality/01_intro.qmd)
@@ -63,11 +70,22 @@ Central link index for lecture decks and units.
 - **Unit 12: Uncertainty-aware regression & Gaussian Processes** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit12_uncertainty_gp/12_uncertainty_gp.html) · [Source](./ml_for_characterization_and_processing/unit12_uncertainty_gp/12_uncertainty_gp.qmd)
 - **Unit 13: Physics-informed and constrained ML** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit13_pinns/13_pinns.html) · [Source](./ml_for_characterization_and_processing/unit13_pinns/13_pinns.qmd)
 - **Unit 14: Integration, limits, and reflection** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit14_reflection/14_reflection.html) · [Source](./ml_for_characterization_and_processing/unit14_reflection/14_reflection.qmd)
+<!-- END units:ml_for_characterization_and_processing -->
 
 ## Conference Talks
 
 - **2025 MC** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2025_MC/template.html) · [Source](./conference_talks/2025_MC/template.qmd)
 - **2025 M&M** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2025_MandM/template.html) · [Source](./conference_talks/2025_MandM/template.qmd)
+
+## Maintenance
+
+The unit tables above and in `index.qmd`, plus each deck's "Continue" (prev/next) slide, are generated from `units.yml`. Edit that file, then run:
+
+```bash
+python3 scripts/build_link_tables.py
+```
+
+The script edits files only between `<!-- BEGIN ... -->` / `<!-- END ... -->` markers, so it is safe to run repeatedly. Use `--check` in CI to detect drift.
 
 ## Notes
 
