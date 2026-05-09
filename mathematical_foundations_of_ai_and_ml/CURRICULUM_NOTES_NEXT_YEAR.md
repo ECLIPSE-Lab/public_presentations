@@ -68,7 +68,8 @@ The merge mechanic that made room for transformers + diffusion:
 - Add 1 slide previewing how SVD reappears in attention (low-rank Q/K projections), motivating Unit 10.
 
 ### Unit 3 — Regression as Loss Minimization
-- Add a tree-based methods section (~15 min): decision trees, random forests as variance reduction, gradient boosting / XGBoost as bias reduction. Materials students reach for these first on tabular data; currently absent.
+- ~~Add a tree-based methods section~~ **Done 2026-05-09** — added 13-slide tree-ensemble section (decision trees → bagging → random forests → boosting → gradient boosting → XGBoost/LightGBM/CatBoost → trees-vs-NNs → bias-variance summary) at the end of **Unit 7** (the natural home, since it's the bias-variance unit). Three redundant CV slides (LOOCV, one-SE rule, grouped CV) cut to make room. Net Unit 7 growth: +10 slides → 64 total.
+- Original plan was to add to Unit 3, but Unit 7 is the better pedagogical home since RF = variance reduction and boosting = bias reduction — these are *applications* of Unit 7's framework, not separate methods. Keep them in Unit 7 for SS27 too.
 
 ### Unit 4 — NN Architectures and Convolutions
 - **Append a proper backprop section** (~20 min, ~10 slides) at the end. The chain-rule derivation, delta recursion, vanishing/exploding gradients, ReLU + init story. This consolidates what was self-study in SS26 into the lecture proper.

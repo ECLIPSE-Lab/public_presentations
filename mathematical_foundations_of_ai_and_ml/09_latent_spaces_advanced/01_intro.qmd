@@ -58,6 +58,8 @@ format:
 
 ## Recap: the autoencoder latent
 
+:::: {.columns}
+:::: {.column width="45%"}
 :::: {.incremental}
 - Encoder $f_\phi: \mathbb{R}^d \to \mathbb{R}^k$ compresses.
 - Decoder $g_\theta: \mathbb{R}^k \to \mathbb{R}^d$ reconstructs.
@@ -68,6 +70,11 @@ format:
 :::: {.fragment}
 The reconstruction loss says only one thing: *encode enough information to undo*. It says **nothing** about whether similar inputs end up close, whether categories cluster, or whether interpolation is meaningful.
 ::::
+::::
+:::: {.column width="55%"}
+![A simple autoencoder: inputs (green) are compressed to a small latent layer $z$ (blue) and reconstructed at the output (red). The latent bottleneck is the only constraint — it imposes no structure on what $z$ means. (McClarren 2023)](images/autoencoder_architecture.png){width=90%}
+::::
+::::
 
 :::: {.notes}
 - This is the key gap to motivate today's content: reconstruction is necessary but not sufficient for a useful latent.
@@ -75,18 +82,26 @@ The reconstruction loss says only one thing: *encode enough information to undo*
 
 ## What is a "good" latent space?
 
+:::: {.columns}
+:::: {.column width="55%"}
 Four desiderata, with examples that fail each:
 
 :::: {.incremental}
 - **Compactness within concept**: same-class samples are close. (Fails: AE trained on noisy spectra spreads each phase across the latent.)
-- **Separation across concepts**: different-class samples are far. (Fails: AE pushes the variance budget into reconstructing details, not separating classes.)
-- **Smooth interpolation**: the line between $z_A$ and $z_B$ corresponds to a smooth transition in $x$-space. (Fails: vanilla AE has "holes" — latents in dead regions decode to nonsense.)
-- **Transferability**: a small head trained on $z$ for task A also works for task B. (Fails: AE features overfit to reconstruction artifacts.)
+- **Separation across concepts**: different-class samples are far. (Fails: AE pushes variance budget into reconstruction detail, not class separation.)
+- **Smooth interpolation**: the line $z_A \to z_B$ gives a smooth transition in $x$-space. (Fails: vanilla AE has "holes" that decode to nonsense.)
+- **Transferability**: a small head on $z$ for task A also works for task B. (Fails: AE features overfit to reconstruction artifacts.)
+::::
+::::
+:::: {.column width="45%"}
+![A leaf-spectra autoencoder with a 2-D latent. The scatter (top-left) shows the 2-D code space; colored regions indicate different leaf clusters. Traversing $z_1$ and $z_2$ independently (other panels) produces smooth spectral interpolations — but only *within* the data manifold. Dead regions between clusters produce nonsense. (McClarren 2023)](images/ae_latent_space_leaf_spectra.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
 - The key insight: there is no single "right" representation; "good" depends on the downstream task.
 - These four desiderata are the rubric we will judge the rest of today's methods against.
+- The leaf spectra figure concretely shows both the promise (smooth interpolation along learned axes) and the failure (clusters do not separate automatically; the space is reconstruction-driven).
 ::::
 
 ## Learning outcomes
@@ -127,6 +142,8 @@ By the end of this unit, students can:
 
 ## t-SNE: the goal
 
+:::: {.columns}
+:::: {.column width="55%"}
 We have $N$ high-dimensional points $\{x_1, \ldots, x_N\} \subset \mathbb{R}^d$. We want low-dimensional points $\{y_1, \ldots, y_N\} \subset \mathbb{R}^2$ such that:
 
 :::: {.fragment}
@@ -136,10 +153,18 @@ We have $N$ high-dimensional points $\{x_1, \ldots, x_N\} \subset \mathbb{R}^d$.
 :::: {.fragment}
 This is harder than it sounds — distances in $\mathbb{R}^d$ generally cannot all be preserved in $\mathbb{R}^2$. t-SNE makes a specific trade-off: **preserve local structure, sacrifice global structure**.
 ::::
+::::
+:::: {.column width="45%"}
+:::: {.fragment}
+![The probabilistic PCA (PPCA) generative view: a 1-D latent $z$ maps through a weight vector $\mathbf{w}$ to produce a correlated 2-D Gaussian. PCA/PPCA is a *linear* method — useful for understanding the linear structure of a latent before t-SNE reveals non-linear clusters. (Murphy 2012)](images/ppca_generative_model_illustration.png){width=100%}
+::::
+::::
+::::
 
 :::: {.notes}
 - t-SNE is a visualization tool, not a generic dimensionality reduction tool.
 - The local-vs-global trade-off is the most important caveat for interpretation.
+- The PPCA figure motivates why we need something beyond linear methods: PPCA finds the main linear subspace, but real data clusters non-linearly.
 ::::
 
 ## t-SNE step 1: high-dim similarities
@@ -208,21 +233,24 @@ Match $P$ and $Q$ by minimizing $\mathrm{KL}(P \| Q)$.
 In $\mathbb{R}^d$, a point has many moderate-distance neighbors (a $d$-D shell of room).
 
 In $\mathbb{R}^2$, only ~6 nearest neighbors fit at the same distance.
-::::
-:::: {.column width="50%"}
+
 A Gaussian in $\mathbb{R}^2$ falls off too quickly: forcing all the moderate-distance high-dim neighbors close together creates **attractive forces that exceed available space**.
 
 The result: collapsed, tangled embeddings.
-::::
-::::
 
 :::: {.fragment}
 **Fix**: use a **heavy-tailed** kernel in low-dim. Moderate distances stay possible without infinite force.
+::::
+::::
+:::: {.column width="50%"}
+![Normal (blue) vs Cauchy/Student-t (orange) distribution with the same center. At $|x|=4$ the Cauchy value is ~140× larger than the Gaussian. This heavy tail is what allows moderate-distance pairs to remain separated in the 2-D embedding — solving the crowding problem. (McClarren 2023)](images/gaussian_vs_student_t_heavy_tail.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
 - The original t-SNE paper's most important contribution is recognizing this asymmetry.
 - Hinton's intuition: "give moderate similarities room to breathe."
+- The Cauchy distribution is the Student-t with 1 degree of freedom — hence "t-SNE".
 ::::
 
 ## t-SNE step 2 (corrected): Student-t in low dim
@@ -263,6 +291,8 @@ $$
 
 ## What t-SNE preserves — and doesn't
 
+:::: {.columns}
+:::: {.column width="50%"}
 :::: {.incremental}
 - **Preserved**: neighborhoods. If $x_i$ and $x_j$ are close in $\mathbb{R}^d$, they end up close in $\mathbb{R}^2$.
 - **Not preserved**: cluster sizes. A small dense cluster in $\mathbb{R}^d$ may render as a *big* blob in 2-D.
@@ -273,10 +303,16 @@ $$
 :::: {.fragment}
 **Read t-SNE plots qualitatively. Never quantitatively.**
 ::::
+::::
+:::: {.column width="50%"}
+![The same Fashion MNIST t-SNE embedding but with actual image thumbnails placed at their 2-D positions. Within an "island" the images are visually coherent. Across islands, the relative placement reveals why t-SNE connected certain classes: a light-colored sandal really does look more like a light sneaker than a dark ankle boot. (McClarren 2023)](images/tsne_fashion_mnist_thumbnails.png){width=95%}
+::::
+::::
 
 :::: {.notes}
 - This is the most-violated rule in published ML papers. Internalize it.
 - Wattenberg's "How to Use t-SNE Effectively" (Distill.pub) is the best single reference for these failure modes.
+- The thumbnail version makes the local-structure story tangible: you can literally see *why* the algorithm grouped things together.
 ::::
 
 ## Common t-SNE misinterpretations
@@ -295,19 +331,24 @@ $$
 ## t-SNE on a materials dataset
 
 :::: {.columns}
-:::: {.column width="50%"}
-- 5000 alloys, 12-dim composition.
-- Perplexity 30, 1000 iterations.
-- 2-D plot colored by known phase family.
+:::: {.column width="40%"}
+**Analogous benchmark: Fashion MNIST** (10 clothing classes, 6000 images, 784 dims → 2 dims, perplexity 40)
+
+- **Useful**: phase families / clothing classes form islands; outliers visible at the boundary.
+- **Not useful**: don't measure the gap between islands — that distance is **meaningless**.
+- Note: t-shirts (cyan) and shirts (pink) overlap — their pixel structure is genuinely similar.
+
+For materials: same logic applies to alloy-composition or spectral data.
 ::::
-:::: {.column width="50%"}
-- **Useful**: phase families form clusters; outliers visible.
-- **Not useful**: don't measure the gap between austenitic and martensitic clusters; that distance is meaningless.
+:::: {.column width="60%"}
+![t-SNE 2-D embedding of 6000 Fashion MNIST images (perplexity 40). Each point is one image colored by class. Trousers (orange) form a well-separated island; shirts/T-shirts overlap — they are genuinely similar in pixel space. Island sizes and inter-island distances are **not** quantitatively meaningful. (McClarren 2023)](images/tsne_fashion_mnist_clusters.png){width=100%}
 ::::
 ::::
 
 :::: {.notes}
 - t-SNE on materials data: legitimate exploratory tool, illegitimate quantitative claim source.
+- The Fashion MNIST example is a direct analog to any high-dimensional composition or spectral dataset.
+- The overlap between shirts and T-shirts is a feature, not a bug: it reflects genuine similarity.
 ::::
 
 ## t-SNE summary
@@ -526,16 +567,24 @@ This is **the** dominant paradigm in modern ML. GPT, BERT, ViT, DINO, CLIP — a
 
 ## Why foundation embeddings transfer
 
+:::: {.columns}
+:::: {.column width="50%"}
 :::: {.incremental}
 - Pre-training data: orders of magnitude more diverse than any single downstream task's data.
 - Self-supervised objective: forces the model to encode broadly useful features.
 - The result: embeddings capture *general structure* of the input modality (images, text, etc.).
 - For a downstream task: the relevant variation is usually present in the pre-trained embedding; you just need to *select* it (linear probe) or *recombine* it (fine-tuning).
 ::::
+::::
+:::: {.column width="50%"}
+![2-D embedding of Reuters news corpus. **(a)** LSA (linear): all topics collapsed into a single blob — no structure visible. **(b)** Deep autoencoder (nonlinear): topics spread into clearly separated clusters, despite no labels used during training. Richer pre-trained representations transfer better. (Murphy 2012, after Hinton & Salakhutdinov 2006)](images/latent_space_lsa_vs_deep_ae_embedding.png){width=100%}
+::::
+::::
 
 :::: {.notes}
 - Scaling laws (Kaplan et al., Hoffmann et al.) quantify this empirically: more data + more parameters → better embeddings.
 - For materials, true foundation models for materials data are still emerging; in the meantime, image foundation models work surprisingly well on micrographs.
+- The LSA vs deep AE figure directly motivates foundation models: the nonlinear structure that deep nets learn generalizes far better than linear embeddings.
 ::::
 
 ## Pre-train + freeze + linear probe
@@ -612,6 +661,8 @@ This works because low-level visual features (edges, textures) transfer across d
 
 ## Three ways to shape a latent
 
+:::: {.columns}
+:::: {.column width="55%"}
 :::: {.incremental}
 1. **Reconstruction** (Unit 5 AE): "encode enough to undo."
 2. **Visualization optimization** (t-SNE, UMAP): "preserve neighborhoods in 2-D."
@@ -621,23 +672,37 @@ This works because low-level visual features (edges, textures) transfer across d
 :::: {.fragment}
 **Missing** from all three: an explicit, controllable distribution over $z$ — necessary for **sampling new data**.
 ::::
+::::
+:::: {.column width="45%"}
+![PCA as the simplest latent shaper: data points (circles) are orthogonally projected onto the first principal direction to get 1-D codes (crosses). This is the baseline linear case — t-SNE and contrastive learning are the nonlinear, semantically-richer descendants. **(a)** PCA, **(b)** probabilistic PCA (slightly shrunk reconstruction). (Murphy 2012)](images/pca_projection_2d_illustration.png){width=100%}
+::::
+::::
 
 :::: {.notes}
 - This sets up the Unit 11 motivation cleanly.
 - AE/contrastive give us encoders. They don't give us generators.
+- The PCA figure is the simplest possible latent shaping: find the direction of maximum variance and project. It's the foundation of the entire latent-variable story.
 ::::
 
 ## Latent space arithmetic — promise and limits
 
+:::: {.columns}
+:::: {.column width="55%"}
 :::: {.incremental}
 - In some learned latents, vector arithmetic is meaningful: $z_{\text{property A}} - z_{\text{baseline}} + z_{\text{property B baseline}} \approx z_{\text{property B with A}}$.
 - This works *empirically* in well-shaped latents; it is **not guaranteed** by the AE/contrastive objective.
 - VAEs (Unit 11) shape the latent to be approximately Gaussian — making interpolation reliable and arithmetic principled.
 ::::
+::::
+:::: {.column width="45%"}
+![PCA basis vectors ("eigendigits") for MNIST digit-3 images. Top row: mean image and the first 3 principal components. Bottom row: reconstructions using 2, 10, 100 and all ~500 bases. Each principal component is a direction of variance in image space — the latent coordinates are the projection weights. Arithmetic on these coordinates corresponds to meaningful image transformations. (Murphy 2012)](images/pca_eigendigits_mnist.png){width=100%}
+::::
+::::
 
 :::: {.notes}
 - A taste of generative modeling without the math.
 - Sets up Unit 11 as the "principled fix" to latent geometry.
+- The eigendigits figure concretizes what "latent coordinates" mean geometrically: each one corresponds to a direction of visual variation.
 ::::
 
 ## Bridge to Unit 11

@@ -91,6 +91,8 @@ format:
 
 ## What is a generative model?
 
+:::: {.columns}
+:::: {.column width="55%"}
 A generative model represents (or approximates) the data distribution $p(x)$. It must support:
 
 :::: {.incremental}
@@ -102,11 +104,17 @@ A generative model represents (or approximates) the data distribution $p(x)$. It
 :::: {.fragment}
 **Today**: VAEs (sampling + approximate likelihood) and diffusion (sampling, no exact likelihood, but extraordinary quality).
 ::::
+::::
+:::: {.column width="45%"}
+![Ancestral sampling: follow a directed graph top-to-bottom, sampling each node from its conditional. The joint $p(x_1,\ldots,x_7) = \prod_i p(x_i \mid \text{pa}_i)$.](images/dag_ancestral_sampling.png){width=85%}
+::::
+::::
 
 :::: {.notes}
 - Different generative models trade off these capabilities differently. Listing them now sets up the comparison at the end.
 - VAE: tractable likelihood lower bound + fast sampling, blurry samples.
 - Diffusion: no exact likelihood, slow sampling, sharp samples.
+- The DAG figure (Bishop Ch. 8) illustrates ancestral sampling: the simplest form of generative sampling from a directed graphical model.
 ::::
 
 ## Learning outcomes
@@ -151,7 +159,7 @@ By the end of this unit, students can:
 ## VAE — the architectural change
 
 :::: {.columns}
-:::: {.column width="50%"}
+:::: {.column width="55%"}
 **Vanilla AE**:
 
 $$
@@ -159,8 +167,7 @@ x \xrightarrow{f_\phi} z \xrightarrow{g_\theta} \hat x
 $$
 
 Encoder produces a single point $z$.
-::::
-:::: {.column width="50%"}
+
 **VAE**:
 
 $$
@@ -168,20 +175,26 @@ x \xrightarrow{f_\phi} (\mu, \sigma) \xrightarrow{\text{sample}} z \xrightarrow{
 $$
 
 Encoder produces a *distribution* $\mathcal{N}(\mu, \sigma^2 I)$. Sample $z$ from it.
-::::
-::::
 
 :::: {.fragment}
 The latent $z$ is now a random variable, not a deterministic function of $x$.
+::::
+::::
+:::: {.column width="45%"}
+![Plate notation for a latent-variable generative model: open circle $z_i$ = hidden, shaded circle $x_i$ = observed. The plate (box labelled $N$) means the pattern repeats over all data points. Source: Bishop Ch. 8.](images/plate_notation_observed_latent.png){width=75%}
+::::
 ::::
 
 :::: {.notes}
 - The encoder outputs the *parameters* of a Gaussian, not a single vector.
 - This is the architectural change. The training objective is what makes it work.
+- The plate diagram shows the generative direction: sample $z$, produce $x$. The encoder reverses this.
 ::::
 
 ## VAE — the prior on $z$
 
+:::: {.columns}
+:::: {.column width="55%"}
 :::: {.incremental}
 - We want a tractable distribution to **sample from at generation time**.
 - Choose a fixed prior $p(z) = \mathcal{N}(0, I)$ — the standard Gaussian on $\mathbb{R}^k$.
@@ -192,10 +205,16 @@ The latent $z$ is now a random variable, not a deterministic function of $x$.
 :::: {.fragment}
 **This is the core trick**: train the encoder to push latents toward a known prior, so we can sample from that prior at test time.
 ::::
+::::
+:::: {.column width="45%"}
+![The generative model as a plate DGM: $\pi$ mixes over component assignments $z_i$ (latent), which together with parameters produce observations $x_i$ (shaded). Source: Murphy Ch. 24.](images/mixture_model_plate_dgm.png){width=80%}
+::::
+::::
 
 :::: {.notes}
 - The prior choice is conventional. Other priors (mixtures of Gaussians, vMF distributions) work but are less common.
 - The aggregate-posterior view is what really matters; per-x posteriors don't need to be Gaussian, just close.
+- The plate diagram (Murphy) shows the classic latent-variable generative model: a prior over latents drives generation of observables.
 ::::
 
 ## VAE — the loss, intuitively
@@ -358,6 +377,8 @@ loss.backward()
 
 ## Generating new data from a trained VAE
 
+:::: {.columns}
+:::: {.column width="55%"}
 :::: {.incremental}
 1. Sample $z \sim \mathcal{N}(0, I)$.
 2. Decode: $x_{\text{new}} = g_\theta(z)$.
@@ -367,10 +388,16 @@ loss.backward()
 :::: {.fragment}
 That's it. No labels needed; no special procedure. The trained encoder/decoder pair is now also a sampler.
 ::::
+::::
+:::: {.column width="45%"}
+![A latent-variable generative model: factor analysers with latent $\boldsymbol{z}_i$ (open, hidden) and observed $\boldsymbol{x}_i$ (shaded). The parameters $\boldsymbol{\mu}_k, \boldsymbol{W}_k$ decode latents into observations. Source: Murphy Ch. 12.](images/latent_variable_model_plate.png){width=80%}
+::::
+::::
 
 :::: {.notes}
 - This is the payoff of all the math: clean, fast generation.
 - For materials: sample a candidate microstructure; decode; check if it satisfies constraints.
+- The plate diagram reinforces the generative direction that sampling uses: latent → observation.
 ::::
 
 ## Latent interpolation in a VAE
@@ -410,6 +437,8 @@ For materials: interpolate between two micrographs to see how phases transition;
 
 ## VAEs sample in one step. What if we used many?
 
+:::: {.columns}
+:::: {.column width="55%"}
 :::: {.incremental}
 - A VAE samples $z$ from a learned prior, then decodes in **one** step.
 - The single-step decode has to do all the work — and produces blurry outputs.
@@ -419,10 +448,20 @@ For materials: interpolate between two micrographs to see how phases transition;
 :::: {.fragment}
 This is the **diffusion idea**: start from pure noise, gradually denoise to produce a sample.
 ::::
+::::
+:::: {.column width="45%"}
+![Metropolis–Hastings sampling from a 2D Gaussian: accepted steps (green) and rejected steps (red). Iterative refinement through many small moves — each step uses the current state. Source: Bishop Ch. 11.](images/metropolis_chain_steps.png){width=85%}
+
+:::: {.fragment .small}
+*Analogy*: diffusion also iterates many small denoising steps. Unlike MCMC, the denoiser is a learned neural network.
+::::
+::::
+::::
 
 :::: {.notes}
 - The one-step vs many-step framing is the cleanest motivation for diffusion.
 - Many small steps = each network call solves a simpler problem.
+- The MCMC trace is an analogy: many small proposals converge to the target. Diffusion replaces random proposals with a learned reverse process.
 ::::
 
 ## The diffusion picture
@@ -581,23 +620,31 @@ $$
 
 ## Sampling from a trained diffusion model
 
+:::: {.columns}
+:::: {.column width="55%"}
 ```
 Input:  trained ε_θ
 1. x_T ← sample from N(0, I)
 2. for t = T, T-1, ..., 1:
 3.     ε̂ ← ε_θ(x_t, t)
 4.     compute mean μ_t and variance σ_t² from ε̂
-5.     x_{t-1} ← μ_t + σ_t · z       where z ~ N(0, I), z = 0 when t = 1
+5.     x_{t-1} ← μ_t + σ_t · z   (z=0 at t=1)
 6. return x_0
 ```
 
 :::: {.fragment}
 $T$ network calls per sample. With $T = 1000$, this is **slow** compared to a VAE (1 call) — the dominant practical limitation.
 ::::
+::::
+:::: {.column width="45%"}
+![MH chain traces: (a) too-small proposal → chain trapped, one mode only; (b) too-large → sticky, high rejection; (c) right scale → good mixing. Diffusion faces the same step-size tradeoff — too few steps = bad quality, too many = slow. Source: Murphy Ch. 24.](images/mcmc_chain_trace_mh_proposals.png){width=95%}
+::::
+::::
 
 :::: {.notes}
 - Sampling speed is THE complaint about diffusion.
 - Modern accelerated samplers (DDIM, DPM-Solver) reduce T to 20-50 with little quality loss.
+- The MH chain figure (Murphy) illustrates why step count matters: wrong step size leads to either trapped or sticky sampling.
 ::::
 
 ## DDIM and faster sampling
@@ -670,6 +717,8 @@ $$
 
 ## Score matching — one-slide pointer
 
+:::: {.columns}
+:::: {.column width="55%"}
 :::: {.incremental}
 - The **score** of a distribution: $s(x) = \nabla_x \log p(x)$.
 - Score matching: train a network to estimate the score directly.
@@ -677,10 +726,16 @@ $$
 - This is why predicting noise works: predicting noise is, up to a constant, predicting the score.
 - Diffusion models are formally **score-based generative models**.
 ::::
+::::
+:::: {.column width="45%"}
+![Gibbs sampling on a correlated 2D Gaussian: each step updates one variable conditioned on the other, creating zig-zag moves of size $l$ (conditional SD) along a distribution of width $L$. Requires $O((L/l)^2)$ steps for an independent sample — analogous to why diffusion needs many steps. Source: Bishop Ch. 11.](images/gibbs_sampling_correlated_gaussian.png){width=85%}
+::::
+::::
 
 :::: {.notes}
 - The score-matching connection unifies diffusion with stochastic differential equations (Song et al. 2021).
 - For students who go on to research: this is the deep theory; for everyone else, it is a pointer.
+- The Gibbs figure illustrates iterative refinement in a correlated space — step size matters, and many small steps are needed for high-dimensional distributions.
 ::::
 
 <!-- ===== §11. Alternatives ===== -->

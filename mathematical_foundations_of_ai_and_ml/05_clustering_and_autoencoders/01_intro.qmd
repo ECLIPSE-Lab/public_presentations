@@ -202,6 +202,8 @@ The objective: each point should be **close to its assigned centroid**. Each clu
 
 ## Lloyd's algorithm
 
+:::: {.columns}
+:::: {.column width="55%"}
 Alternate two steps until assignments stop changing:
 
 :::: {.incremental}
@@ -211,6 +213,11 @@ Alternate two steps until assignments stop changing:
 
 :::: {.fragment}
 This is **coordinate descent on $J$**: each step strictly decreases $J$ unless we are already at a fixed point. Convergence in finitely many steps is guaranteed.
+::::
+::::
+:::: {.column width="45%"}
+![K-means iterations on the Old Faithful data (Bishop Fig. 9.1). Each row shows one E-step (assign) and one M-step (update centroids). Converges in 3 M-steps.](images/kmeans_lloyd_iterations.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -222,28 +229,70 @@ This is **coordinate descent on $J$**: each step strictly decreases $J$ unless w
 ## Worked example: 6 points, $K=2$
 
 :::: {.columns}
-:::: {.column width="50%"}
+:::: {.column width="30%"}
 Points: $(1,1), (1,2), (2,1)$, $(8,8), (9,8), (8,9)$.
 
 Initial centroids: $\mu_1 = (1,1)$, $\mu_2 = (2,2)$.
 
-**Iter 1** — assign:
+```{ojs}
+//| panel: input
+viewof step = Inputs.range([0, 3], {step: 1, value: 0, label: "Algorithm Step"})
+```
 
-- $(1,1), (1,2), (2,1)$ → $\mu_1$.
-- $(8,8), (9,8), (8,9)$ → $\mu_2$.
-::::
-:::: {.column width="50%"}
-**Iter 1** — update:
+**Step 0**: Initialization.
+**Step 1**: Assign to closest $\mu$.
+**Step 2**: Update $\mu$ to cluster mean.
+**Step 3**: Assign (No change).
 
-- $\mu_1 = (4/3, 4/3)$.
-- $\mu_2 = (25/3, 25/3)$.
-
-**Iter 2**: assignments do not change. Done.
-::::
-::::
-
-:::: {.fragment}
 The bad initialization still found the right clusters here — luck. With harder geometries, initialization matters a lot.
+::::
+:::: {.column width="70%"}
+```{ojs}
+pts = [
+  {id: 1, x: 1, y: 1}, {id: 2, x: 1, y: 2}, {id: 3, x: 2, y: 1},
+  {id: 4, x: 8, y: 8}, {id: 5, x: 9, y: 8}, {id: 6, x: 8, y: 9}
+];
+
+// Precompute the steps
+cents0 = [{x: 1, y: 1, c: "0"}, {x: 2, y: 2, c: "1"}];
+asgn0 = pts.map(p => ({...p, c: "-1"})); 
+
+asgn1 = pts.map(p => {
+  let d0 = Math.hypot(p.x - cents0[0].x, p.y - cents0[0].y);
+  let d1 = Math.hypot(p.x - cents0[1].x, p.y - cents0[1].y);
+  return {...p, c: d0 < d1 ? "0" : "1"};
+});
+cents1 = cents0;
+
+cents2 = [
+  {x: (1+1+2)/3, y: (1+2+1)/3, c: "0"},
+  {x: (8+9+8)/3, y: (8+8+9)/3, c: "1"}
+];
+asgn2 = asgn1;
+
+asgn3 = pts.map(p => {
+  let d0 = Math.hypot(p.x - cents2[0].x, p.y - cents2[0].y);
+  let d1 = Math.hypot(p.x - cents2[1].x, p.y - cents2[1].y);
+  return {...p, c: d0 < d1 ? "0" : "1"};
+});
+cents3 = cents2;
+
+currentAsgn = [asgn0, asgn1, asgn2, asgn3][step];
+currentCents = [cents0, cents1, cents2, cents3][step];
+
+Plot.plot({
+  width: 500,
+  height: 500,
+  grid: true,
+  x: {domain: [0, 10]},
+  y: {domain: [0, 10]},
+  marks: [
+    Plot.dot(currentAsgn, {x: "x", y: "y", fill: d => d.c === "-1" ? "gray" : (d.c === "0" ? "#1f77b4" : "#ff7f0e"), r: 10, stroke: "white", strokeWidth: 1}),
+    Plot.dot(currentCents, {x: "x", y: "y", fill: d => d.c === "0" ? "#1f77b4" : "#ff7f0e", r: 16, symbol: "star", stroke: "black", strokeWidth: 1.5})
+  ]
+})
+```
+::::
 ::::
 
 :::: {.notes}
@@ -254,11 +303,107 @@ The bad initialization still found the right clusters here — luck. With harder
 
 ## K-means is sensitive to initialization
 
-:::: {.incremental}
+:::: {.columns}
+:::: {.column width="40%"}
 - Different initial centroids → different local optima.
-- Standard fix: run multiple random initializations, keep the lowest $J$.
-- **K-means++**: smart initialization. Pick the first centroid uniformly at random; pick each subsequent centroid with probability proportional to $D(x)^2$, where $D(x)$ is the distance to the nearest already-chosen centroid.
-- K-means++ provably bounds expected $J$ within a factor of the global optimum.
+- Standard fix: multiple random initializations, keep lowest $J$.
+- **K-means++**: smart initialization. 
+  - Pick first centroid randomly.
+  - Pick next with probability $\propto D(x)^2$ to nearest chosen centroid.
+  - Provably bounds expected $J$.
+::::
+:::: {.column width="60%"}
+```{ojs}
+//| panel: input
+viewof initMethod = Inputs.radio(["Random", "K-means++"], {value: "Random", label: "Initialization"})
+viewof rerunInit = Inputs.button("Run & Compare")
+```
+
+```{ojs}
+// Generator for 3 blobs, 2 of them close together (classic case where random init fails)
+initData = {
+  const n = 100;
+  let data = [];
+  const randn = () => Math.sqrt(-2.0 * Math.log(1 - Math.random())) * Math.cos(2.0 * Math.PI * Math.random());
+  const centers = [{x: 0, y: 0}, {x: 4, y: 0}, {x: 4, y: 3}];
+  for (let i = 0; i < n * 3; i++) {
+    const c = centers[i % 3];
+    data.push({x: c.x + randn()*0.8, y: c.y + randn()*0.8});
+  }
+  return data;
+}
+
+clusteredInit = {
+  let trigger = rerunInit;
+  let data = initData;
+  let k = 3;
+  let centroids = [];
+  
+  if (initMethod === "Random") {
+    centroids = Array.from({length: k}, () => data[Math.floor(Math.random() * data.length)]);
+  } else {
+    // K-means++
+    centroids.push(data[Math.floor(Math.random() * data.length)]);
+    for (let i = 1; i < k; i++) {
+      let dists = data.map(d => {
+        let minDist = Infinity;
+        for (let c of centroids) {
+          let dist = Math.pow(d.x - c.x, 2) + Math.pow(d.y - c.y, 2);
+          if (dist < minDist) minDist = dist;
+        }
+        return minDist;
+      });
+      let sumDist = dists.reduce((a, b) => a + b, 0);
+      let r = Math.random() * sumDist;
+      let cum = 0;
+      for (let j = 0; j < data.length; j++) {
+        cum += dists[j];
+        if (cum >= r) {
+          centroids.push(data[j]);
+          break;
+        }
+      }
+    }
+  }
+  
+  let assignments = new Array(data.length).fill(0);
+  for (let iter = 0; iter < 20; iter++) {
+    let changed = false;
+    for (let i = 0; i < data.length; i++) {
+      let minDist = Infinity, minIdx = 0;
+      for (let j = 0; j < k; j++) {
+        let dist = Math.hypot(data[i].x - centroids[j].x, data[i].y - centroids[j].y);
+        if (dist < minDist) { minDist = dist; minIdx = j; }
+      }
+      if (assignments[i] !== minIdx) { assignments[i] = minIdx; changed = true; }
+    }
+    if (!changed) break;
+    let sums = Array.from({length: k}, () => ({x: 0, y: 0, count: 0}));
+    for (let i = 0; i < data.length; i++) {
+      sums[assignments[i]].x += data[i].x; sums[assignments[i]].y += data[i].y; sums[assignments[i]].count++;
+    }
+    for (let j = 0; j < k; j++) {
+      if (sums[j].count > 0) {
+        centroids[j].x = sums[j].x / sums[j].count; centroids[j].y = sums[j].y / sums[j].count;
+      }
+    }
+  }
+  return {data: data.map((d, i) => ({...d, cluster: String(assignments[i])})), centroids};
+}
+
+Plot.plot({
+  width: 600,
+  height: 450,
+  grid: true,
+  marks: [
+    Plot.dot(clusteredInit.data, {x: "x", y: "y", fill: "cluster", stroke: "white", strokeWidth: 0.5, r: 5}),
+    Plot.dot(clusteredInit.centroids, {x: "x", y: "y", fill: (d, i) => String(i), symbol: "star", r: 16, stroke: "black", strokeWidth: 1.5})
+  ],
+  color: {scheme: "category10"},
+  axes: false
+})
+```
+::::
 ::::
 
 :::: {.notes}
@@ -274,11 +419,13 @@ The bad initialization still found the right clusters here — luck. With harder
 - Plot $J(K)$ vs $K$.
 - Look for the **elbow**: the point where $J$ stops dropping fast.
 - Heuristic, not principled, but widely used.
-::::
-:::: {.column width="45%"}
+
 $J(K)$ always decreases with $K$ — at $K = N$, every point is its own cluster and $J = 0$.
 
 The elbow signals diminishing returns from extra clusters.
+::::
+:::: {.column width="45%"}
+![Cost function $J$ after each E-step (blue) and M-step (red) for the Old Faithful example. Converged after 3 M-steps. (Bishop Fig. 9.2)](images/kmeans_cost_convergence.png){width=100%}
 ::::
 ::::
 
@@ -310,17 +457,109 @@ where $a(x_i)$ is the average distance to other points in $x_i$'s cluster, and $
 
 ## K-means: the spherical assumption
 
-:::: {.incremental}
+:::: {.columns}
+:::: {.column width="40%"}
 - K-means uses Euclidean distance to a **single centroid**.
-- Implicitly: clusters are **spherical** and roughly equal-sized.
-- It fails when:
-  - Clusters are elongated (e.g., elliptical Gaussians).
-  - Clusters have different sizes/densities.
-  - Geometry is non-convex (concentric rings, two moons).
-::::
+- Implicitly assumes clusters are **spherical** and equal-sized.
+- **Fails when**:
+  - Clusters are elongated (Anisotropic).
+  - Geometry is non-convex (Moons, Rings).
 
-:::: {.fragment}
-**These failure cases motivate GMM** (Gaussian Mixture Models — slides 24+).
+**These failure cases motivate GMM** (slides 24+).
+::::
+:::: {.column width="60%"}
+```{ojs}
+//| panel: input
+viewof datasetShape = Inputs.radio(
+  ["Blobs", "Moons", "Concentric Rings", "Anisotropic"], 
+  {label: "Dataset Shape", value: "Moons"}
+)
+viewof rerun = Inputs.button("Re-run K-means")
+```
+
+```{ojs}
+// Generator
+points = {
+  let trigger = rerun; // depend on button
+  const n = 400;
+  let data = [];
+  const randn = () => Math.sqrt(-2.0 * Math.log(1 - Math.random())) * Math.cos(2.0 * Math.PI * Math.random());
+  
+  if (datasetShape === "Blobs") {
+    const centers = [{x: 0, y: 0}, {x: 5, y: 5}, {x: 0, y: 5}];
+    for (let i = 0; i < n; i++) {
+      const c = centers[i % 3];
+      data.push({x: c.x + randn(), y: c.y + randn()});
+    }
+  } else if (datasetShape === "Moons") {
+    for (let i = 0; i < n/2; i++) {
+      const t = Math.PI * Math.random();
+      data.push({x: Math.cos(t) + randn()*0.1, y: Math.sin(t) + randn()*0.1});
+      data.push({x: 1 - Math.cos(t) + randn()*0.1, y: 1 - Math.sin(t) - 0.5 + randn()*0.1});
+    }
+  } else if (datasetShape === "Concentric Rings") {
+    for (let i = 0; i < n/2; i++) {
+      const t = 2 * Math.PI * Math.random();
+      data.push({x: 0.5 * Math.cos(t) + randn()*0.05, y: 0.5 * Math.sin(t) + randn()*0.05});
+      data.push({x: 1.5 * Math.cos(t) + randn()*0.05, y: 1.5 * Math.sin(t) + randn()*0.05});
+    }
+  } else if (datasetShape === "Anisotropic") {
+    for (let i = 0; i < n; i++) {
+      const c = (i % 3);
+      let rx = randn(); let ry = randn();
+      let rotX = rx * 0.866 - ry * 0.5;
+      let rotY = rx * 0.5 + ry * 0.866;
+      if (c === 0) data.push({x: rotX*3 - 4, y: rotY*0.5 - 4});
+      else if (c === 1) data.push({x: rotX*3, y: rotY*0.5});
+      else data.push({x: rotX*3 + 4, y: rotY*0.5 + 4});
+    }
+  }
+  return data;
+}
+
+// K-means
+clusteredData = {
+  let data = points;
+  let k = datasetShape === "Concentric Rings" ? 2 : (datasetShape === "Moons" ? 2 : 3);
+  let centroids = Array.from({length: k}, () => data[Math.floor(Math.random() * data.length)]);
+  let assignments = new Array(data.length).fill(0);
+  
+  for (let iter = 0; iter < 20; iter++) {
+    let changed = false;
+    for (let i = 0; i < data.length; i++) {
+      let minDist = Infinity, minIdx = 0;
+      for (let j = 0; j < k; j++) {
+        let dist = Math.hypot(data[i].x - centroids[j].x, data[i].y - centroids[j].y);
+        if (dist < minDist) { minDist = dist; minIdx = j; }
+      }
+      if (assignments[i] !== minIdx) { assignments[i] = minIdx; changed = true; }
+    }
+    if (!changed) break;
+    let sums = Array.from({length: k}, () => ({x: 0, y: 0, count: 0}));
+    for (let i = 0; i < data.length; i++) {
+      sums[assignments[i]].x += data[i].x; sums[assignments[i]].y += data[i].y; sums[assignments[i]].count++;
+    }
+    for (let j = 0; j < k; j++) {
+      if (sums[j].count > 0) {
+        centroids[j].x = sums[j].x / sums[j].count; centroids[j].y = sums[j].y / sums[j].count;
+      }
+    }
+  }
+  return data.map((d, i) => ({...d, cluster: String(assignments[i])}));
+}
+
+Plot.plot({
+  width: 600,
+  height: 450,
+  grid: true,
+  marks: [
+    Plot.dot(clusteredData, {x: "x", y: "y", fill: "cluster", stroke: "white", strokeWidth: 0.5, r: 5})
+  ],
+  color: {scheme: "category10"},
+  axes: false
+})
+```
+::::
 ::::
 
 :::: {.notes}
@@ -368,12 +607,14 @@ Useful when: outliers contaminate the data, or distances are non-Euclidean (e.g.
 ## Dendrograms
 
 :::: {.columns}
-:::: {.column width="55%"}
+:::: {.column width="45%"}
 - The merge sequence is a tree: leaves are points, internal nodes are merges, height = merge distance.
 - Cut the dendrogram at any height to obtain a clustering.
-::::
-:::: {.column width="45%"}
 - Materials use case: dendrograms over compositions reveal natural alloy families and the heights tell you how distinct each family is.
+- Linkage choice matters: single, complete, average, or Ward produce qualitatively different trees.
+::::
+:::: {.column width="55%"}
+![Effect of linkage on the dendrogram for yeast gene-expression data: (a) single link — chaining artifacts; (b) complete link — compact clusters; (c) average link — a compromise. (Murphy Fig. 25.15)](images/dendrogram_linkage_comparison.png){width=100%}
 ::::
 ::::
 
@@ -386,11 +627,18 @@ Useful when: outliers contaminate the data, or distances are non-Euclidean (e.g.
 
 ## From hard to soft assignments
 
+:::: {.columns}
+:::: {.column width="55%"}
 :::: {.incremental}
 - K-means gives a **hard** assignment: each point belongs to exactly one cluster.
 - Reality: a point near a boundary could plausibly belong to either neighbor.
 - A **soft** assignment gives a probability over clusters: $\gamma_{ik} = P(\text{cluster } k \mid x_i)$.
 - Soft assignments come naturally from a **probabilistic model**: the Gaussian Mixture Model.
+::::
+::::
+:::: {.column width="45%"}
+![Same 500 points from a 3-Gaussian mixture: (a) complete data with hard labels, (b) unlabeled (incomplete data), (c) soft coloring by responsibilities $\gamma_{ik}$ — purple = uncertain. (Bishop Fig. 9.5)](images/gmm_hard_soft_responsibilities.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -400,6 +648,8 @@ Useful when: outliers contaminate the data, or distances are non-Euclidean (e.g.
 
 ## Gaussian Mixture Model (GMM)
 
+:::: {.columns}
+:::: {.column width="55%"}
 A weighted sum of $K$ Gaussian densities:
 
 $$
@@ -410,6 +660,11 @@ $$
 - $\pi_k$: mixture weight (prior probability of cluster $k$).
 - $\mu_k$: cluster center; $\Sigma_k$: cluster shape (covariance).
 - Each $\mathcal{N}(x; \mu_k, \Sigma_k)$ is a multivariate Gaussian — Unit 8 will derive these formally.
+::::
+::::
+:::: {.column width="45%"}
+![A mixture of 3 Gaussians in 2D: (a) contours of each component; (b) the combined density surface. Each component can have its own shape and orientation. (Murphy Fig. 11.3)](images/gmm_contours_surface.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -438,6 +693,8 @@ $$
 
 ## EM algorithm: E-step
 
+:::: {.columns}
+:::: {.column width="55%"}
 For each point $i$ and cluster $k$, compute the **responsibility**:
 
 $$
@@ -446,6 +703,11 @@ $$
 
 :::: {.fragment}
 This is the **soft assignment**: how strongly does the model believe point $i$ belongs to cluster $k$, given the current parameters?
+::::
+::::
+:::: {.column width="45%"}
+![EM for GMM on Old Faithful: (a) initial random parameters; (b) responsibilities after 1st E-step (purple = uncertain); (c)–(f) convergence over 16 iterations. (Murphy Fig. 11.11)](images/em_gmm_steps.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -472,6 +734,8 @@ Each update is a **weighted average** — points contribute to a cluster in prop
 
 ## EM as alternating optimization
 
+:::: {.columns}
+:::: {.column width="50%"}
 :::: {.incremental}
 1. Initialize $\{\pi_k, \mu_k, \Sigma_k\}$ (e.g., from K-means output).
 2. **E-step**: compute all $\gamma_{ik}$ given current parameters.
@@ -481,6 +745,11 @@ Each update is a **weighted average** — points contribute to a cluster in prop
 
 :::: {.fragment}
 **Property**: each EM iteration is guaranteed *not to decrease* the data log-likelihood $\sum_i \log p(x_i; \theta)$. (Proof: EM optimizes a lower bound on the log-likelihood — Bishop Ch. 9 has the full derivation.)
+::::
+::::
+:::: {.column width="50%"}
+![EM for a 2-component GMM on the Old Faithful data. (a) initialization; (b)–(f) E/M steps shown with soft color-coded responsibilities. Ellipses show the 1-$\sigma$ contours of each Gaussian. (Bishop Fig. 9.8)](images/em_gmm_iterations.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -565,6 +834,8 @@ where $p_K$ is the number of free parameters in a $K$-component GMM.
 
 ## The autoencoder architecture
 
+:::: {.columns}
+:::: {.column width="45%"}
 ```
         encoder              decoder
    x  ──────►  z (bottleneck)  ──────►  x̂
@@ -576,6 +847,11 @@ where $p_K$ is the number of free parameters in a $K$-component GMM.
 - **Bottleneck** $z \in \mathbb{R}^k$: forced low-dimensional representation.
 - **Decoder** $g_\theta: \mathbb{R}^k \to \mathbb{R}^d$: reconstructs input from code.
 - **Loss**: reconstruction error, typically MSE.
+::::
+::::
+:::: {.column width="55%"}
+![A deep autoencoder: (a) greedily pre-train RBM layers; (b) unroll into encoder/decoder by tying weights; (c) fine-tune end-to-end with backprop. The bottleneck (middle layer) is the latent code $z$. (Murphy Fig. 28.3)](images/autoencoder_architecture_training.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -783,11 +1059,18 @@ This is **transfer learning** with self-supervision — a precursor to today's f
 
 ## The latent space is a coordinate system
 
+:::: {.columns}
+:::: {.column width="50%"}
 :::: {.incremental}
 - The bottleneck $z$ is not just a compression target — it is a **learned coordinate system** for the data.
 - Two questions about a latent space:
   - **Geometry**: how are points arranged? Are similar samples close?
   - **Interpolation**: does the line between $z_A$ and $z_B$ correspond to a smooth transition in $x$?
+::::
+::::
+:::: {.column width="50%"}
+![2D latent space of a deep autoencoder trained on Reuters news articles. Left: LSA (linear, overlapping topics). Right: deep AE (nonlinear, well-separated topic clusters). Labels were not used during training. (Murphy Fig. 28.5)](images/autoencoder_latent_space_2d.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
