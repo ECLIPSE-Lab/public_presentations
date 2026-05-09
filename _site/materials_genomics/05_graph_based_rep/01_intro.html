@@ -99,7 +99,6 @@
     div.csl-bib-body { }
     div.csl-entry {
       clear: both;
-      margin-bottom: 0em;
     }
     .hanging-indent div.csl-entry {
       margin-left:2em;
@@ -257,9 +256,6 @@
     transform: translateY(0);
   }
   </style>
-  <script src="../../site_libs/quarto-diagram/mermaid.min.js"></script>
-  <script src="../../site_libs/quarto-diagram/mermaid-init.js"></script>
-  <link href="../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 <meta property="og:title" content="Materials GenomicsUnit 5: Graph-Based Crystal Representations – ECLIPSE Presentations">
 <meta property="og:image" content="https://pelzlab.science/img/eclipse_header.png">
 <meta property="og:site_name" content="ECLIPSE Presentations">
@@ -294,529 +290,618 @@
     <img src="../../assets/logos/eclipse_logo.png" alt="Eclipse Logo" height="250px" style="position: absolute; bottom: 150px; left: -50px;">
   <!-- </div> -->
   </section>
-<section class="slide level2">
+<section>
+<section id="where-we-stand" class="title-slide slide level1 center">
+<h1>§1 · Where We Stand</h1>
 
+</section>
+<section id="unit-goal" class="slide level2">
+<h2>01. Unit goal</h2>
 <ul>
-<li><strong>Goal</strong>: Move beyond fixed descriptors to learn inductive biases from connectivity.</li>
-<li><strong>Workflow Position</strong>: Post-database query, pre-regression/discovery.</li>
+<li>Move from <strong>fixed descriptors</strong> (U3/U4) to <strong>learned representations</strong></li>
+<li>Treat a crystal as a <strong>graph</strong>: atoms = nodes, bonds = edges, periodicity = edge wrap-around</li>
+<li>Build the math toolkit (PBC, RBF, invariance / equivariance, message passing) that <strong>U6, U8, U9</strong> will rely on</li>
 </ul>
 </section>
 <section id="learning-objectives" class="slide level2">
 <h2>02. Learning objectives</h2>
 <p>By the end of this unit, students can:</p>
 <ul>
-<li class="fragment">explain why graphs are the natural language for crystal structures,</li>
-<li class="fragment">implement periodic boundary conditions (PBC) in graph construction,</li>
-<li class="fragment">describe the message passing mechanism in GNNs like CGCNN and MEGNet,</li>
-<li class="fragment">analyze common failure modes like shortcut learning and cutoff sensitivity.</li>
+<li class="fragment">Define a <strong>periodic crystal graph</strong> <span class="math inline">\(G=(V,E)\)</span> with lattice-vector-aware edges</li>
+<li class="fragment">Implement <strong>PBC</strong> via the minimum-image convention and explain why naive cutoffs fail</li>
+<li class="fragment">Expand interatomic distances in a <strong>Gaussian RBF</strong> basis and reason about smooth cutoffs</li>
+<li class="fragment">Distinguish <strong>invariance</strong> (energy) from <strong>equivariance</strong> (forces, dipoles)</li>
+<li class="fragment">Write the generic <strong>message-passing</strong> update and instantiate it for CGCNN, MEGNet, SchNet</li>
+<li class="fragment">Choose <strong>readout</strong> consistent with extensive vs intensive targets and diagnose <strong>over-smoothing</strong></li>
 </ul>
 </section>
 <section id="recap-prerequisite-map" class="slide level2">
-<h2>03. Recap: Prerequisite map</h2>
+<h2>03. Recap: prerequisite map</h2>
 <div class="columns">
 <div class="column" style="width:50%;">
 <ul>
-<li><strong>Unit 2</strong>: Simulation as data generation.</li>
-<li><strong>Unit 3/4</strong>: Local environments and descriptors.</li>
-<li><strong>MFML</strong>: Neural network foundations (Unit 4) and Backprop (Unit 5).</li>
+<li><strong>U2</strong>: Schrödinger / DFT — generates the labels (energies, forces)</li>
+<li><strong>U3</strong>: Crystal lattices, space groups, primitive cells</li>
+<li><strong>U4</strong>: Hand-crafted descriptors (PRDF, SOAP, Coulomb matrix)</li>
+<li><strong>MFML W4-5</strong>: Feedforward NNs and backprop</li>
 </ul>
 </div><div class="column" style="width:50%;">
-<h3 id="todays-step">Today’s Step</h3>
-<p>From <strong>hand-crafted</strong> local features to <strong>learned</strong> graph representations.</p>
+<h3 id="todays-step">Today’s step</h3>
+<p>Hand-crafted features <span class="math inline">\(\Rightarrow\)</span> <strong>learned</strong> features by neighbour-aware message passing.</p>
 </div></div>
 </section>
-<section id="why-this-matters-the-failure-of-descriptors" class="slide level2">
-<h2>04. Why this matters: The failure of descriptors</h2>
+<section id="why-this-matters-failure-modes-of-fixed-descriptors" class="slide level2">
+<h2>04. Why this matters: failure modes of fixed descriptors</h2>
 <ul>
-<li>Traditional descriptors (e.g., SOAP, PRDF) often require fixed-size vectors.</li>
-<li>Large unit cells or varying stoichiometry cause dimension mismatch.</li>
-<li><strong>Graph inductive bias</strong>: learn features that are invariant to permutation and cell size by design.</li>
+<li class="fragment">Descriptors require a <strong>fixed-size vector</strong> <span class="math inline">\(\Rightarrow\)</span> varying <span class="math inline">\(N\)</span>, varying stoichiometry break the input shape</li>
+<li class="fragment">Choice of cutoff, RBF grid, and ordering is <strong>manual</strong> and brittle</li>
+<li class="fragment">Permutation invariance enforced by hand (sort, average) <span class="math inline">\(\to\)</span> information loss</li>
+<li class="fragment">Graphs absorb all three: variable size, permutation invariance, and <strong>learnable</strong> edge features</li>
+<li class="fragment">Bonus: graphs are <strong>data-efficient</strong> — weight sharing across atoms means few parameters per node</li>
 </ul>
 </section>
 <section id="reading-map" class="slide level2">
 <h2>05. Reading map</h2>
 <ul>
-<li><strong>Core Theory</strong>: Sandfeld Ch. 2.2 (Structure encoding).</li>
-<li><strong>ML Architecture</strong>: Neuer Ch. 4.5.1–4.5.4 (GNNs for engineering).</li>
-<li><strong>Deep Learning</strong>: Murphy Ch. 35 (GNN section).</li>
+<li><strong>Core theory</strong>: Sandfeld Ch. 2.2 (structure encoding)</li>
+<li><strong>Architectures</strong>: Neuer Ch. 4.5.1–4.5.4 (GNNs for engineering)</li>
+<li><strong>Deep learning reference</strong>: Murphy Ch. 35 (graph neural networks)</li>
+<li><strong>Equivariance</strong>: Bronstein et al., <em>Geometric Deep Learning</em> (2021)</li>
 </ul>
+</section></section>
+<section>
+<section id="crystals-as-graphs" class="title-slide slide level1 center">
+<h1>§2 · Crystals as Graphs</h1>
+
 </section>
 <section id="crystals-as-periodic-graphs" class="slide level2">
 <h2>06. Crystals as periodic graphs</h2>
-<div class="columns">
-<div class="column" style="width:55%;">
+<p>Crystal structure <span class="math inline">\(\to\)</span> graph <span class="math inline">\(G = (V, E)\)</span> over the <strong>primitive unit cell</strong> plus <strong>periodic images</strong>.</p>
+<div class="fragment">
 <ul>
-<li class="fragment"><strong>Nodes</strong>: Atoms (<span class="math inline">\(Z\)</span>, position, oxidation state).</li>
-<li class="fragment"><strong>Edges</strong>: Bonds or proximity relationships.</li>
-<li class="fragment"><strong>Attributes</strong>: Distance, bond type, cell parameters.</li>
-<li class="fragment"><strong>Global</strong>: Crystal system, space group, density.</li>
+<li><strong>Nodes</strong> <span class="math inline">\(V\)</span>: atoms in the primitive cell, <span class="math inline">\(|V| = N\)</span></li>
+<li><strong>Edges</strong> <span class="math inline">\(E\)</span>: pairs <span class="math inline">\((i, j, \vec{n})\)</span> with <span class="math inline">\(i, j \in V\)</span>, image <span class="math inline">\(\vec{n}\in\mathbb{Z}^3\)</span>, within cutoff <span class="math inline">\(r_c\)</span></li>
+<li><strong>Node features</strong> <span class="math inline">\(h_i\)</span>: atomic number <span class="math inline">\(Z_i\)</span>, valence, electronegativity, group, period, oxidation state</li>
+<li><strong>Edge features</strong> <span class="math inline">\(e_{ij}\)</span>: displacement <span class="math inline">\(\vec{r}_{ij}\)</span>, distance <span class="math inline">\(d_{ij}\)</span>, optionally bond type / order</li>
 </ul>
-</div><div class="column" style="width:45%;">
-<div class="cell" data-reveal="true" data-layout-align="default">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode numberSource default number-lines code-with-copy"><code class="sourceCode default"><span id="cb1-1"><a></a>graph TD</span>
-<span id="cb1-2"><a></a>    A((Atom i)) -- rij --&gt; B((Atom j))</span>
-<span id="cb1-3"><a></a>    B -- rjk --&gt; C((Atom k))</span>
-<span id="cb1-4"><a></a>    A -- rik --&gt; C</span>
-<span id="cb1-5"><a></a>    subgraph Crystal Graph</span>
-<span id="cb1-6"><a></a>    A; B; C;</span>
-<span id="cb1-7"><a></a>    end</span>
-<span id="cb1-8"><a></a>    style A fill:#f9f,stroke:#333</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<div>
-<p></p><figure class=""><p></p>
-<div>
-
 </div>
-<p></p></figure><p></p>
+<div class="fragment">
+<p>With lattice matrix <span class="math inline">\(\mathbf{T}=[\vec{a}_1,\vec{a}_2,\vec{a}_3]\in\mathbb{R}^{3\times 3}\)</span>, the <strong>lattice-aware</strong> displacement to image <span class="math inline">\(\vec{n}\)</span> is</p>
+<p><span class="math display">\[\vec{r}_{ij}(\vec{n}) \;=\; \vec{r}_j + \mathbf{T}\,\vec{n} - \vec{r}_i, \qquad d_{ij}(\vec{n}) = \|\vec{r}_{ij}(\vec{n})\|\]</span></p>
 </div>
+<div class="fragment">
+<p>Edge created iff <span class="math inline">\(d_{ij}(\vec{n}) \le r_c\)</span> — a single ordered pair <span class="math inline">\((i,j)\)</span> may yield <strong>several</strong> edges (one per image inside the cutoff sphere).</p>
 </div>
-</div>
-</div></div>
 </section>
 <section id="periodic-boundary-conditions-pbc" class="slide level2">
-<h2>07. Periodic Boundary Conditions (PBC)</h2>
+<h2>07. Periodic boundary conditions (PBC)</h2>
+<p>A finite-cell graph must reproduce the topology of the <strong>infinite lattice</strong>.</p>
+<div class="fragment">
+<p><strong>Minimum-image convention</strong>: replace the raw displacement by its closest periodic image,</p>
+<p><span class="math display">\[\vec{r}_{ij} \;\longleftarrow\; \vec{r}_{ij} \;-\; \mathbf{T}\,\mathrm{round}\!\big(\mathbf{T}^{-1}\,\vec{r}_{ij}\big)\]</span></p>
+<p>where <span class="math inline">\(\mathrm{round}\)</span> acts component-wise on the fractional displacement.</p>
+</div>
+<div class="fragment">
+<p><strong>Why a naive cutoff fails on small cells</strong>:</p>
 <ul>
-<li class="fragment">Crystals are infinite lattices, not finite molecules.</li>
-<li class="fragment">An atom at the cell edge is connected to an atom in the <strong>neighboring image</strong>.</li>
-<li class="fragment">Graph construction requires searching within a supercell or using a distance cutoff across images.</li>
-<li class="fragment">Failure to account for PBC leads to disconnected graphs and physically wrong features.</li>
+<li>Primitive NaCl cell <span class="math inline">\(a \approx 5.64\)</span> Å, two atoms (Na at origin, Cl at <span class="math inline">\(\tfrac{a}{2}(\hat{x}+\hat{y}+\hat{z})\)</span>)</li>
+<li>Cutoff <span class="math inline">\(r_c = 4\)</span> Å misses several of Na’s six nearest Cl neighbours unless periodic images are searched</li>
+<li>Solution: tile the cell into a <span class="math inline">\(3\times 3\times 3\)</span> supercell during neighbour search, or use the minimum-image rule plus image-index bookkeeping</li>
 </ul>
+</div>
+<div class="fragment">
+<p>Forgetting PBC <span class="math inline">\(\Rightarrow\)</span> disconnected graph, missing nearest neighbours, wrong coordination — the most common silent bug in custom pipelines.</p>
+</div>
 </section>
 <section id="graph-construction-workflow" class="slide level2">
 <h2>08. Graph construction workflow</h2>
-<div class="cell" data-reveal="true" data-layout-align="default">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode numberSource default number-lines code-with-copy"><code class="sourceCode default"><span id="cb2-1"><a></a>graph LR</span>
-<span id="cb2-2"><a></a>    A[CIF File] --&gt; B[Atom Positions]</span>
-<span id="cb2-3"><a></a>    B --&gt; C[Distance Matrix]</span>
-<span id="cb2-4"><a></a>    C --&gt; D[Neighbor Search]</span>
-<span id="cb2-5"><a></a>    D --&gt; E[Edge Creation]</span>
-<span id="cb2-6"><a></a>    E --&gt; F[Feature Assignment]</span>
-<span id="cb2-7"><a></a>    style D fill:#ff9,stroke:#333</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<div>
-<p></p><figure class=""><p></p>
-<div>
-
-</div>
-<p></p></figure><p></p>
-</div>
-</div>
-</div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource text number-lines code-with-copy"><code class="sourceCode"><span id="cb1-1"><a></a>CIF / POSCAR</span>
+<span id="cb1-2"><a></a>   │</span>
+<span id="cb1-3"><a></a>   ▼</span>
+<span id="cb1-4"><a></a>parse lattice  T  and fractional coords  {f_i}</span>
+<span id="cb1-5"><a></a>   │</span>
+<span id="cb1-6"><a></a>   ▼</span>
+<span id="cb1-7"><a></a>Cartesian coords  r_i = T · f_i</span>
+<span id="cb1-8"><a></a>   │</span>
+<span id="cb1-9"><a></a>   ▼</span>
+<span id="cb1-10"><a></a>neighbour search:  for each i, j, image n ∈ Z^3</span>
+<span id="cb1-11"><a></a>                   compute d_ij(n);  keep iff d_ij(n) ≤ r_c</span>
+<span id="cb1-12"><a></a>   │</span>
+<span id="cb1-13"><a></a>   ▼</span>
+<span id="cb1-14"><a></a>edge tensor    [src, dst, image, d_ij, r_ij]</span>
+<span id="cb1-15"><a></a>node tensor    [Z_i, group, period, ...]</span>
+<span id="cb1-16"><a></a>   │</span>
+<span id="cb1-17"><a></a>   ▼</span>
+<span id="cb1-18"><a></a>batched DGL / PyG graph  →  GNN</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ul>
+<li>Backends: <code>pymatgen.StructureGraph</code>, <code>ase.neighborlist</code>, <code>jarvis.core.graphs</code>, <code>torch_geometric.transforms.RadialGraph</code></li>
+</ul>
 </section>
-<section id="neighbor-cutoff-choices" class="slide level2">
-<h2>09. Neighbor cutoff choices</h2>
+<section id="neighbour-cutoff-strategies" class="slide level2">
+<h2>09. Neighbour-cutoff strategies</h2>
 <div class="columns">
 <div class="column" style="width:50%;">
-<h3 id="fixed-cutoff-r_c">Fixed Cutoff (<span class="math inline">\(r_c\)</span>)</h3>
+<h3 id="fixed-cutoff-r_c">Fixed cutoff <span class="math inline">\(r_c\)</span></h3>
 <ul>
-<li>Pros: Simple, captures bonding shell.</li>
-<li>Cons: Sensitive to density changes.</li>
+<li>All <span class="math inline">\(j\)</span> with <span class="math inline">\(d_{ij} \le r_c\)</span></li>
+<li>Pros: physically meaningful (bonding shell)</li>
+<li>Cons: variable degree; sensitive to thermal expansion / pressure</li>
 </ul>
 </div><div class="column" style="width:50%;">
-<h3 id="fixed-neighbors-k-nn">Fixed Neighbors (<span class="math inline">\(k\)</span>-NN)</h3>
+<h3 id="k-nearest-neighbours"><span class="math inline">\(k\)</span>-nearest neighbours</h3>
 <ul>
-<li>Pros: Constant degree graph.</li>
-<li>Cons: May skip relevant bonds in sparse regions.</li>
+<li>Keep the <span class="math inline">\(k\)</span> closest atoms regardless of distance</li>
+<li>Pros: constant degree, easy batching</li>
+<li>Cons: in sparse regions, “neighbours” can be unphysically far</li>
 </ul>
 </div></div>
+<div class="fragment">
+<p><strong>Hybrid</strong>: <span class="math inline">\(k\)</span>-NN with maximum cutoff (<code>max_neighbors=12, r_c=8 Å</code>) — the practical default in CGCNN, MEGNet, ALIGNN.</p>
+</div>
 </section>
-<section id="distance-encoding-radial-basis-functions-rbf" class="slide level2">
-<h2>10. Distance encoding: Radial Basis Functions (RBF)</h2>
+<section id="pseudocode-lattice-aware-neighbour-list" class="slide level2">
+<h2>10. Pseudocode: lattice-aware neighbour list</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a></a><span class="kw">def</span> build_edges(frac_coords, T, r_c):</span>
+<span id="cb2-2"><a></a>    cart <span class="op">=</span> frac_coords <span class="op">@</span> T            <span class="co"># (N, 3)</span></span>
+<span id="cb2-3"><a></a>    <span class="co"># search shells of periodic images that intersect r_c-sphere</span></span>
+<span id="cb2-4"><a></a>    n_max <span class="op">=</span> ceil(r_c <span class="op">/</span> min_lattice_spacing(T))</span>
+<span id="cb2-5"><a></a>    images <span class="op">=</span> product(<span class="bu">range</span>(<span class="op">-</span>n_max, n_max<span class="op">+</span><span class="dv">1</span>), repeat<span class="op">=</span><span class="dv">3</span>)</span>
+<span id="cb2-6"><a></a>    edges <span class="op">=</span> []</span>
+<span id="cb2-7"><a></a>    <span class="cf">for</span> n <span class="kw">in</span> images:</span>
+<span id="cb2-8"><a></a>        shift <span class="op">=</span> np.array(n) <span class="op">@</span> T       <span class="co"># (3,)</span></span>
+<span id="cb2-9"><a></a>        <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(N):</span>
+<span id="cb2-10"><a></a>            <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(N):</span>
+<span id="cb2-11"><a></a>                r_ij <span class="op">=</span> cart[j] <span class="op">+</span> shift <span class="op">-</span> cart[i]</span>
+<span id="cb2-12"><a></a>                d <span class="op">=</span> np.linalg.norm(r_ij)</span>
+<span id="cb2-13"><a></a>                <span class="cf">if</span> <span class="fl">1e-8</span> <span class="op">&lt;</span> d <span class="op">&lt;=</span> r_c:</span>
+<span id="cb2-14"><a></a>                    edges.append((i, j, n, d, r_ij))</span>
+<span id="cb2-15"><a></a>    <span class="cf">return</span> edges</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <ul>
-<li>Raw distance <span class="math inline">\(r_{ij}\)</span> is often expanded into a vector using Gaussians:</li>
-<li><span class="math inline">\(e_{ij} = [ \exp(-\beta(r_{ij} - \mu_1)^2), \dots, \exp(-\beta(r_{ij} - \mu_K)^2) ]\)</span></li>
-<li>This allows the network to distinguish small distance variations precisely.</li>
+<li>Cost <span class="math inline">\(\mathcal{O}(N^2 \cdot |\text{images}|)\)</span>; replace inner loops by KD-tree on the supercell for large <span class="math inline">\(N\)</span>.</li>
 </ul>
-</section>
-<section id="invariance-and-equivariance" class="slide level2">
-<h2>11. Invariance and Equivariance</h2>
-<ul>
-<li class="fragment"><strong>Permutation Invariance</strong>: Changing atom order doesn’t change property.</li>
-<li class="fragment"><strong>Translation Invariance</strong>: Shifting the cell doesn’t change property.</li>
-<li class="fragment"><strong>Rotation Invariance</strong>: Rotating the crystal doesn’t change property.</li>
-<li class="fragment">GNNs achieve these by using pooling (sum/mean) and relative distances.</li>
-</ul>
-</section>
-<section id="message-passing-the-intuition" class="slide level2">
-<h2>12. Message Passing: The intuition</h2>
-<div class="columns">
-<div class="column" style="width:55%;">
-<ol type="1">
-<li><strong>Send</strong>: Neighbors send messages based on their state and edge features.</li>
-<li><strong>Aggregate</strong>: Atom <span class="math inline">\(i\)</span> collects messages (invariant sum/mean).</li>
-<li><strong>Update</strong>: Atom <span class="math inline">\(i\)</span> updates its hidden state.</li>
-<li><strong>Repeat</strong>: Information spreads across the crystal.</li>
-</ol>
-</div><div class="column" style="width:45%;">
-<div class="cell" data-reveal="true" data-layout-align="default">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode numberSource default number-lines code-with-copy"><code class="sourceCode default"><span id="cb3-1"><a></a>graph BT</span>
-<span id="cb3-2"><a></a>    N1[Neighbor 1] --&gt; Agg[Σ]</span>
-<span id="cb3-3"><a></a>    N2[Neighbor 2] --&gt; Agg</span>
-<span id="cb3-4"><a></a>    N3[Neighbor 3] --&gt; Agg</span>
-<span id="cb3-5"><a></a>    Agg --&gt; Upd[Update Atom i]</span>
-<span id="cb3-6"><a></a>    style Agg fill:#bfb</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<div>
-<p></p><figure class=""><p></p>
-<div>
+</section></section>
+<section>
+<section id="encoding-geometry" class="title-slide slide level1 center">
+<h1>§3 · Encoding Geometry</h1>
 
+</section>
+<section id="distance-encoding-gaussian-rbf" class="slide level2">
+<h2>11. Distance encoding: Gaussian RBF</h2>
+<p>Raw <span class="math inline">\(d_{ij}\)</span> is a poor input to an MLP — it is a single scalar with strong non-linearity in the energy.</p>
+<div class="fragment">
+<p>Expand into a <strong>Gaussian RBF</strong> basis of <span class="math inline">\(K\)</span> centres <span class="math inline">\(\{\mu_k\}\)</span>:</p>
+<p><span class="math display">\[e_{ij,k} \;=\; \exp\!\Big(-\,\frac{(d_{ij} - \mu_k)^2}{2\sigma^2}\Big), \qquad k = 1,\ldots,K\]</span></p>
 </div>
-<p></p></figure><p></p>
+<div class="fragment">
+<p><strong>Typical grid</strong> (CGCNN / SchNet):</p>
+<ul>
+<li><span class="math inline">\(\mu_k\)</span> from <span class="math inline">\(0\)</span> to <span class="math inline">\(5\)</span> Å in <span class="math inline">\(\Delta\mu = 0.1\)</span> Å steps <span class="math inline">\(\Rightarrow K = 50\)</span></li>
+<li>Width <span class="math inline">\(\sigma = 0.2\)</span> Å (matches <span class="math inline">\(\Delta\mu\)</span>)</li>
+<li>Yields a smooth, <strong>differentiable</strong> distance fingerprint for each edge</li>
+</ul>
 </div>
+<div class="fragment">
+<p><strong>Why a smooth basis</strong>:</p>
+<ul>
+<li>Gradient <span class="math inline">\(\partial e_{ij,k}/\partial \vec{r}_j\)</span> is well-defined <span class="math inline">\(\Rightarrow\)</span> forces <span class="math inline">\(\vec{F}_i = -\nabla_i E\)</span> via autograd</li>
+<li>Soft cutoff envelope <span class="math inline">\(f_c(d_{ij}) = \tfrac{1}{2}[\cos(\pi d/r_c) + 1]\)</span> avoids energy jumps as atoms cross <span class="math inline">\(r_c\)</span></li>
+</ul>
 </div>
+</section>
+<section id="edge-engineering-beyond-pair-distances" class="slide level2">
+<h2>12. Edge engineering beyond pair distances</h2>
+<ul>
+<li><strong>Bond order / chemical bond type</strong> (single, double, ionic) from valence rules</li>
+<li><strong>Triplet / angular features</strong> <span class="math inline">\(\theta_{ijk}\)</span>: needed for force fields, central in ALIGNN, GemNet</li>
+<li><strong>Dihedrals</strong> <span class="math inline">\(\phi_{ijkl}\)</span>: relevant for organic / molecular crystals</li>
+<li><strong>Coordination number</strong> <span class="math inline">\(Z_i^{\rm coord} = |\mathcal{N}(i)|\)</span> as a node feature</li>
+<li><strong>Composition-derived priors</strong>: electronegativity, ionization energy, atomic radius — initialise <span class="math inline">\(h_i^{(0)}\)</span> instead of one-hotting <span class="math inline">\(Z\)</span></li>
+</ul>
+<div class="fragment">
+<p>Higher-order geometry <span class="math inline">\(\to\)</span> stricter inductive bias, but more expensive graphs and longer training.</p>
 </div>
+</section></section>
+<section>
+<section id="symmetries-invariance-and-equivariance" class="title-slide slide level1 center">
+<h1>§4 · Symmetries: Invariance and Equivariance</h1>
+
+</section>
+<section id="symmetries-that-physics-demands" class="slide level2">
+<h2>13. Symmetries that physics demands</h2>
+<p>A property predictor on a crystal must respect three groups acting on positions:</p>
+<ul>
+<li class="fragment"><strong>Translation</strong> <span class="math inline">\(T_{\vec{t}}\)</span>: <span class="math inline">\(\{\vec{r}_i\} \to \{\vec{r}_i + \vec{t}\}\)</span></li>
+<li class="fragment"><strong>Rotation / reflection</strong> <span class="math inline">\(R \in O(3)\)</span>: <span class="math inline">\(\vec{r}_i \to R\,\vec{r}_i\)</span></li>
+<li class="fragment"><strong>Permutation</strong> <span class="math inline">\(\pi \in S_N\)</span>: relabelling of atoms</li>
+</ul>
+<div class="fragment">
+<p>The right requirement depends on the <strong>target tensor type</strong>.</p>
+</div>
+</section>
+<section id="invariance-vs-equivariance" class="slide level2">
+<h2>14. Invariance vs equivariance</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>Invariance</strong> (scalars):</p>
+<p><span class="math display">\[f(\{R\vec{r}_i + \vec{t}\}) \;=\; f(\{\vec{r}_i\})\]</span></p>
+<ul>
+<li>Energy <span class="math inline">\(E\)</span>, bandgap <span class="math inline">\(E_g\)</span>, formation energy <span class="math inline">\(\Delta H_f\)</span></li>
+<li>Achieved by using only <strong>distances</strong> and <strong>angles</strong> as edge features</li>
+</ul>
+</div><div class="column" style="width:50%;">
+<p><strong>Equivariance</strong> (vectors / tensors):</p>
+<p><span class="math display">\[\vec{F}\!\left(\{R\vec{r}_i + \vec{t}\}\right) \;=\; R\,\vec{F}(\{\vec{r}_i\})\]</span></p>
+<ul>
+<li>Forces <span class="math inline">\(\vec{F}_i\)</span>, dipole <span class="math inline">\(\vec{\mu}\)</span>, polarisation, elastic tensor <span class="math inline">\(C_{ijkl}\)</span></li>
+<li>Requires <strong>vector-valued</strong> node features that transform with <span class="math inline">\(R\)</span></li>
+</ul>
 </div></div>
+<div class="fragment">
+<p>Permutation invariance: <span class="math inline">\(f(\pi\cdot V) = f(V)\)</span> for any <span class="math inline">\(\pi \in S_N\)</span> — handled automatically by <strong>sum/mean readouts</strong> over nodes.</p>
+</div>
+</section>
+<section id="why-equivariance-is-non-negotiable-for-forces" class="slide level2">
+<h2>15. Why equivariance is non-negotiable for forces</h2>
+<p>Forces are gradients of an invariant scalar:</p>
+<p><span class="math display">\[\vec{F}_i = -\nabla_{\vec{r}_i} E\]</span></p>
+<div class="fragment">
+<p>If <span class="math inline">\(E\)</span> is rotation-invariant and <em>differentiable</em>, then automatically</p>
+<p><span class="math display">\[\vec{F}_i(R\,\{\vec{r}\}) \;=\; -\nabla_{R\vec{r}_i} E(R\,\{\vec{r}\}) \;=\; R\,\big(-\nabla_{\vec{r}_i} E(\{\vec{r}\})\big) \;=\; R\,\vec{F}_i(\{\vec{r}\})\]</span></p>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Distance-only</strong> GNNs (CGCNN, SchNet, MEGNet) predict invariant scalars and obtain forces by autograd <span class="math inline">\(\Rightarrow\)</span> correct equivariance, but limited capacity</li>
+<li><strong>Tensor-valued</strong> GNNs (NequIP, MACE, Allegro) carry <span class="math inline">\(O(3)\)</span>-equivariant features at each node — they can predict <strong>vectors and higher-rank tensors directly</strong></li>
+<li>Without equivariance, learnt forces are not closed under rotation <span class="math inline">\(\Rightarrow\)</span> MD trajectories drift</li>
+</ul>
+</div>
+</section></section>
+<section>
+<section id="message-passing" class="title-slide slide level1 center">
+<h1>§5 · Message Passing</h1>
+
+</section>
+<section id="the-message-passing-template" class="slide level2">
+<h2>16. The message-passing template</h2>
+<p>A GNN layer updates each node from its neighbourhood. Generic form:</p>
+<p><span class="math display">\[\boxed{\;h_i^{(\ell+1)} \;=\; U^{(\ell)}\!\Big(h_i^{(\ell)},\;\;\mathrm{AGG}_{j\in\mathcal{N}(i)}\, M^{(\ell)}\!\big(h_i^{(\ell)},\,h_j^{(\ell)},\,e_{ij}\big)\Big)\;}\]</span></p>
+<div class="fragment">
+<ul>
+<li><span class="math inline">\(M^{(\ell)}\)</span>: <strong>message</strong> function (MLP on neighbour and edge features)</li>
+<li><span class="math inline">\(\mathrm{AGG}\)</span>: permutation-invariant aggregator (sum, mean, max, attention)</li>
+<li><span class="math inline">\(U^{(\ell)}\)</span>: <strong>update</strong> function (gated MLP, GRU, residual block)</li>
+</ul>
+</div>
+<div class="fragment">
+<p>After <span class="math inline">\(L\)</span> layers, node <span class="math inline">\(i\)</span> has aggregated information from atoms within graph distance <span class="math inline">\(L\)</span> — its <strong>receptive field</strong>.</p>
+</div>
+</section>
+<section id="concrete-instantiation-gcn-style-update" class="slide level2">
+<h2>17. Concrete instantiation: GCN-style update</h2>
+<p>Take the simplest crystal-graph variant:</p>
+<p><span class="math display">\[h_i^{(\ell+1)} \;=\; \sigma\!\Big(W^{(\ell)}\,\big(h_i^{(\ell)} + \tfrac{1}{|\mathcal{N}(i)|}\sum_{j\in\mathcal{N}(i)} \alpha_{ij}\,h_j^{(\ell)}\big) + b^{(\ell)}\Big)\]</span></p>
+<ul>
+<li><span class="math inline">\(\alpha_{ij}\)</span>: edge weight, e.g.&nbsp;<span class="math inline">\(\alpha_{ij} = \mathrm{MLP}(e_{ij})\)</span> or <span class="math inline">\(\alpha_{ij} = 1/\sqrt{d_id_j}\)</span></li>
+<li><span class="math inline">\(\sigma\)</span>: ReLU / SiLU</li>
+<li>Sum aggregation <span class="math inline">\(\Rightarrow\)</span> permutation invariance for free</li>
+</ul>
+</section>
+<section id="walk-through-3-atom-toy-graph" class="slide level2">
+<h2>18. Walk-through: 3-atom toy graph</h2>
+<p>A water-like fragment <span class="math inline">\(V = \{O, H_1, H_2\}\)</span>, edges <span class="math inline">\(\{(O,H_1),(O,H_2),(H_1,H_2)\}\)</span>, scalar features <span class="math inline">\(h_i^{(0)} = Z_i\)</span>.</p>
+<div class="fragment">
+<p><strong>Layer 1</strong> (sum aggregation, <span class="math inline">\(\alpha_{ij}=1\)</span>, <span class="math inline">\(W=1\)</span>, <span class="math inline">\(\sigma=\mathrm{id}\)</span>):</p>
+<p><span class="math display">\[h_O^{(1)} = h_O^{(0)} + h_{H_1}^{(0)} + h_{H_2}^{(0)} = 8 + 1 + 1 = 10\]</span></p>
+<p><span class="math display">\[h_{H_1}^{(1)} = 1 + 8 + 1 = 10, \qquad h_{H_2}^{(1)} = 1 + 8 + 1 = 10\]</span></p>
+</div>
+<div class="fragment">
+<p><strong>Layer 2</strong>: now every node sees the <strong>second-shell</strong> sum,</p>
+<p><span class="math display">\[h_O^{(2)} = 10 + 10 + 10 = 30\]</span></p>
+<p>— the receptive field doubles per layer. With realistic <span class="math inline">\(W\)</span> and <span class="math inline">\(\sigma\)</span>, the same mechanism builds chemically-meaningful local descriptors.</p>
+</div>
+</section></section>
+<section>
+<section id="crystal-gnn-architectures" class="title-slide slide level1 center">
+<h1>§6 · Crystal GNN Architectures</h1>
+
 </section>
 <section id="cgcnn-crystal-graph-convolutional-nn" class="slide level2">
-<h2>13. CGCNN: Crystal Graph Convolutional NN</h2>
+<h2>19. CGCNN — crystal graph convolutional NN</h2>
+<p><span class="citation" data-cites="xie_cgcnn">(<a href="#/references" role="doc-biblioref" onclick=""><strong>xie_cgcnn?</strong></a>)</span> introduce the first widely-used crystal-graph model.</p>
 <ul>
-<li><strong>Key Innovation</strong>: Gated convolution for crystal graphs.</li>
-<li>Edge features (<span class="math inline">\(r_{ij}\)</span>) and node features (<span class="math inline">\(v_i\)</span>) are concatenated.</li>
-<li><span class="math inline">\(v_i^{(t+1)} = v_i^{(t)} + \sum_{j \in N(i)} \sigma(W_z z_{ij} + b_z) \odot g(W_s z_{ij} + b_s)\)</span></li>
-<li>Successfully used for formation energy and bandgap prediction <span class="citation" data-cites="sandfeld_materials_data_science">(<a href="#/references-unit-6-bridge" role="doc-biblioref" onclick="">Sandfeld et al. 2024</a>)</span>.</li>
+<li>Nodes initialised with one-hot atomic-property vectors</li>
+<li>Edge features: Gaussian-expanded distances <span class="math inline">\(e_{ij}\)</span></li>
+<li><strong>Gated convolution</strong> combining neighbour and edge features:</li>
+</ul>
+<p><span class="math display">\[h_i^{(\ell+1)} \;=\; h_i^{(\ell)} + \sum_{j\in\mathcal{N}(i)} \sigma\!\big(W_z\,z_{ij}^{(\ell)} + b_z\big) \;\odot\; g\!\big(W_s\,z_{ij}^{(\ell)} + b_s\big)\]</span></p>
+<p>with <span class="math inline">\(z_{ij}^{(\ell)} = h_i^{(\ell)} \Vert h_j^{(\ell)} \Vert e_{ij}\)</span>, sigmoid gate <span class="math inline">\(\sigma\)</span> and softplus content <span class="math inline">\(g\)</span>.</p>
+<ul>
+<li>Use case: formation energy, bandgap, bulk modulus on the Materials Project</li>
 </ul>
 </section>
-<section id="megnet-adding-global-state" class="slide level2">
-<h2>14. MEGNet: Adding Global State</h2>
+<section id="megnet-global-state-vector" class="slide level2">
+<h2>20. MEGNet — global state vector</h2>
+<p><span class="citation" data-cites="chen_megnet">(<a href="#/references" role="doc-biblioref" onclick=""><strong>chen_megnet?</strong></a>)</span> add a <strong>global</strong> node <span class="math inline">\(u\)</span> that interacts with every atom and edge.</p>
 <ul>
-<li>Extends CGCNN by adding a <strong>Global State Variable</strong> (<span class="math inline">\(u\)</span>).</li>
-<li><span class="math inline">\(u\)</span> captures properties like temperature, pressure, or overall density.</li>
-<li>Messages flow: Atom <span class="math inline">\(\to\)</span> Bond <span class="math inline">\(\to\)</span> Atom <span class="math inline">\(\to\)</span> Global.</li>
-<li>Enables multi-property learning and state-aware predictions.</li>
+<li>Edges, nodes, and the global vector are updated each layer:</li>
+</ul>
+<p><span class="math display">\[u^{(\ell+1)} \;=\; \phi_u\!\Big(u^{(\ell)},\;\tfrac{1}{N}\!\sum_i h_i^{(\ell+1)},\;\tfrac{1}{|E|}\!\sum_{ij} e_{ij}^{(\ell+1)}\Big)\]</span></p>
+<ul>
+<li><span class="math inline">\(u\)</span> encodes <strong>state variables</strong>: temperature, pressure, applied field</li>
+<li>Same architecture handles <strong>molecules and crystals</strong> with a single global flag</li>
+<li>Use case: state-aware property prediction, multi-task learning</li>
 </ul>
 </section>
-<section id="continuous-filter-convolution-schnet" class="slide level2">
-<h2>15. Continuous-filter convolution (SchNet)</h2>
+<section id="schnet-continuous-filter-convolutions" class="slide level2">
+<h2>21. SchNet — continuous-filter convolutions</h2>
+<p><span class="citation" data-cites="schnet">(<a href="#/references" role="doc-biblioref" onclick=""><strong>schnet?</strong></a>)</span> replaces discrete edge weights by a <strong>continuous filter</strong> <span class="math inline">\(W: \mathbb{R}^+ \to \mathbb{R}^F\)</span> evaluated on <span class="math inline">\(d_{ij}\)</span>.</p>
+<p><span class="math display">\[h_i^{(\ell+1)} \;=\; h_i^{(\ell)} + \sum_{j\in\mathcal{N}(i)} h_j^{(\ell)} \,\odot\, W^{(\ell)}\!\big(d_{ij}\big)\]</span></p>
 <ul>
-<li>Instead of discrete edges, use a continuous function of distance.</li>
-<li>Kernel <span class="math inline">\(W(r_{ij})\)</span> is itself a neural network.</li>
-<li>Particularly effective for modeling potential energy surfaces and forces.</li>
+<li><span class="math inline">\(W^{(\ell)}\)</span> is itself an MLP applied to the RBF expansion of <span class="math inline">\(d_{ij}\)</span></li>
+<li>Smooth in <span class="math inline">\(d_{ij}\)</span> <span class="math inline">\(\Rightarrow\)</span> analytically-differentiable energy <span class="math inline">\(\Rightarrow\)</span> <strong>forces by autograd</strong></li>
+<li>Use case: potential energy surfaces, MD with ML interatomic potentials</li>
 </ul>
 </section>
-<section id="readout-functions-pooling" class="slide level2">
-<h2>16. Readout functions (Pooling)</h2>
+<section id="equivariant-gnns-in-one-slide" class="slide level2">
+<h2>22. Equivariant GNNs in one slide</h2>
+<p>Distance-only models cannot represent vectorial features in their hidden layers. <strong>Equivariant GNNs</strong> carry <span class="math inline">\(O(3)\)</span>-equivariant tensors:</p>
 <ul>
-<li>How do we go from atom-level features to a single crystal property?</li>
-<li><strong>Global Sum/Mean</strong>: Invariant to cell size but may lose local detail.</li>
-<li><strong>Set2Set</strong>: Uses attention to aggregate information.</li>
-<li>Choice depends on property (Extensive: Energy <span class="math inline">\(\to\)</span> Sum; Intensive: Bandgap <span class="math inline">\(\to\)</span> Mean).</li>
+<li class="fragment"><strong>Tensor Field Networks</strong> / <strong>NequIP</strong>: hidden features are spherical-tensor-valued; messages use Clebsch–Gordan tensor products</li>
+<li class="fragment"><strong>MACE</strong>: many-body equivariant messages via Atomic Cluster Expansion</li>
+<li class="fragment"><strong>Allegro</strong>: strictly-local equivariant messages, no global pooling</li>
+<li class="fragment">Cost: more expensive per layer, but <strong>far</strong> more data-efficient for forces, polarisation, elastic tensors</li>
 </ul>
+<div class="fragment">
+<p>Rule of thumb: predicting <strong>scalars only</strong> <span class="math inline">\(\to\)</span> CGCNN / SchNet is enough; predicting <strong>vectors / tensors</strong> <span class="math inline">\(\to\)</span> go equivariant.</p>
+</div>
+</section></section>
+<section>
+<section id="readout-depth-practicalities" class="title-slide slide level1 center">
+<h1>§7 · Readout, Depth, Practicalities</h1>
+
+</section>
+<section id="readout-pooling" class="slide level2">
+<h2>23. Readout / pooling</h2>
+<p>After <span class="math inline">\(L\)</span> message-passing layers, aggregate node features into a graph-level vector <span class="math inline">\(h_G\)</span>:</p>
+<div class="fragment">
+<p><span class="math display">\[\text{sum:}\quad h_G = \sum_{i\in V} h_i^{(L)} \qquad \text{mean:}\quad h_G = \tfrac{1}{N}\sum_{i\in V} h_i^{(L)}\]</span></p>
+<p><span class="math display">\[\text{attention:}\quad h_G = \sum_{i\in V} \alpha_i\,h_i^{(L)}, \qquad \alpha_i = \frac{\exp(w^\top h_i^{(L)})}{\sum_j \exp(w^\top h_j^{(L)})}\]</span></p>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Extensive</strong> targets (total energy, formation energy per cell): <strong>sum</strong> preserves <span class="math inline">\(E \propto N\)</span></li>
+<li><strong>Intensive</strong> targets (bandgap, bulk modulus, density): <strong>mean</strong> is correct; sum would scale wrongly with cell size</li>
+<li><strong>Attention</strong> when contributions are sparse (defects, active sites)</li>
+</ul>
+</div>
+<div class="fragment">
+<p>The mismatched-readout pitfall: training “energy / atom” with sum readout silently learns to predict <em>cell size</em>.</p>
+</div>
 </section>
 <section id="graph-depth-and-over-smoothing" class="slide level2">
-<h2>17. Graph Depth and Over-smoothing</h2>
+<h2>24. Graph depth and over-smoothing</h2>
+<p>Each layer mixes neighbour features <span class="math inline">\(\Rightarrow\)</span> after many layers, all node embeddings converge.</p>
+<div class="fragment">
+<p>Empirically, <span class="math inline">\(L \ge 4\)</span> on dense crystal graphs <strong>collapses</strong> node features:</p>
+<p><span class="math display">\[\lim_{\ell \to \infty} h_i^{(\ell)} = h_j^{(\ell)} \quad \forall i, j \in V\]</span></p>
+<p>— the GNN forgets which atom is which.</p>
+</div>
+<div class="fragment">
+<p><strong>Mitigations</strong>:</p>
 <ul>
-<li>Each message passing step increases the “receptive field”.</li>
-<li><strong>Too few layers</strong>: Cannot see long-range interactions (e.g.&nbsp;ionic bonds).</li>
-<li><strong>Too many layers</strong>: Features become identical for all atoms (<strong>over-smoothing</strong>).</li>
-<li>Typical depth for materials: 3–6 layers.</li>
+<li><strong>Residual / skip connections</strong>: <span class="math inline">\(h_i^{(\ell+1)} = h_i^{(\ell)} + \mathrm{MP}(h_i^{(\ell)})\)</span></li>
+<li><strong>Jumping knowledge</strong> (Xu et al.&nbsp;2018): readout concatenates <span class="math inline">\(h_i^{(1)}, \ldots, h_i^{(L)}\)</span></li>
+<li><strong>DenseNet-style</strong> dense skip: every layer reads every previous layer</li>
+<li><strong>Practical recipe</strong>: 3–4 message-passing layers + residual + Gaussian RBF edges — strong default for materials</li>
+</ul>
+</div>
+</section>
+<section id="variable-size-cells-and-batching" class="slide level2">
+<h2>25. Variable-size cells and batching</h2>
+<ul>
+<li>Crystal graphs vary in <span class="math inline">\(N\)</span> and <span class="math inline">\(|E|\)</span> — cannot stack into a single tensor</li>
+<li><strong>Disjoint-batch trick</strong>: concatenate all graphs into one large graph with <strong>block-diagonal adjacency</strong>; pooling uses a <code>batch_index</code> vector</li>
+<li>Implemented by <code>torch_geometric.data.Batch</code> and <code>dgl.batch</code></li>
+<li>Weight matrices are <strong>shared across all atoms</strong> <span class="math inline">\(\Rightarrow\)</span> same model handles primitive cells and supercells</li>
 </ul>
 </section>
-<section id="data-efficiency-descriptors-vs-graphs" class="slide level2">
-<h2>18. Data efficiency: Descriptors vs Graphs</h2>
-<div class="columns">
-<div class="column" style="width:50%;">
-<h3 id="descriptors-mlp">Descriptors (MLP)</h3>
+<section id="computational-scaling" class="slide level2">
+<h2>26. Computational scaling</h2>
 <ul>
-<li>Fast to train.</li>
-<li>Needs more data to generalize.</li>
-<li>“Rigid” features.</li>
+<li>Neighbour search: <span class="math inline">\(\mathcal{O}(N \log N)\)</span> with KD-tree, <span class="math inline">\(\mathcal{O}(N^2)\)</span> naive</li>
+<li>One message-passing layer: <span class="math inline">\(\mathcal{O}(|E|)\)</span></li>
+<li>For 3D crystals at fixed <span class="math inline">\(r_c\)</span>, <span class="math inline">\(|E| \approx \bar{k}\,N\)</span> with average degree <span class="math inline">\(\bar{k}\)</span></li>
+<li>Total cost <span class="math inline">\(\mathcal{O}(L \cdot \bar{k} \cdot N)\)</span> — <strong>linear</strong> in cell size, vastly faster than DFT <span class="math inline">\(\mathcal{O}(N^3)\)</span></li>
 </ul>
-</div><div class="column" style="width:50%;">
-<h3 id="graphs-gnn">Graphs (GNN)</h3>
-<ul>
-<li>Slower training.</li>
-<li>Learns “on the fly”.</li>
-<li>High data efficiency for novel structures.</li>
-</ul>
-</div></div>
-</section>
-<section id="handling-variable-size-unit-cells" class="slide level2">
-<h2>19. Handling variable-size unit cells</h2>
-<ul>
-<li>Standard NNs need fixed <span class="math inline">\(D\)</span>.</li>
-<li>GNNs process <span class="math inline">\(N\)</span> atoms, where <span class="math inline">\(N\)</span> can vary per sample.</li>
-<li>The weight matrices are shared across all atoms, regardless of cell size.</li>
-<li>This is critical for scaling from primitive to supercells.</li>
-</ul>
-</section>
-<section id="reproducibility-in-graph-construction" class="slide level2">
-<h2>20. Reproducibility in graph construction</h2>
-<ul>
-<li>Small changes in <span class="math inline">\(r_c\)</span> (cutoff) can change graph topology.</li>
-<li>Always document: Cutoff radius, RBF parameters, and neighbor search algorithm.</li>
-<li>Deterministic construction is a prerequisite for scientific trust.</li>
-</ul>
-</section>
-<section id="beyond-distances-edge-engineering" class="slide level2">
-<h2>21. Beyond distances: Edge engineering</h2>
-<ul>
-<li>Beyond <span class="math inline">\(r_{ij}\)</span>, edges can encode:
-<ul>
-<li>Bond angles (triplets).</li>
-<li>Dihedral angles.</li>
-<li>Coordination numbers.</li>
-</ul></li>
-<li>Adding higher-order geometric features improves force prediction.</li>
-</ul>
-</section>
-<section id="incorporating-composition-priors" class="slide level2">
-<h2>22. Incorporating Composition Priors</h2>
-<ul>
-<li>Initialize node features with atomic properties (Electronegativity, Ionization energy).</li>
-<li>This “primes” the graph with chemical knowledge before the first message is passed.</li>
-</ul>
-</section>
-<section id="training-stability-and-mini-batches" class="slide level2">
-<h2>23. Training Stability and Mini-batches</h2>
-<ul>
-<li>Crystal graphs vary in size <span class="math inline">\(\to\)</span> “jagged” batches.</li>
-<li><strong>Solution</strong>: Pack multiple graphs into one large disconnected graph.</li>
-<li>Requires careful index tracking for pooling and gradients.</li>
-</ul>
-</section>
-<section id="computational-cost-scaling" class="slide level2">
-<h2>24. Computational cost scaling</h2>
-<ul>
-<li>Graph construction: <span class="math inline">\(O(N \log N)\)</span> or <span class="math inline">\(O(N^2)\)</span> depending on search.</li>
-<li>Message Passing: <span class="math inline">\(O(E)\)</span> where <span class="math inline">\(E\)</span> is the number of edges.</li>
-<li>Scaling is linear with cell size, making it much faster than DFT (<span class="math inline">\(O(N^3)\)</span>).</li>
-</ul>
-</section>
-<section id="interpretability-attention-maps" class="slide level2">
-<h2>25. Interpretability: Attention maps</h2>
-<ul>
-<li>Which atoms contribute most to the predicted bandgap?</li>
-<li>Use attention weights to visualize “importance” on the crystal structure.</li>
-<li>Helps identify active sites in catalysts or structural defects.</li>
-</ul>
+<div class="fragment">
+<p>Multi-modal extensions (atom + microstructure + literature graphs) exist but are niche — covered briefly in U13.</p>
+</div>
+</section></section>
+<section>
+<section id="failure-modes-and-diagnostics" class="title-slide slide level1 center">
+<h1>§8 · Failure Modes and Diagnostics</h1>
+
 </section>
 <section id="failure-mode-shortcut-learning" class="slide level2">
-<h2>26. Failure mode: Shortcut learning</h2>
+<h2>27. Failure mode: shortcut learning</h2>
 <ul>
-<li>If unit cell volume correlates with energy, the GNN might only learn volume.</li>
-<li>Check: Perform an ablation study with randomized atom types.</li>
-<li>If accuracy remains high, the model is cheating!</li>
+<li class="fragment">If unit-cell volume strongly correlates with energy in the dataset, a GNN can learn to predict <span class="math inline">\(E\)</span> from <span class="math inline">\(N\)</span> alone, ignoring chemistry</li>
+<li class="fragment">Diagnostic: <strong>randomise atomic numbers</strong> while keeping geometry; if <span class="math inline">\(R^2\)</span> stays high, the model is cheating</li>
+<li class="fragment">Diagnostic: <strong>fix chemistry, perturb cell volume</strong>; honest models follow <span class="math inline">\(E(V)\)</span> curves</li>
 </ul>
+<div class="fragment">
+<p>Always pair a graph baseline with a <strong>composition-only MLP</strong> to expose this.</p>
+</div>
 </section>
-<section id="failure-mode-cutoff-artifacts" class="slide level2">
-<h2>27. Failure mode: Cutoff artifacts</h2>
+<section id="failure-mode-cutoff-and-reproducibility-artefacts" class="slide level2">
+<h2>28. Failure mode: cutoff and reproducibility artefacts</h2>
+<ul>
+<li class="fragment">A <strong>hard</strong> cutoff <span class="math inline">\(r_c\)</span> creates discontinuities: as <span class="math inline">\(d_{ij}\)</span> crosses <span class="math inline">\(r_c\)</span>, edge appears/disappears <span class="math inline">\(\Rightarrow\)</span> jumps in <span class="math inline">\(E\)</span>, divergent forces</li>
+<li class="fragment"><strong>Smooth envelope</strong> <span class="math inline">\(f_c(d_{ij}) = \tfrac{1}{2}[\cos(\pi d_{ij}/r_c) + 1]\)</span> for <span class="math inline">\(d_{ij} \le r_c\)</span>, <span class="math inline">\(0\)</span> otherwise — multiply edge messages by <span class="math inline">\(f_c\)</span></li>
+<li class="fragment">Small changes in <span class="math inline">\(r_c\)</span> (e.g.&nbsp;<span class="math inline">\(4.0 \to 4.5\)</span> Å) can flip graph topology — always log <span class="math inline">\(r_c\)</span>, RBF grid, neighbour-search algorithm</li>
+</ul>
+<div class="fragment">
+<p>Reproducibility checklist: (i) cutoff, (ii) max neighbours, (iii) RBF <span class="math inline">\(\{\mu_k, \sigma\}\)</span>, (iv) PBC convention, (v) random seed.</p>
+</div>
+</section>
+<section id="transferability-and-ood-behaviour" class="slide level2">
+<h2>29. Transferability and OOD behaviour</h2>
 <div class="columns">
 <div class="column" style="width:50%;">
+<p><strong>Transfer across chemistries</strong></p>
 <ul>
-<li>Sharp cutoffs cause “jumps” in energy as atoms cross the boundary.</li>
-<li><strong>Fix</strong>: Use a smoothing envelope function <span class="math inline">\(f_{cut}(r_{ij})\)</span>.</li>
+<li>Oxides <span class="math inline">\(\to\)</span> nitrides: feasible if elemental-feature initialisation is rich</li>
+<li>Pure <span class="math inline">\(Z\)</span>-embedding <span class="math inline">\(\to\)</span> poor; physical features (electronegativity, radius) <span class="math inline">\(\to\)</span> better</li>
 </ul>
 </div><div class="column" style="width:50%;">
-<div class="quarto-figure quarto-figure-center">
-<figure>
-<p><img data-src="placeholder_cutoff_jump.png"></p>
-<figcaption>Effect of cutoff on force continuity</figcaption>
-</figure>
-</div>
+<p><strong>Out-of-distribution structures</strong></p>
+<ul>
+<li>Perovskite-trained <span class="math inline">\(\to\)</span> spinel: GNNs degrade gracefully but predictions are biased</li>
+<li>Use <strong>ensemble disagreement</strong> as a novelty flag</li>
+<li>Detailed UQ machinery: U12</li>
+</ul>
 </div></div>
-</section>
-<section id="transferability-across-chemistries" class="slide level2">
-<h2>28. Transferability: Across Chemistries</h2>
-<ul>
-<li>Can a GNN trained on Oxides predict Nitrides?</li>
-<li>Success depends on the diversity of the training set and node feature initialization.</li>
-<li>Representation learning helps capture universal chemical patterns.</li>
-</ul>
-</section>
-<section id="ood-behavior-unseen-prototypes" class="slide level2">
-<h2>29. OOD behavior: Unseen Prototypes</h2>
-<ul>
-<li>Predicting properties for a new crystal system (e.g.&nbsp;Perovskite <span class="math inline">\(\to\)</span> Spinel).</li>
-<li>GNNs are better than descriptors but still fragile.</li>
-<li>Use uncertainty quantification (Unit 12) to flag these cases.</li>
-</ul>
 </section>
 <section id="baseline-comparison-protocol" class="slide level2">
 <h2>30. Baseline comparison protocol</h2>
-<ul>
-<li>Always compare GNN performance against:
+<p>When reporting a new GNN result, <strong>always</strong> compare against:</p>
 <ol type="1">
-<li>Mean target baseline.</li>
-<li>Simple composition-only MLP.</li>
-<li>Classical descriptor baseline (SOAP/PRDF).</li>
-</ol></li>
-</ul>
+<li><strong>Mean-target baseline</strong> (the trivial predictor)</li>
+<li><strong>Composition-only MLP</strong> (no geometry) — exposes shortcut learning</li>
+<li><strong>Classical descriptor baseline</strong> (PRDF / SOAP + ridge or RF)</li>
+<li><strong>Strong public GNN</strong> (CGCNN or MEGNet trained on the same split)</li>
+</ol>
+<p>Any new architecture must beat all four on both <strong>MAE</strong> and <strong>Spearman rank correlation</strong>.</p>
 </section>
 <section id="evaluation-metrics-for-screening" class="slide level2">
 <h2>31. Evaluation metrics for screening</h2>
 <ul>
-<li>MSE is for accuracy.</li>
-<li><strong>Top-k Recall</strong>: Did we find the best materials?</li>
-<li><strong>Spearman Rank Correlation</strong>: Is the ordering correct?</li>
-<li>For discovery, ranking matters more than absolute values.</li>
+<li><strong>MAE / RMSE</strong>: regression accuracy</li>
+<li><strong>Spearman <span class="math inline">\(\rho\)</span> / Kendall <span class="math inline">\(\tau\)</span></strong>: rank correlation — what matters for <strong>screening</strong></li>
+<li><strong>Top-<span class="math inline">\(k\)</span> recall</strong>: of the true top-<span class="math inline">\(k\)</span> materials, how many are in the model’s top-<span class="math inline">\(k\)</span>?</li>
+<li>For <strong>discovery</strong>, ranking and recall outweigh absolute accuracy</li>
+</ul>
+</section></section>
+<section>
+<section id="case-studies" class="title-slide slide level1 center">
+<h1>§9 · Case Studies</h1>
+
+</section>
+<section id="case-studies-in-one-slide" class="slide level2">
+<h2>32. Case studies in one slide</h2>
+<div class="columns">
+<div class="column" style="width:33%;">
+<p><strong>Bandgap</strong></p>
+<ul>
+<li>Intensive <span class="math inline">\(\Rightarrow\)</span> mean readout</li>
+<li>Needs deeper / global context (MEGNet wins)</li>
+<li>MAE <span class="math inline">\(\approx 0.3\)</span> eV on MP</li>
+</ul>
+</div><div class="column" style="width:33%;">
+<p><strong>Formation energy</strong></p>
+<ul>
+<li>Extensive (per cell) <span class="math inline">\(\Rightarrow\)</span> sum readout, then <span class="math inline">\(/N\)</span></li>
+<li>CGCNN / MEGNet MAE <span class="math inline">\(\approx 0.03\)</span> eV/atom — near DFT precision</li>
+</ul>
+</div><div class="column" style="width:33%;">
+<p><strong>Elasticity</strong></p>
+<ul>
+<li>Sparse data (<span class="math inline">\(\sim 10^4\)</span> entries)</li>
+<li>Transfer learning: pre-train on energy, fine-tune on <span class="math inline">\(C_{ij}\)</span></li>
+<li>Tensor target <span class="math inline">\(\Rightarrow\)</span> favors equivariant GNNs</li>
+</ul>
+</div></div>
+</section></section>
+<section>
+<section id="bridges-and-limits" class="title-slide slide level1 center">
+<h1>§10 · Bridges and Limits</h1>
+
+</section>
+<section id="bridge-to-unit-6-local-atomic-environments" class="slide level2">
+<h2>33. Bridge to Unit 6 (local atomic environments)</h2>
+<ul>
+<li>Each MP layer = one iterative refinement of a <strong>local atomic environment</strong> descriptor</li>
+<li>Layer <span class="math inline">\(\ell\)</span> “sees” atoms within graph distance <span class="math inline">\(\ell\)</span> — analogous to atomic neighbourhood radius</li>
+<li>U6 makes this explicit with <strong>SOAP / ACSF / ACE</strong>, which can be viewed as fixed-feature MP layers</li>
 </ul>
 </section>
-<section id="uncertainty-in-gnns" class="slide level2">
-<h2>32. Uncertainty in GNNs</h2>
+<section id="bridge-to-units-8-and-9" class="slide level2">
+<h2>34. Bridge to Units 8 and 9</h2>
 <ul>
-<li>Ensembles of GNNs provide variance estimates.</li>
-<li>High variance <span class="math inline">\(\to\)</span> Structural novelty.</li>
-<li>Key for active learning loops in Materials Genomics.</li>
-</ul>
-</section>
-<section id="case-bandgap-prediction" class="slide level2">
-<h2>33. Case: Bandgap prediction</h2>
-<ul>
-<li>Challenge: Bandgaps depend on global symmetries.</li>
-<li>GNNs capture local chemistry but need sufficient depth for global electronic structure.</li>
-</ul>
-</section>
-<section id="case-formation-energy" class="slide level2">
-<h2>34. Case: Formation Energy</h2>
-<ul>
-<li>Standard benchmark for CGCNN/MEGNet.</li>
-<li>GNNs achieve MAE &lt; 0.03 eV/atom, approaching DFT precision for many systems.</li>
-</ul>
-</section>
-<section id="case-elasticity-under-limited-data" class="slide level2">
-<h2>35. Case: Elasticity under limited data</h2>
-<ul>
-<li>Elastic constants are sparse in databases.</li>
-<li>GNN transfer learning (from Energy <span class="math inline">\(\to\)</span> Moduli) significantly improves accuracy.</li>
-</ul>
-</section>
-<section id="feeding-representation-learning-unit-9" class="slide level2">
-<h2>36. Feeding Representation Learning (Unit 9)</h2>
-<ul>
-<li>Unit 9 will show how to use GNN encoders as feature extractors.</li>
-<li>Discard the property head <span class="math inline">\(\to\)</span> Latent vector <span class="math inline">\(\mathbf{z}\)</span> represents the material structure.</li>
-</ul>
-</section>
-<section id="connection-to-unit-6-local-environments" class="slide level2">
-<h2>37. Connection to Unit 6 (Local Environments)</h2>
-<ul>
-<li>GNN message passing is an iterative refinement of the local environments discussed in Unit 6.</li>
-<li>Each layer “looks” one bond further away.</li>
-</ul>
-</section>
-<section id="consolidation-multi-modal-crystal-graphs" class="slide level2">
-<h2>38. Consolidation: Multi-modal crystal graphs</h2>
-<ul>
-<li>Future direction: Combining crystal graphs with text (literature) and images (micrographs).</li>
-<li>Nodes can represent not just atoms, but entire phases or grains.</li>
-</ul>
-</section>
-<section id="advanced-equivariant-gnns-tensor-field-networks" class="slide level2">
-<h2>39. Advanced: Equivariant GNNs (Tensor Field Networks)</h2>
-<ul>
-<li>Predict vectors (forces) and tensors (elasticity) that rotate correctly with the input structure.</li>
-<li>Higher mathematical complexity, higher physical fidelity.</li>
-</ul>
-</section>
-<section id="scalability-to-complex-microstructures" class="slide level2">
-<h2>40. Scalability to complex microstructures</h2>
-<ul>
-<li>Can we graph an entire polycrystal?</li>
-<li>Use hierarchical graphs: Atomic scale <span class="math inline">\(\to\)</span> Grain scale <span class="math inline">\(\to\)</span> Component scale.</li>
-</ul>
-</section>
-<section id="interpreting-gnn-chemical-intuition" class="slide level2">
-<h2>41. Interpreting GNN “Chemical Intuition”</h2>
-<ul>
-<li>Do the learned embeddings <span class="math inline">\(\mathbf{z}\)</span> match the periodic table?</li>
-<li>Plotting t-SNE of learned atomic features usually recovers Mendeleev’s structure.</li>
-</ul>
-</section>
-<section id="active-learning-with-gnns" class="slide level2">
-<h2>42. Active Learning with GNNs</h2>
-<ul>
-<li>Step 1: Predict on 100k candidates.</li>
-<li>Step 2: Select top candidates with high uncertainty.</li>
-<li>Step 3: Run DFT validation.</li>
-<li>Step 4: Retrain GNN.</li>
-</ul>
-</section>
-<section id="deployment-in-automated-labs" class="slide level2">
-<h2>43. Deployment in Automated Labs</h2>
-<ul>
-<li>GNNs provide the “brain” for self-driving laboratories.</li>
-<li>Real-time structure-property feedback loop.</li>
+<li><strong>U8 (NN potentials)</strong>: trains GNN energies + autograd forces on MD trajectories — equivariance becomes essential</li>
+<li><strong>U9 (representation learning)</strong>: discards the property head; the GNN encoder produces a latent <span class="math inline">\(\mathbf{z}\)</span> for self-supervised pre-training, contrastive learning, generative models</li>
 </ul>
 </section>
 <section id="the-limit-of-gnns" class="slide level2">
-<h2>44. The limit of GNNs</h2>
+<h2>35. The limit of GNNs</h2>
 <ul>
-<li>GNNs are not physics solvers; they are interpolators.</li>
-<li>They cannot predict truly new physics (e.g.&nbsp;superconductivity) without training data.</li>
+<li class="fragment">GNNs are <strong>interpolators</strong> trained on DFT data — they inherit DFT’s biases (XC functional, smearing, <span class="math inline">\(k\)</span>-grid)</li>
+<li class="fragment">They <strong>cannot</strong> discover physics absent from the training set (e.g.&nbsp;unconventional superconductivity)</li>
+<li class="fragment">Long-range Coulomb / dispersion: distance cutoff misses both unless explicit terms are added</li>
+<li class="fragment">Symmetry-breaking phases (charge density waves, magnetism) require labels that capture them</li>
+</ul>
+</section></section>
+<section>
+<section id="exercises" class="title-slide slide level1 center">
+<h1>§11 · Exercises</h1>
+
+</section>
+<section id="exercise-overview" class="slide level2">
+<h2>36. Exercise overview</h2>
+<ul>
+<li class="fragment"><strong>Task 1</strong>: Build a periodic crystal graph from a CIF using <code>pymatgen</code> + <code>torch_geometric</code>. Verify edge count under PBC.</li>
+<li class="fragment"><strong>Task 2</strong>: Train a 3-layer CGCNN on <span class="math inline">\(\sim 10^4\)</span> ABX<span class="math inline">\(_3\)</span> perovskites; report MAE, Spearman <span class="math inline">\(\rho\)</span>, top-100 recall for formation energy.</li>
+<li class="fragment"><strong>Task 3</strong>: Ablation — sweep <span class="math inline">\(r_c \in \{4, 6, 8\}\)</span> Å and depth <span class="math inline">\(L \in \{2, 3, 4, 5\}\)</span>. Plot error vs depth; identify over-smoothing.</li>
+<li class="fragment"><strong>Task 4</strong>: Failure analysis — inspect 5 worst-error samples. Are they rare chemistries, large cells, or shortcut victims?</li>
+</ul>
+</section></section>
+<section>
+<section id="wrap-up" class="title-slide slide level1 center">
+<h1>§12 · Wrap-Up</h1>
+
+</section>
+<section id="unit-5-key-takeaways" class="slide level2">
+<h2>37. Unit 5 — Key Takeaways</h2>
+<ul>
+<li class="fragment">A crystal graph <span class="math inline">\(G=(V,E)\)</span> encodes atoms, bonds, and <strong>periodic images</strong> via <span class="math inline">\(\vec{r}_{ij}(\vec{n}) = \vec{r}_j + \mathbf{T}\vec{n} - \vec{r}_i\)</span></li>
+<li class="fragment"><strong>PBC</strong> with the minimum-image convention is mandatory — naive cutoffs disconnect small cells</li>
+<li class="fragment"><strong>Gaussian RBF</strong> turns distances into a smooth, differentiable basis that supports autograd forces</li>
+<li class="fragment"><strong>Invariance</strong> for scalar targets, <strong>equivariance</strong> for vector / tensor targets — forces require the latter</li>
+<li class="fragment">Generic <strong>message passing</strong> <span class="math inline">\(h_i^{(\ell+1)} = U(h_i^{(\ell)}, \mathrm{AGG}_j M(h_i^{(\ell)},h_j^{(\ell)},e_{ij}))\)</span> instantiates CGCNN, MEGNet, SchNet</li>
+<li class="fragment"><strong>Sum</strong> readout for extensive targets, <strong>mean</strong> for intensive — never mix them</li>
+<li class="fragment">Depth <span class="math inline">\(L = 3\)</span>–<span class="math inline">\(4\)</span> + skip connections avoids over-smoothing</li>
+<li class="fragment">Always benchmark against mean / composition-only / SOAP baselines, and report <strong>rank</strong> metrics for screening</li>
 </ul>
 </section>
-<section id="exercise-setup-graph-construction" class="slide level2">
-<h2>45. Exercise setup: Graph Construction</h2>
+<section id="outlook-to-unit-6" class="slide level2">
+<h2>38. Outlook to Unit 6</h2>
 <ul>
-<li><strong>Goal</strong>: Build a crystal graph from a CIF file using <code>pymatgen</code> or <code>ase</code>.</li>
-<li><strong>Dataset</strong>: A subset of the Materials Project (e.g.&nbsp;ABX3 perovskites).</li>
+<li class="fragment">Make local atomic environments <strong>explicit</strong>: ACSF, SOAP, ACE</li>
+<li class="fragment">Connect the iterative MP picture to fixed many-body descriptors</li>
+<li class="fragment">Prepare ground for <strong>NN interatomic potentials</strong> in Unit 8</li>
 </ul>
-</section>
-<section id="exercise-task-1-the-pipeline" class="slide level2">
-<h2>46. Exercise Task 1: The Pipeline</h2>
-<ul>
-<li>Load CIF <span class="math inline">\(\to\)</span> Build Graph <span class="math inline">\(\to\)</span> Visualize Neighbors.</li>
-<li>Verify PBC implementation.</li>
-</ul>
-</section>
-<section id="exercise-task-2-ablation" class="slide level2">
-<h2>47. Exercise Task 2: Ablation</h2>
-<ul>
-<li>Compare regression accuracy with <span class="math inline">\(r_c = 4.0\)</span>Å vs <span class="math inline">\(r_c = 8.0\)</span>Å.</li>
-<li>Plot error vs coordination number.</li>
-</ul>
-</section>
-<section id="exercise-task-3-failure-analysis" class="slide level2">
-<h2>48. Exercise Task 3: Failure Analysis</h2>
-<ul>
-<li>Identify one sample with very high error.</li>
-<li>Is it a rare chemistry? A strange unit cell? A shortcut learning victim?</li>
-</ul>
-</section>
-<section id="unit-summary-10-exam-statements" class="slide level2">
-<h2>49. Unit summary: 10 exam statements</h2>
-<ol type="1">
-<li>Crystals are modeled as graphs to learn flexible, permutation-invariant representations.</li>
-<li>PBC enforcement is mandatory to capture the infinite nature of crystal lattices.</li>
-<li>RBF expansion of distances allows NNs to resolve fine structural differences.</li>
-<li>Message passing iteratively aggregates neighbor information to build global context.</li>
-<li>CGCNN uses gated convolutions; MEGNet adds a global state variable.</li>
-<li>Readout choice (sum vs mean) must align with property intensive/extensive nature.</li>
-<li>Over-smoothing occurs when excessive depth makes node features indistinguishable.</li>
-<li>GNNs are typically more data-efficient than fixed-descriptor MLPs for novel structures.</li>
-<li>Shortcut learning occurs when the model relies on spurious cell-size correlations.</li>
-<li>GNN ranking metrics (Spearman) are often more critical for discovery than MSE.</li>
-</ol>
-</section>
-<section id="references-unit-6-bridge" class="slide level2 smaller scrollable">
-<h2>50. References + Unit 6 Bridge</h2>
-<ul>
-<li><strong>Next Unit</strong>: Local Atomic Environments and many-body descriptors.</li>
-<li><strong>Read</strong>: Sandfeld Ch. 2.2, Neuer Ch. 4.5.</li>
-<li><strong>Exercise</strong>: Submit your GNN-construction notebook by next week.</li>
-</ul>
-<div id="refs" class="references csl-bib-body hanging-indent" data-entry-spacing="0" role="list">
-<div id="ref-sandfeld_materials_data_science" class="csl-entry" role="listitem">
-Sandfeld, Stefan et al. 2024. <em>Materials Data Science</em>. Springer.
-</div>
-</div>
 </section>
 <section id="example-notebook" class="slide level2">
-<h2>Example Notebook</h2>
+<h2>39. Example notebook</h2>
 <div class="callout callout-note no-icon callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
-<p><strong>Week 5: Descriptors + Regression — ChemicalElementsDataset</strong></p>
+<p><strong>Week 5: Crystal graphs + CGCNN — ABX<span class="math inline">\(_3\)</span> perovskites</strong></p>
 </div>
 <div class="callout-content">
-<p><a href="https://eclipse-lab.github.io/Ai4MatLectures/notebooks/MG/week05_descriptors_elements.html">Open rendered notebook →</a><br>
-<a href="https://colab.research.google.com/github/ECLIPSE-Lab/Ai4MatLectures/blob/main/notebooks/MG/week05_descriptors_elements.ipynb"><img data-src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a></p>
+<p><a href="https://eclipse-lab.github.io/Ai4MatLectures/notebooks/MG/week05_descriptors_elements.html">Open rendered notebook →</a> <a href="https://colab.research.google.com/github/ECLIPSE-Lab/Ai4MatLectures/blob/main/notebooks/MG/week05_descriptors_elements.ipynb"><img data-src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a></p>
 </div>
 </div>
 </div>
-
-
 </section>
+<section id="references" class="slide level2 smaller scrollable">
+<h2>References</h2>
+<div id="refs" role="list">
+
+</div>
+
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <p><img src="eclipse_logo_small.png" class="slide-logo"></p>
