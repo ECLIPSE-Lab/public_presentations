@@ -1,13 +1,17 @@
-﻿---
+---
 title: |
-  Mathematical Foundations of AI & ML<br>Unit 5: Backpropagation and Gradient Flow
+  Mathematical Foundations of AI & ML<br>Unit 5: Clustering and Autoencoders
 bibliography: ref.bib
 author:
   - name: Prof. Dr. Philipp Pelz
     affiliation:
       - FAU Erlangen-Nürnberg
+execute:
+  eval: true
+  echo: false
 format:
   revealjs:
+    chalkboard: true
     width: 1920
     height: 1080
     template-partials:
@@ -16,664 +20,914 @@ format:
     theme: custom.scss
     slide-number: c/t
     logo: "eclipse_logo_small.png"
+    background-transition: fade
     footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
     menu:
       side: left
       loadIcons: true
+    navigationMode: default
+    controls: true
 ---
 
-## Title + Unit 5 positioning
+<!-- ===== §1. Framing ===== -->
 
-- Backpropagation is the engine that makes neural network training feasible.
-- Unit 4 defined the architecture; Unit 5 answers: **how does the network actually learn?**
-- We derive the algorithm that computes gradients for millions of parameters efficiently.
+## Where we are in the course
 
-## Recap: what we know so far
+:::: {.columns}
+:::: {.column width="50%"}
+**Behind us (Units 1-4):**
 
-- **Unit 1**: Learning as risk minimization, gradient descent.
-- **Unit 3**: Loss functions for regression and classification.
-- **Unit 4**: Neural network architecture — layers, activations, forward computation.
-- Open question: how do we efficiently compute \\(\nabla_\theta J(\theta)\\) for all weights?
+- Risk minimization with **labels**: $(x_i, y_i)$ pairs.
+- Linear models, generalized linear models, neural networks.
+- Optimization (Unit 3) and architectures (Unit 4).
+::::
+:::: {.column width="50%"}
+**Today (Unit 5):**
 
-## The central question of Unit 5
+- The labels disappear: only $\{x_i\}$ remains.
+- Two complementary perspectives on **finding structure without labels**.
+- Classical clustering (K-means, GMM) and neural autoencoders.
+::::
+::::
 
-- A neural network with \\(W\\) parameters defines \\(J(\theta)\\) as a deeply nested composition.
-- How do we compute **all** \\(W\\) partial derivatives without evaluating \\(J\\) separately for each?
-- Answer: the **backpropagation algorithm** — reverse-mode automatic differentiation.
+:::: {.notes}
+- The course pivot: from supervised to unsupervised.
+- Why this matters: in materials work, labels are expensive (every label is a measurement).
+- Two complementary perspectives meet here: classical (geometric/probabilistic) and neural (learned).
+::::
 
-## Learning outcomes for Unit 5
+## Note: backpropagation is self-study this term
 
-By the end of this lecture, students can:
+:::: {.incremental}
+- Unit 4 covered the architectures; **how networks actually train** (the chain rule, vanishing/exploding gradients) is in a self-study supplement.
+- See `02_backprop_self_study.qmd` in the Unit 4 folder, plus the two example notebooks `18.3_Backpropagation` and `18.5_Python_Implementation`.
+- Today's autoencoder section uses **PyTorch autograd**: `loss.backward()` handles the gradients.
+- A short chain-rule warm-up is on the next exercise sheet, so the self-study has teeth.
+::::
 
-- derive the chain rule for composite functions and apply it to layered architectures,
-- trace forward and backward passes through a small network and compute all partial derivatives,
-- explain why backpropagation achieves \\(O(W)\\) cost and why this matters for scalability,
-- diagnose vanishing and exploding gradient problems from activation functions and weight matrices.
+:::: {.notes}
+- Be explicit: backprop is essential; it is not skipped, only relocated.
+- Modern practice: nobody implements backprop by hand at the use-site; autograd is the interface.
+- The warm-up question makes sure they actually do the self-study.
+::::
 
-## Why not just finite differences?
+## The big leap
 
-- Finite differences: perturb each weight by \\(\epsilon\\), evaluate \\(J\\) — requires \\(W+1\\) forward passes.
-- For a network with \\(W = 10^6\\) parameters, this means \\(10^6\\) evaluations per gradient step.
-- Backpropagation: **one** forward pass + **one** backward pass = all \\(W\\) gradients.
-- Speedup factor: \\(\sim W\\) — the difference between feasible and impossible.
+:::: {.incremental}
+- All previous units assumed each datapoint comes with a target $y_i$.
+- In practice, **most data has no labels**: alloy compositions in a database, micrographs from a new sample, spectra from a new instrument.
+- We can still ask: *what structure is there?* What groups together? What axes of variation matter?
+- Today's tools: clustering for **discrete** structure, autoencoders for **continuous** structure.
+::::
 
-## Historical context
+:::: {.notes}
+- Frame this as: the data is the only thing speaking; we listen.
+- Materials motivations are real: most measurements are unlabeled until expensive characterization happens.
+::::
 
-- Backpropagation was popularized by Rumelhart, Hinton & Williams (1986).
-- The core idea (reverse-mode differentiation) appeared earlier in control theory.
-- This algorithm is the single most important enabler of modern deep learning.
+## Learning outcomes
 
-## Computational graph intuition
+By the end of this unit, students can:
 
-- Any computation can be represented as a **directed acyclic graph** (DAG) of elementary operations.
-- Nodes: variables (inputs, intermediates, outputs). Edges: operations (add, multiply, activate).
-- The chain rule follows the graph structure — derivatives propagate along edges.
+:::: {.incremental}
+- **Distinguish** supervised vs unsupervised learning and recognize where each fits.
+- **Run** K-means by hand on a small dataset and explain its convergence and failure modes.
+- **State** the GMM likelihood and articulate why EM is needed when latent variables are present.
+- **Describe** the autoencoder architecture and explain why a linear AE recovers PCA.
+- **Use** an autoencoder for two practical tasks: data compression and anomaly detection.
+- **Anticipate** how the latent space sets up Unit 9 (representation learning).
+::::
 
-```{mermaid}
-
-graph LR
-    x((x)) --> plus[+]
-    y((y)) --> plus
-    plus --> mult[*]
-    z((z)) --> mult
-    mult --> J((J))
-    style plus fill:#f9f,stroke:#333,stroke-width:2px
-    style mult fill:#f9f,stroke:#333,stroke-width:2px
-```
+:::: {.notes}
+- Three tiers: classical clustering, autoencoder mechanics, applied use cases.
+- Exam expectations: hand-trace K-means; identify clustering pathologies; reconstruct linear AE = PCA argument.
+::::
 
 ## Roadmap of today's 90 min
 
-- **10–25 min**: Chain rule review, computational graphs, forward pass mechanics.
-- **25–45 min**: Backpropagation derivation — output layer, hidden layers, delta recursion.
-- **45–60 min**: Gradient flow analysis — vanishing and exploding gradients.
-- **60–75 min**: ReLU revolution, initialization strategies, Jacobian perspective.
-- **75–85 min**: Materials/engineering examples and practical diagnostics.
+:::: {.incremental}
+1. **Unsupervised landscape** (~10 min) — what counts as "structure"?
+2. **K-means** (~15 min) — the workhorse.
+3. **Hierarchical clustering** (~5 min) — when you don't pick $K$ in advance.
+4. **GMM + EM** (~20 min) — probabilistic clustering.
+5. **Autoencoders** (~25 min) — the neural counterpart.
+6. **Variants + applications** (~10 min) — denoising, compression, anomaly detection.
+7. **Materials examples + bridge to Unit 6** (~5 min).
+::::
 
-## Univariate chain rule review
+:::: {.notes}
+- Pace: each block is bounded; protect the AE block, it is the most novel for them.
+- Skip K-medoids and hierarchical if running short — they are scaffolding.
+::::
 
-- If \\(y = f(g(x))\\), then:
+<!-- ===== §2. Unsupervised landscape ===== -->
 
-$$
-\frac{dy}{dx} = f'(g(x)) \cdot g'(x)
-$$
+## The unsupervised landscape
 
-- Compose derivatives by multiplying along the chain of functions.
-- This is the foundation of everything that follows.
+:::: {.incremental}
+- **Clustering**: assign each $x_i$ to a discrete group.
+- **Dimensionality reduction**: find low-dim coordinates that summarize $x_i$.
+- **Density estimation**: model $p(x)$ directly.
+- **Generative modeling**: sample new $x \sim p(x)$. (Unit 11 will return here.)
+::::
 
-## Multivariate chain rule
+:::: {.fragment}
+**Today**: clustering (slides 6-32) and dimensionality reduction (slides 33-58). Density and generation come back in Units 8, 11, 12.
+::::
 
-::: {.fragment}
-- If \\(J\\) depends on \\(x\\) through multiple intermediate variables \\(u_1, \dots, u_k\\):
-:::
+:::: {.notes}
+- Clustering and dim. reduction are the two foundational unsupervised tasks.
+- Density estimation underlies generative modeling — coming later.
+- Reinforce: these tasks are not mutually exclusive; an AE does dim. reduction and exposes clusters in the latent.
+::::
 
-::: {.fragment}
-$$
-\frac{\partial J}{\partial x} = \sum_{i=1}^{k} \frac{\partial J}{\partial u_i} \frac{\partial u_i}{\partial x}
-$$
-:::
+## What counts as "structure"?
 
-::: {.fragment}
-- Each path from \\(x\\) to \\(J\\) in the computational graph contributes one term.
-:::
+:::: {.columns}
+:::: {.column width="50%"}
+**Compactness**
 
-## Chain rule in matrix form
+Points within a group are close.
+::::
+:::: {.column width="50%"}
+**Separation**
 
-- For vector-valued functions, derivatives become **Jacobian matrices**.
-- If \\(\mathbf{y} = f(\mathbf{x})\\), the Jacobian is \\(J_{ij} = \partial y_i / \partial x_j\\).
-- Chain rule becomes matrix multiplication: \\(\frac{\partial J}{\partial \mathbf{x}} = \frac{\partial J}{\partial \mathbf{y}} \cdot \frac{\partial \mathbf{y}}{\partial \mathbf{x}}\\).
+Groups are far from each other.
+::::
+::::
 
-## Forward pass: layer-by-layer computation
+:::: {.fragment}
+**Plus**: the structure must be **interpretable** — relate to something we care about (alloy family, defect type, processing regime). A "good" cluster on a materials dataset is one a metallurgist can explain.
+::::
 
-- Input \\(\mathbf{x}\\) enters the network.
-- Each layer applies: linear transform \\(\rightarrow\\) activation function \\(\rightarrow\\) output to next layer.
-- The forward pass computes the prediction \\(\hat{\mathbf{y}}\\) and stores all intermediate values.
+:::: {.notes}
+- Clustering quality is partly subjective: the math gives compactness and separation; meaning comes from the user.
+- Materials example: unsupervised clustering that recovers known phase families is a sanity check; clusters that split a known family suggest a real discovery.
+::::
 
-## Forward pass notation
+## Why unsupervised matters in materials
 
-- Pre-activation: \\(\mathbf{z}^{(\ell)} = \mathbf{W}^{(\ell)} \mathbf{a}^{(\ell-1)} + \mathbf{b}^{(\ell)}\\)
-- Activation: \\(\mathbf{a}^{(\ell)} = \sigma(\mathbf{z}^{(\ell)})\\)
-- Input layer: \\(\mathbf{a}^{(0)} = \mathbf{x}\\)
-- Output: \\(\hat{\mathbf{y}} = \mathbf{a}^{(L)}\\) after \\(L\\) layers.
+:::: {.incremental}
+- Most data starts unlabeled — a database of alloy compositions, a folder of micrographs, a stack of spectra.
+- Labels often require **expensive characterization** (TEM, mechanical testing, EBSD).
+- Unsupervised methods let us:
+  - **Explore** before committing to a label scheme.
+  - **Compress** (1000-channel spectrum → 10 latents).
+  - **Flag** anomalies for expert attention before testing them all.
+::::
 
-## Why store intermediate activations?
+:::: {.notes}
+- Hammer the "labels are expensive" point: it is the everyday reason engineers reach for these methods.
+::::
 
-- The backward pass requires \\(\mathbf{a}^{(\ell-1)}\\) and \\(\sigma'(\mathbf{z}^{(\ell)})\\) at every layer.
-- Without stored values, we would need to recompute the forward pass for each gradient.
-- This is the fundamental **memory-compute tradeoff** of backpropagation.
-- Gradient checkpointing: a technique to trade recomputation for memory in very deep networks.
+<!-- ===== §3. K-means ===== -->
 
-## Cost function at the output
+## K-means: the simplest clustering algorithm
 
-- After the forward pass, the loss is computed:
-
-$$
-J = \frac{1}{N} \sum_{i=1}^{N} L(\hat{y}_i, y_i)
-$$
-
-- Everything before the loss is a composition of differentiable functions.
-- The chain rule will let us differentiate through this entire composition.
-
-## Mini-checkpoint question
-
-- "How many multiplications does the forward pass require for an \\(L\\)-layer network with \\(W\\) total weights?"
-- Answer: \\(O(W)\\) — each weight participates in exactly one multiply-add operation.
-- Key insight: the backward pass will have the **same** computational cost.
-
-## The key insight: reverse-mode differentiation
-
-- **Forward mode**: propagate derivatives from input to output — efficient for few inputs, many outputs.
-- **Reverse mode**: propagate derivatives from output to input — efficient for many inputs, few outputs.
-- Neural network training: many parameters (inputs to \\(J\\)), one scalar output (\\(J\\)).
-- Reverse mode (= backpropagation) is the natural choice.
-
-## Output layer gradient
-
-- Start at the output layer. For squared error loss with one output:
+Assign $N$ points $\{x_1, \ldots, x_N\} \subset \mathbb{R}^d$ to $K$ groups $C_1, \ldots, C_K$ by minimizing:
 
 $$
-\delta_o = (\hat{y} - y) \sigma'(z_o)
+J(C_1, \ldots, C_K, \mu_1, \ldots, \mu_K) = \sum_{k=1}^{K} \sum_{x_i \in C_k} \|x_i - \mu_k\|^2.
 $$
 
+:::: {.fragment}
+The objective: each point should be **close to its assigned centroid**. Each cluster is represented by a single point $\mu_k$.
+::::
+
+:::: {.notes}
+- K is given (we will choose it later).
+- The objective is the within-cluster sum of squared distances.
+- Implicitly assumes Euclidean distance is meaningful — it is for many tabular features but not for histograms or angles.
+::::
+
+## Lloyd's algorithm
+
+Alternate two steps until assignments stop changing:
+
+:::: {.incremental}
+1. **Assign**: for each $i$, set $C_k = \{x_i : k = \arg\min_j \|x_i - \mu_j\|^2\}$.
+2. **Update**: for each $k$, set $\mu_k = \frac{1}{|C_k|} \sum_{x_i \in C_k} x_i$.
+::::
+
+:::: {.fragment}
+This is **coordinate descent on $J$**: each step strictly decreases $J$ unless we are already at a fixed point. Convergence in finitely many steps is guaranteed.
+::::
+
+:::: {.notes}
+- Lloyd's algorithm is what people mean by "K-means" in practice.
+- Each step monotonically decreases the objective; J is non-negative; so we converge.
+- Convergence is to a *local* optimum, not a global one.
+::::
+
+## Worked example: 6 points, $K=2$
+
+:::: {.columns}
+:::: {.column width="50%"}
+Points: $(1,1), (1,2), (2,1)$, $(8,8), (9,8), (8,9)$.
+
+Initial centroids: $\mu_1 = (1,1)$, $\mu_2 = (2,2)$.
+
+**Iter 1** — assign:
+
+- $(1,1), (1,2), (2,1)$ → $\mu_1$.
+- $(8,8), (9,8), (8,9)$ → $\mu_2$.
+::::
+:::: {.column width="50%"}
+**Iter 1** — update:
+
+- $\mu_1 = (4/3, 4/3)$.
+- $\mu_2 = (25/3, 25/3)$.
+
+**Iter 2**: assignments do not change. Done.
+::::
+::::
+
+:::: {.fragment}
+The bad initialization still found the right clusters here — luck. With harder geometries, initialization matters a lot.
+::::
+
+:::: {.notes}
+- Walk through this on the board.
+- The point: K-means converges quickly when clusters are well-separated.
+- Then transition to the failure modes.
+::::
+
+## K-means is sensitive to initialization
+
+:::: {.incremental}
+- Different initial centroids → different local optima.
+- Standard fix: run multiple random initializations, keep the lowest $J$.
+- **K-means++**: smart initialization. Pick the first centroid uniformly at random; pick each subsequent centroid with probability proportional to $D(x)^2$, where $D(x)$ is the distance to the nearest already-chosen centroid.
+- K-means++ provably bounds expected $J$ within a factor of the global optimum.
+::::
+
+:::: {.notes}
+- K-means++ is the default in scikit-learn for a reason.
+- Practical advice: always use K-means++ and a few restarts.
+::::
+
+## Choosing $K$: the elbow method
+
+:::: {.columns}
+:::: {.column width="55%"}
+- Run K-means for $K = 1, 2, 3, \ldots, K_{\max}$.
+- Plot $J(K)$ vs $K$.
+- Look for the **elbow**: the point where $J$ stops dropping fast.
+- Heuristic, not principled, but widely used.
+::::
+:::: {.column width="45%"}
+$J(K)$ always decreases with $K$ — at $K = N$, every point is its own cluster and $J = 0$.
+
+The elbow signals diminishing returns from extra clusters.
+::::
+::::
+
+:::: {.notes}
+- The elbow is sometimes obvious (sharp bend), often not (smooth curve).
+- Combine with the silhouette score for a second opinion.
+::::
+
+## Choosing $K$: the silhouette score
+
+For each point $x_i$, define:
+
 $$
-\frac{\partial J}{\partial w_{ok}} = \delta_o a_k^{(L-1)}
+s(x_i) = \frac{b(x_i) - a(x_i)}{\max(a(x_i), b(x_i))},
 $$
 
-- The "delta" \\(\delta_o\\) captures the error signal at the output [@neuer2024machine].
+where $a(x_i)$ is the average distance to other points in $x_i$'s cluster, and $b(x_i)$ is the average distance to points in the *nearest other* cluster.
 
-## Hidden layer gradient via chain rule
+:::: {.fragment}
+- $s(x_i) \approx 1$: well-clustered. $s(x_i) \approx 0$: on a boundary. $s(x_i) < 0$: probably misclustered.
+- Pick the $K$ that maximizes the **mean silhouette**.
+::::
 
-- For a hidden unit \\(k\\) in layer \\(\ell\\):
+:::: {.notes}
+- Silhouette gives a per-point quality score and an aggregate.
+- Use elbow + silhouette together; if they agree, more confidence.
+- Don't oversell either: clustering quality is ill-defined.
+::::
+
+## K-means: the spherical assumption
+
+:::: {.incremental}
+- K-means uses Euclidean distance to a **single centroid**.
+- Implicitly: clusters are **spherical** and roughly equal-sized.
+- It fails when:
+  - Clusters are elongated (e.g., elliptical Gaussians).
+  - Clusters have different sizes/densities.
+  - Geometry is non-convex (concentric rings, two moons).
+::::
+
+:::: {.fragment}
+**These failure cases motivate GMM** (Gaussian Mixture Models — slides 24+).
+::::
+
+:::: {.notes}
+- This is the most important limitation to internalize: spherical clusters only.
+- The classical "two moons" dataset breaks K-means in a way that motivates kernel methods or DBSCAN — but here we move to GMM.
+::::
+
+## K-medoids: a robust variant
+
+:::: {.incremental}
+- K-means uses the **mean** as a centroid → sensitive to outliers.
+- K-medoids restricts the centroid to be an **actual data point** (the *medoid*).
+- Update step: in each cluster, pick the point that minimizes the sum of distances to others.
+- Slower (no closed-form update) but robust.
+::::
+
+:::: {.fragment}
+Useful when: outliers contaminate the data, or distances are non-Euclidean (e.g., edit distance for SMILES strings).
+::::
+
+:::: {.notes}
+- K-medoids is what you reach for when K-means breaks due to outliers.
+- Mention as a tool; we won't go deeper.
+::::
+
+<!-- ===== §4. Hierarchical clustering ===== -->
+
+## Hierarchical clustering: no $K$ in advance
+
+:::: {.incremental}
+- **Agglomerative**: start with each point as its own cluster; repeatedly merge the closest pair.
+- **Divisive**: start with one big cluster; recursively split.
+- Linkage criteria for "closest":
+  - *Single*: nearest pair across clusters (chains).
+  - *Complete*: farthest pair (compact).
+  - *Average*: mean pair distance.
+  - *Ward*: minimize variance increase (popular default).
+::::
+
+:::: {.notes}
+- Useful when K is not known a priori, or when the hierarchy itself is informative (e.g., taxonomy of alloys).
+- Ward linkage gives K-means-like geometric clusters.
+::::
+
+## Dendrograms
+
+:::: {.columns}
+:::: {.column width="55%"}
+- The merge sequence is a tree: leaves are points, internal nodes are merges, height = merge distance.
+- Cut the dendrogram at any height to obtain a clustering.
+::::
+:::: {.column width="45%"}
+- Materials use case: dendrograms over compositions reveal natural alloy families and the heights tell you how distinct each family is.
+::::
+::::
+
+:::: {.notes}
+- Dendrogram cut height is the analog of choosing K.
+- Hierarchical clustering scales as O(N^2 log N) — fine for thousands of points, slow for millions.
+::::
+
+<!-- ===== §5. GMM + EM ===== -->
+
+## From hard to soft assignments
+
+:::: {.incremental}
+- K-means gives a **hard** assignment: each point belongs to exactly one cluster.
+- Reality: a point near a boundary could plausibly belong to either neighbor.
+- A **soft** assignment gives a probability over clusters: $\gamma_{ik} = P(\text{cluster } k \mid x_i)$.
+- Soft assignments come naturally from a **probabilistic model**: the Gaussian Mixture Model.
+::::
+
+:::: {.notes}
+- The shift to GMM is conceptual: model the data, not just partition it.
+- Probabilities give us uncertainty over assignments — useful for downstream decisions.
+::::
+
+## Gaussian Mixture Model (GMM)
+
+A weighted sum of $K$ Gaussian densities:
 
 $$
-\frac{\partial J}{\partial w_{kj}} = \delta_k a_j^{(\ell-1)}
+p(x) = \sum_{k=1}^{K} \pi_k \mathcal{N}(x; \mu_k, \Sigma_k), \qquad \pi_k \geq 0, \quad \sum_k \pi_k = 1.
 $$
 
-where:
+:::: {.incremental}
+- $\pi_k$: mixture weight (prior probability of cluster $k$).
+- $\mu_k$: cluster center; $\Sigma_k$: cluster shape (covariance).
+- Each $\mathcal{N}(x; \mu_k, \Sigma_k)$ is a multivariate Gaussian — Unit 8 will derive these formally.
+::::
+
+:::: {.notes}
+- The GMM is what you get when each point is generated from one of K Gaussians, but you don't know which.
+- Generality vs K-means: ellipsoidal clusters of any orientation and any relative size.
+::::
+
+## The latent variable view
+
+Introduce $z_i \in \{1, \ldots, K\}$ — the (unobserved) cluster index for $x_i$.
 
 $$
-\delta_k = \sigma'(z_k) \sum_m w_{mk}^{(\ell+1)} \delta_m^{(\ell+1)}
+p(x_i, z_i = k) = \pi_k \mathcal{N}(x_i; \mu_k, \Sigma_k), \qquad p(x_i) = \sum_k p(x_i, z_i = k).
 $$
 
-- The delta at layer \\(\ell\\) depends on deltas at layer \\(\ell+1\\) — **backward** propagation.
+:::: {.fragment}
+- We **observe** $x_i$ and **don't observe** $z_i$.
+- Maximizing $\log p(x_i; \theta)$ directly is hard because it contains a sum inside the log.
+- The trick: alternate between guessing $z_i$ and updating $\theta$. This is **EM**.
+::::
 
-## The delta recursion (general form)
+:::: {.notes}
+- The latent variable formulation is the gateway to EM.
+- "Sum inside log" makes the gradient ugly — EM sidesteps this.
+::::
 
-::: {.fragment}
-- General delta recursion for unit \\(i\\) in layer \\(\ell\\):
-:::
+## EM algorithm: E-step
 
-::: {.fragment}
-$$
-\delta_i^{(\ell)} = \sigma'(z_i^{(\ell)}) \sum_j w_{ji}^{(\ell \to \ell+1)} \delta_j^{(\ell+1)}
-$$
-:::
-
-::: {.fragment}
-- This recursion starts at the output layer and propagates backward to layer 1.
-- Each delta combines the local activation derivative with weighted downstream deltas.
-:::
-
-## Bias gradient
-
-- The gradient with respect to biases is simply the delta itself:
+For each point $i$ and cluster $k$, compute the **responsibility**:
 
 $$
-\frac{\partial J}{\partial b_k^{(\ell)}} = \delta_k^{(\ell)}
+\gamma_{ik} = P(z_i = k \mid x_i, \theta) = \frac{\pi_k \mathcal{N}(x_i; \mu_k, \Sigma_k)}{\sum_{j} \pi_j \mathcal{N}(x_i; \mu_j, \Sigma_j)}.
 $$
 
-- This follows because \\(\partial z_k / \partial b_k = 1\\).
-- Bias gradients require no additional computation beyond the delta calculation.
+:::: {.fragment}
+This is the **soft assignment**: how strongly does the model believe point $i$ belongs to cluster $k$, given the current parameters?
+::::
 
-## Backpropagation algorithm: pseudocode
+:::: {.notes}
+- E-step uses Bayes' rule (Unit 8 will treat this formally).
+- Compare to K-means: there, $\gamma_{ik}$ is 0 or 1 (hard).
+::::
 
-1. **Forward pass**: compute and store all \\(\mathbf{z}^{(\ell)}, \mathbf{a}^{(\ell)}\\) for \\(\ell = 1, \dots, L\\).
-2. **Output delta**: \\(\boldsymbol{\delta}^{(L)} = \nabla_{\mathbf{a}} L \odot \sigma'(\mathbf{z}^{(L)})\\).
-3. **Backward loop**: for \\(\ell = L-1, \dots, 1\\):
-   - \\(\boldsymbol{\delta}^{(\ell)} = \sigma'(\mathbf{z}^{(\ell)}) \odot \big((\mathbf{W}^{(\ell+1)})^T \boldsymbol{\delta}^{(\ell+1)}\big)\\)
-4. **Gradient accumulation**: \\(\nabla_{\mathbf{W}^{(\ell)}} J = \boldsymbol{\delta}^{(\ell)} (\mathbf{a}^{(\ell-1)})^T\\), \\(\nabla_{\mathbf{b}^{(\ell)}} J = \boldsymbol{\delta}^{(\ell)}\\).
+## EM algorithm: M-step
 
-```{mermaid}
-graph TD
-    subgraph ForwardPass [Forward]
-        direction TB
-        F1[Input x] --> F2[Layer 1]
-        F2 --> F3[...]
-        F3 --> F4[Layer L]
-    end
-    ForwardPass --> Loss[Loss J]
-    Loss --> BP1[Output Delta δL]
-    subgraph BackwardPass [Backward]
-        direction TB
-        BP1 --> BP2[Layer L-1 δ]
-        BP2 --> BP3[...]
-        BP3 --> BP4[Layer 1 δ]
-    end
-    BackwardPass --> Grad[Accumulate Gradients]
-    Grad --> Update[Update Weights]
-    style ForwardPass fill:#e1f5fe,stroke:#01579b
-    style BackwardPass fill:#fff3e0,stroke:#e65100
+Update parameters using the responsibilities:
+
+$$
+\mu_k = \frac{\sum_i \gamma_{ik} x_i}{\sum_i \gamma_{ik}}, \qquad \Sigma_k = \frac{\sum_i \gamma_{ik} (x_i - \mu_k)(x_i - \mu_k)^T}{\sum_i \gamma_{ik}}, \qquad \pi_k = \frac{1}{N}\sum_i \gamma_{ik}.
+$$
+
+:::: {.fragment}
+Each update is a **weighted average** — points contribute to a cluster in proportion to their responsibility.
+::::
+
+:::: {.notes}
+- M-step is intuitive: weighted least-squares update for the means, weighted covariance, weighted prior.
+- The closed-form M-step is what makes EM tractable for GMMs.
+::::
+
+## EM as alternating optimization
+
+:::: {.incremental}
+1. Initialize $\{\pi_k, \mu_k, \Sigma_k\}$ (e.g., from K-means output).
+2. **E-step**: compute all $\gamma_{ik}$ given current parameters.
+3. **M-step**: update parameters given current $\gamma_{ik}$.
+4. Repeat until log-likelihood converges.
+::::
+
+:::: {.fragment}
+**Property**: each EM iteration is guaranteed *not to decrease* the data log-likelihood $\sum_i \log p(x_i; \theta)$. (Proof: EM optimizes a lower bound on the log-likelihood — Bishop Ch. 9 has the full derivation.)
+::::
+
+:::: {.notes}
+- EM is structurally identical to coordinate ascent: alternate over (z, theta).
+- Like K-means, EM converges to a local optimum; initialization matters.
+- Common practice: initialize EM with the output of K-means.
+::::
+
+## K-means vs GMM
+
+| | K-means | GMM |
+|---|---------|-----|
+| Assignment | hard | soft |
+| Cluster shape | spherical | ellipsoidal (full $\Sigma$) |
+| Cluster size | implicit | learned via $\Sigma$ |
+| Output | partition | density |
+| Cost | $O(NKd)$ per iter | $O(NKd^2)$ per iter |
+
+:::: {.fragment}
+**Rule of thumb**: K-means for fast, geometric, well-separated clusters. GMM when clusters overlap, vary in shape, or you need probabilities downstream.
+::::
+
+:::: {.notes}
+- A GMM with shared identity covariance and equal mixture weights, in the limit of small variance, recovers K-means. (Mention as trivia; do not derive.)
+::::
+
+## Choosing $K$ for GMM: BIC
+
+The Bayesian Information Criterion penalizes complexity:
+
+$$
+\text{BIC}(K) = -2 \log p(\mathcal{D}; \hat\theta_K) + p_K \log N,
+$$
+
+where $p_K$ is the number of free parameters in a $K$-component GMM.
+
+:::: {.fragment}
+- Fit GMMs for $K = 1, 2, \ldots$, pick the $K$ minimizing BIC.
+- BIC works *because* GMM has a likelihood. K-means does not — that's why we used elbow/silhouette there.
+::::
+
+:::: {.notes}
+- BIC is the principled answer to "how many clusters?" when you have a likelihood.
+- Connect to Unit 8: this is essentially Bayesian model comparison via marginal likelihood approximation.
+::::
+
+<!-- ===== §6. Bridge to autoencoders ===== -->
+
+## Bridge: from centroids to learned representations
+
+:::: {.incremental}
+- K-means represents each cluster by a **single point** $\mu_k$.
+- GMM represents each cluster by a **distribution** $\mathcal{N}(\mu_k, \Sigma_k)$.
+- Both compress the data into a small number of "summary" objects.
+- What if we want **continuous** structure — a smooth low-dimensional surface that describes the data?
+::::
+
+:::: {.fragment}
+**That is what an autoencoder learns.** The encoder maps $x$ to a low-dim latent code $z$; the decoder reconstructs $x$ from $z$.
+::::
+
+:::: {.notes}
+- The pivot: clustering finds discrete structure; autoencoders find continuous structure.
+- This is also the bridge to Unit 9 (representation learning) and Unit 11 (generative models).
+::::
+
+## The manifold hypothesis
+
+:::: {.incremental}
+- High-dimensional data is rarely "filled in" — a 1024-channel spectrum lives in $\mathbb{R}^{1024}$, but real spectra concentrate on a much lower-dimensional surface (manifold).
+- The manifold's intrinsic dimension is governed by physics (number of phases, processing parameters).
+- A linear method (PCA) finds a flat low-dim subspace.
+- A nonlinear method (autoencoder) can curve to follow the manifold.
+::::
+
+:::: {.notes}
+- Manifold hypothesis: real data lives near a low-dim surface in a high-dim ambient space.
+- Examples: alloy compositions (constrained by phase rules); micrographs (constrained by physics of imaging).
+::::
+
+<!-- ===== §7. Autoencoders ===== -->
+
+## The autoencoder architecture
+
+```
+        encoder              decoder
+   x  ──────►  z (bottleneck)  ──────►  x̂
+ R^d           R^k (k ≪ d)              R^d
 ```
 
-## Interactive: Forward & Backward Pass
+:::: {.incremental}
+- **Encoder** $f_\phi: \mathbb{R}^d \to \mathbb{R}^k$: compresses input to a code $z$.
+- **Bottleneck** $z \in \mathbb{R}^k$: forced low-dimensional representation.
+- **Decoder** $g_\theta: \mathbb{R}^k \to \mathbb{R}^d$: reconstructs input from code.
+- **Loss**: reconstruction error, typically MSE.
+::::
 
-- A minimal network: 2 inputs $\rightarrow$ 1 hidden (ReLU) $\rightarrow$ 1 output (Linear). Target $y=1$.
-- Adjust inputs/weights to see how the Loss $J$ changes, and how gradients backpropagate!
+:::: {.notes}
+- Hourglass topology: wide → narrow → wide.
+- Both encoder and decoder are neural networks; in the simplest case, they are MLPs.
+::::
 
-```{ojs}
-//| echo: false
-//| panel: input
-viewof i_x1 = Inputs.range([-2, 2], {value: 1.0, step: 0.1, label: "x1"})
-viewof i_x2 = Inputs.range([-2, 2], {value: -1.0, step: 0.1, label: "x2"})
-viewof w_11 = Inputs.range([-2, 2], {value: 0.5, step: 0.1, label: "w11 (x1->h)"})
-viewof w_21 = Inputs.range([-2, 2], {value: -0.5, step: 0.1, label: "w21 (x2->h)"})
-viewof w_out = Inputs.range([-2, 2], {value: 1.0, step: 0.1, label: "w_out (h->y)"})
-viewof showGrads = Inputs.toggle({label: "Show Gradients (Backward Pass)", value: false})
-```
-
-```{ojs}
-//| echo: false
-netCalc = {
-  // Forward pass
-  const z_h = i_x1 * w_11 + i_x2 * w_21;
-  const a_h = Math.max(0, z_h); // ReLU
-  
-  const z_y = a_h * w_out;
-  const a_y = z_y; // Linear output
-  const y_target = 1.0;
-  
-  const loss = 0.5 * Math.pow(a_y - y_target, 2);
-  
-  // Backward pass
-  const dL_dy = (a_y - y_target); // dL/da_y = dL/dz_y
-  const dL_dwout = dL_dy * a_h;
-  
-  const dL_dah = dL_dy * w_out;
-  const dL_dzh = z_h > 0 ? dL_dah : 0; // ReLU derivative
-  
-  const dL_dw11 = dL_dzh * i_x1;
-  const dL_dw21 = dL_dzh * i_x2;
-  
-  return { z_h, a_h, z_y, a_y, loss, dL_dy, dL_dwout, dL_dah, dL_dzh, dL_dw11, dL_dw21 };
-}
-```
-
-```{ojs}
-//| echo: false
-html`
-<div style="font-family: sans-serif; background: #222; padding: 20px; border-radius: 8px; color: #eee; text-align: center;">
-  <h3 style="margin-top: 0">Loss $J = \\frac{1}{2}(\\hat{y} - 1)^2 = ${netCalc.loss.toFixed(3)}$</h3>
-  
-  <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 30px;">
-    <!-- Input Layer -->
-    <div style="display: flex; flex-direction: column; gap: 40px;">
-      <div style="background: #4e79a7; padding: 15px; border-radius: 50%;">x1 = ${i_x1.toFixed(1)}</div>
-      <div style="background: #4e79a7; padding: 15px; border-radius: 50%;">x2 = ${i_x2.toFixed(1)}</div>
-    </div>
-    
-    <!-- Weights 1 -->
-    <div style="display: flex; flex-direction: column; gap: 40px; font-size: 0.8em; color: #aaa;">
-      <div>w11 = ${w_11.toFixed(1)} <br> ${showGrads ? `<span style="color:#e15759">∇=${netCalc.dL_dw11.toFixed(2)}</span>` : ""}</div>
-      <div>w21 = ${w_21.toFixed(1)} <br> ${showGrads ? `<span style="color:#e15759">∇=${netCalc.dL_dw21.toFixed(2)}</span>` : ""}</div>
-    </div>
-    
-    <!-- Hidden Layer -->
-    <div style="background: #f28e2b; padding: 15px; border-radius: 50%; color: #222; font-weight: bold;">
-      h <br>
-      <span style="font-size: 0.8em">z=${netCalc.z_h.toFixed(2)}</span><br>
-      <span style="font-size: 0.8em">a=${netCalc.a_h.toFixed(2)}</span><br>
-      ${showGrads ? `<span style="color:#e15759; font-size: 0.8em">δ=${netCalc.dL_dzh.toFixed(2)}</span>` : ""}
-    </div>
-    
-    <!-- Weights 2 -->
-    <div style="font-size: 0.8em; color: #aaa;">
-      w_out = ${w_out.toFixed(1)} <br> ${showGrads ? `<span style="color:#e15759">∇=${netCalc.dL_dwout.toFixed(2)}</span>` : ""}
-    </div>
-    
-    <!-- Output Layer -->
-    <div style="background: #59a14f; padding: 15px; border-radius: 50%;">
-      y_hat = ${netCalc.a_y.toFixed(2)} <br>
-      ${showGrads ? `<span style="color:#e15759; font-size: 0.8em">δ=${netCalc.dL_dy.toFixed(2)}</span>` : ""}
-    </div>
-  </div>
-</div>
-`
-```
-
-## Weight update rule
-
-- Once gradients are computed, update all parameters:
+## The reconstruction objective
 
 $$
-\mathbf{W} \leftarrow \mathbf{W} - \eta \nabla_{\mathbf{W}} J
+\mathcal{L}(\theta, \phi) = \frac{1}{N}\sum_{i=1}^{N} \|x_i - g_\theta(f_\phi(x_i))\|^2.
 $$
 
-- This is the gradient descent step from Unit 1, now applied to **all** network parameters.
-- One forward pass + one backward pass = one complete parameter update [@mcclarren2021machine].
+:::: {.incremental}
+- No labels — only the inputs themselves serve as targets.
+- Minimizing $\mathcal{L}$ forces the bottleneck $z$ to retain enough information to reconstruct $x$.
+- Without the bottleneck, the network could just learn the identity. The bottleneck creates a useful constraint.
+::::
 
-## Batch vs stochastic gradient computation
+:::: {.notes}
+- Self-supervised: the supervisory signal comes from the data itself.
+- The bottleneck is the soul of the autoencoder.
+::::
 
-- **Full batch**: compute gradient using all \\(N\\) training samples — exact but expensive.
-- **Mini-batch**: use a random subset of \\(B\\) samples — noisy but faster per step.
-- **SGD** (\\(B=1\\)): maximum noise, cheapest per step.
-- Noise from mini-batches can actually help generalization (see Unit 6).
+## Linear autoencoder = PCA
 
-## Computational cost analysis
-
-- Forward pass: \\(O(W)\\) — each weight used once.
-- Backward pass: \\(O(W)\\) — each weight used once in the delta recursion.
-- Total gradient computation: \\(O(W)\\), **not** \\(O(W^2)\\).
-- This linear scaling is what makes training networks with millions of parameters feasible.
-
-## Backprop vs finite differences
-
-::: {.columns}
-::: {.column width="50%"}
-| Method | Forward passes | Backward passes | Total cost |
-|--------|:--------------:|:---------------:|:----------:|
-| Finite differences | \\(W + 1\\) | 0 | \\(O(W^2)\\) |
-| Backpropagation | 1 | 1 | \\(O(W)\\) |
-:::
-
-::: {.column width="50%"}
-- For \\(W = 10^6\\): backprop is \\(\sim 10^6\\times\\) faster.
-- This efficiency gap is the reason deep learning is practical [@bishop2006pattern].
-:::
-:::
-
-## Multiple outputs and loss functions
-
-- For cross-entropy loss with softmax output:
+Take the simplest possible AE:
 
 $$
-\delta_k^{(L)} = \hat{y}_k - y_k \quad \text{(softmax + cross-entropy)}
+f_\phi(x) = W_e x, \qquad g_\theta(z) = W_d z, \qquad W_e \in \mathbb{R}^{k \times d}, \quad W_d \in \mathbb{R}^{d \times k}.
 $$
 
-- The delta formula changes with the loss function, but the backward recursion structure is identical.
-- Modular design: swap loss functions without changing the backprop algorithm.
+:::: {.fragment}
+**Theorem.** With MSE loss, the optimal $(W_e, W_d)$ satisfy $W_d W_e = U_k U_k^T$, where $U_k$ contains the top-$k$ left singular vectors of the centered data — i.e., the **PCA subspace**.
+::::
 
-## Gradient flow through deep networks
+:::: {.fragment}
+A linear autoencoder is *just* PCA in disguise.
+::::
 
-- The gradient at layer \\(\ell\\) involves a **product** of \\(L - \ell\\) terms:
+:::: {.notes}
+- This is a deep result: it tells us autoencoders generalize PCA.
+- Don't prove on the board; state and reference Bishop / Goodfellow.
+- Note that the optimal solution is unique only up to rotation in the latent space.
+::::
 
-$$
-\frac{\partial J}{\partial \mathbf{a}^{(\ell)}} = \prod_{m=\ell}^{L} \text{diag}(\sigma'(\mathbf{z}^{(m)})) \cdot \mathbf{W}^{(m+1)} \cdot \frac{\partial J}{\partial \mathbf{a}^{(L+1)}}
-$$
+## Why nonlinearity matters
 
-- Depth amplifies or attenuates the gradient signal through this product.
-- The stability of this product determines whether deep networks can train.
+:::: {.incremental}
+- Linear AEs find the best **flat** subspace.
+- Real data manifolds are usually **curved**: alloy compositions on a phase diagram, micrographs under varying lighting.
+- Adding a nonlinearity (ReLU, tanh) and a hidden layer to encoder and decoder lets the AE bend the latent space.
+- Result: a nonlinear AE can capture variance that PCA leaves on the table.
+::::
 
-## Vanishing gradients explained
+:::: {.fragment}
+This is the same lesson as Unit 4: nonlinearity is what lets neural networks go beyond linear models.
+::::
 
-- **Sigmoid** derivative: \\(\sigma'(z) = \sigma(z)(1 - \sigma(z))\\), maximum value = 0.25.
-- Product of many factors \\(< 1\\) shrinks exponentially:
+:::: {.notes}
+- The contrast with PCA is the cleanest "why neural" argument we have for unsupervised work.
+- For students: PCA is a special case; the AE is the general tool.
+::::
 
-$$
-\prod_{m=1}^{L} 0.25 = 0.25^L \to 0 \quad \text{as } L \to \infty
-$$
+## Choosing the bottleneck dimension $k$
 
-- Early-layer gradients become negligibly small in deep networks.
+:::: {.incremental}
+- Too small: the AE underfits — reconstruction is bad even on training data.
+- Too large: the AE overfits — it just learns the identity through a wide pipe.
+- **Procedure**: sweep $k$, plot validation reconstruction error vs $k$, look for the elbow.
+- Sanity check: compare to PCA at the same $k$. Nonlinear AE should do at least as well.
+::::
 
-## Interactive: Activation Functions & Derivatives
+:::: {.notes}
+- Bottleneck size is the most important hyperparameter for an AE.
+- Always compare against PCA at the same dim — a good baseline.
+::::
 
-- Select an activation function to see its shape and derivative. Notice the maximum value of the derivative!
+## Convolutional autoencoders
 
-```{ojs}
-//| echo: false
-//| panel: input
-viewof actFunc = Inputs.select(["Sigmoid", "Tanh", "ReLU", "Leaky ReLU"], {label: "Activation:"})
-```
+:::: {.columns}
+:::: {.column width="55%"}
+For spatial data (images, fields), use convolution:
 
-```{ojs}
-//| echo: false
-actFuncData = {
-  const xs = d3.range(-5, 5.1, 0.1);
-  return xs.map(x => {
-    let y, dy;
-    if (actFunc === "Sigmoid") {
-      y = 1 / (1 + Math.exp(-x));
-      dy = y * (1 - y);
-    } else if (actFunc === "Tanh") {
-      y = Math.tanh(x);
-      dy = 1 - y * y;
-    } else if (actFunc === "ReLU") {
-      y = Math.max(0, x);
-      dy = x > 0 ? 1 : 0;
-    } else { // Leaky ReLU
-      y = x > 0 ? x : 0.1 * x;
-      dy = x > 0 ? 1 : 0.1;
-    }
-    return { x, y, dy, act: actFunc };
-  });
-}
-```
+- **Encoder**: stack of strided conv → pool blocks (downsample).
+- **Decoder**: stack of transposed conv (or upsample + conv) blocks.
+- The bottleneck is now a small feature map.
+::::
+:::: {.column width="45%"}
+- Same architectural reasoning as Unit 4: locality + weight sharing.
+- Materials uses: micrograph compression, simulation field compression.
+::::
+::::
 
-```{ojs}
-//| echo: false
-Plot.plot({
-  grid: true,
-  height: 500,
-  x: { domain: [-5, 5], label: "z (pre-activation)" },
-  y: { domain: [-1.5, 1.5], label: "Value" },
-  color: { legend: true, domain: ["Activation f(z)", "Derivative f'(z)"], range: ["#4e79a7", "#e15759"] },
-  marks: [
-    Plot.line(actFuncData, {x: "x", y: "y", stroke: () => "Activation f(z)", strokeWidth: 3}),
-    Plot.line(actFuncData, {x: "x", y: "dy", stroke: () => "Derivative f'(z)", strokeWidth: 3, strokeDasharray: "5,5"}),
-    Plot.ruleX([0], {strokeOpacity: 0.2}),
-    Plot.ruleY([0], {strokeOpacity: 0.2}),
-    ...(actFunc === "Sigmoid" ? [
-      Plot.ruleY([0.25], {stroke: "#e15759", strokeDasharray: "2,2", strokeOpacity: 0.5}),
-      Plot.text([[-3.5, 0.3]], {text: () => "Max derivative = 0.25", fill: "#e15759"})
-    ] : [])
-  ]
-})
-```
+:::: {.notes}
+- Conv AEs reuse all of Unit 4's vocabulary.
+- Transposed convolution is the natural inverse to strided convolution; mention "checkerboard artifacts" briefly.
+::::
 
-## Vanishing gradients: consequences
+## Training: autograd handles it
 
-- Early layers stop learning — their weights barely change.
-- The network effectively behaves as if it were shallow.
-- Training stalls even though the loss remains high.
-- Deeper networks perform **worse** than shallow ones (before ReLU and residual connections).
+:::: {.incremental}
+- An AE is a standard neural network with a peculiar loss.
+- PyTorch:
+  ```python
+  loss = ((x - decoder(encoder(x)))**2).mean()
+  loss.backward()
+  optimizer.step()
+  ```
+- All the backprop machinery (chain rule, gradient flow, Xavier/He init) from the **self-study supplement** applies here directly.
+::::
 
-## Exploding gradients explained
+:::: {.notes}
+- This is where the self-study payoff matters: students should know what backward() does, even if they never write it.
+- Optimizer choice: Adam by default, more in Unit 6.
+::::
 
-- If \\(\|\mathbf{W}^{(\ell)}\|\\) is large, the gradient product grows exponentially:
+<!-- ===== §8. Variants and applications ===== -->
 
-$$
-\prod_{m=1}^{L} \|\mathbf{W}^{(m)}\| \cdot \|\sigma'(\mathbf{z}^{(m)})\| \to \infty
-$$
+## Denoising autoencoder
 
-- Weight updates become enormous — the loss diverges or oscillates wildly.
-- Often manifests as NaN values during training.
-
-## Exploding gradients: mitigation
-
-- **Gradient clipping**: cap \\(\|\nabla_{\theta} J\|\\) at a threshold \\(\tau\\):
+Train the AE with **corrupted** inputs:
 
 $$
-\nabla_{\theta} J \leftarrow \frac{\tau}{\|\nabla_{\theta} J\|} \nabla_{\theta} J \quad \text{if } \|\nabla_{\theta} J\| > \tau
+\mathcal{L} = \frac{1}{N}\sum_i \|x_i - g_\theta(f_\phi(\tilde x_i))\|^2, \qquad \tilde x_i = x_i + \epsilon_i.
 $$
 
-- **Careful initialization**: control weight magnitudes at the start.
-- **Architectural choices**: residual connections, normalization layers.
+:::: {.incremental}
+- The AE must denoise — recover the clean $x_i$ from a noisy $\tilde x_i$.
+- Forces the latent code to capture **robust** features, not noise.
+- Practical hyperparameter: noise level. Too low → trivial; too high → unrecoverable.
+::::
 
-## ReLU and gradient flow
+:::: {.notes}
+- Denoising AE is one of the most common training tricks.
+- It also connects to score-based generative models — Unit 11 will revisit.
+::::
 
-- ReLU: \\(\sigma(z) = \max(0, z)\\), derivative:
+## Sparse autoencoders (briefly)
 
-$$
-\sigma'(z) = \begin{cases} 1 & \text{if } z > 0 \\ 0 & \text{if } z \leq 0 \end{cases}
-$$
+:::: {.incremental}
+- Add a penalty that encourages most latent activations to be near zero.
+- Forces the AE to use **few latent units per input** — interpretable, disentangled features.
+- Loss: $\mathcal{L}_{\text{recon}} + \lambda \|z\|_1$ (Lasso-like) or KL penalty against a Bernoulli prior.
+::::
 
-- No saturation for positive inputs — gradient flows through without attenuation.
-- This property enabled training networks with 10+ layers, launching the deep learning era.
+:::: {.notes}
+- Mention briefly; full disentanglement is its own research area.
+- In materials, sparsity helps interpretability: which 3-of-128 latents represent "this is martensite"?
+::::
 
-## ReLU variants and dead neurons
+## Application 1 — data compression
 
-- **Dead neuron problem**: if \\(z \leq 0\\) for all training samples, the gradient is permanently zero.
-- **Leaky ReLU**: \\(\sigma(z) = \max(\alpha z, z)\\) with small \\(\alpha > 0\\) — prevents complete death.
-- **ELU**: smooth for \\(z < 0\\), helps with negative inputs.
-- **GELU**: used in Transformers — smooth approximation to ReLU with probabilistic interpretation.
+:::: {.incremental}
+- A 2000-channel XRD pattern → 16-dim AE latent → reconstruction.
+- 125× compression with controllable reconstruction error.
+- Useful for: storage, faster downstream models, sharing data while preserving structure.
+::::
 
-## Weight initialization strategies
+:::: {.fragment}
+Key trade-off: smaller latent = more compression but worse reconstruction. Sweep $k$ on a held-out set.
+::::
 
-- **Xavier/Glorot initialization**: \\(W_{ij} \sim \mathcal{N}(0, 2/(n_{\text{in}} + n_{\text{out}}))\\).
-  - Preserves variance for symmetric activations (tanh, sigmoid).
-- **He initialization**: \\(W_{ij} \sim \mathcal{N}(0, 2/n_{\text{in}})\\).
-  - Designed for ReLU — accounts for the factor-of-2 from zeroing negative inputs.
-- Correct initialization prevents both vanishing and exploding gradients at the start of training.
+:::: {.notes}
+- This is a concrete win for AEs over PCA when spectra have nonlinear structure (peak shifts, broadening).
+::::
 
-## The Jacobian matrix perspective
+## Application 2 — anomaly detection
 
-- The Jacobian of layer \\(\ell\\): \\(\mathbf{J}^{(\ell)} = \frac{\partial \mathbf{a}^{(\ell)}}{\partial \mathbf{a}^{(\ell-1)}}\\).
-- **Singular values** of \\(\mathbf{J}^{(\ell)}\\) control gradient magnitude:
-  - All singular values \\(\approx 1\\): gradient flows stably (ideal).
-  - Singular values \\(\ll 1\\): vanishing gradient.
-  - Singular values \\(\gg 1\\): exploding gradient.
-- Initialization and activation choices aim to keep singular values near 1.
+:::: {.incremental}
+- Train the AE only on **normal** data.
+- At test time, compute reconstruction error per sample.
+- Anomalies (defects, instrument failures, novel phases) reconstruct **poorly** — they're outside the manifold the AE learned.
+- Threshold: choose at, say, the 99th percentile of training reconstruction error.
+::::
 
-## Checkpoint MCQ slide
+:::: {.fragment}
+Used heavily in industrial monitoring: a learned AE flags pieces that "don't look like normal pieces" without ever seeing a defect at training time.
+::::
 
-- **Question**: A 10-layer network uses sigmoid activations and weights initialized with \\(\|\mathbf{W}^{(\ell)}\| \approx 1\\). What happens to the gradient at layer 1 during the backward pass?
+:::: {.notes}
+- Anomaly detection without labeled defects is one of the most valuable AE applications in industry.
+- Choosing the threshold is a per-application calibration question.
+::::
 
-- A) **Exploding gradient**: It grows exponentially due to weight magnitude.
-- B) **Stability**: It stays approximately constant because weights are near 1.
-- C) **Vanishing gradient**: It shrinks exponentially due to the sigmoid derivative $\sigma'(z) \leq 0.25$.
-- D) **Oscillation**: It oscillates unpredictably depending on the input data.
+## Application 3 — features for downstream tasks
 
-- **Answer**: **C** — Since $\sigma'(z) \leq 0.25$, the product of 10 such terms is at most $0.25^{10} \approx 9.5 \times 10^{-7}$.
+:::: {.incremental}
+- Train an AE on a large unlabeled corpus.
+- Discard the decoder; use the encoder $z = f_\phi(x)$ as a feature extractor.
+- Train a small supervised model (linear regression, MLP) on $z$ instead of $x$.
+- Works when labels are scarce and the AE has seen enough unlabeled data to learn the manifold.
+::::
 
-## Materials example 1: training a property-prediction network
+:::: {.fragment}
+This is **transfer learning** with self-supervision — a precursor to today's foundation models.
+::::
 
-- Task: predict tensile strength from alloy composition and processing parameters.
-- Monitoring per-layer gradient norms during training reveals whether learning propagates to all layers.
-- If early-layer gradients are \\(10^{-8}\\) while output-layer gradients are \\(10^{-2}\\): vanishing gradient problem.
+:::: {.notes}
+- The label budget is the killer constraint in materials; AEs help by reducing the input dim before applying the labeled model.
+- Foundation models (Unit 10/11) are the modern successor.
+::::
 
-## Materials example 2: deep vs shallow for spectral classification
+<!-- ===== §9. Latent space teaser (bridges to Unit 9) ===== -->
 
-- A 10-layer sigmoid network fails on IR spectral classification — training loss plateaus at a high value.
-- A 4-layer ReLU network succeeds — gradient flows through all layers.
-- **Lesson**: depth alone is not enough; activation function choice determines trainability.
+## The latent space is a coordinate system
 
-## Materials example 3: process optimization as computational graph
+:::: {.incremental}
+- The bottleneck $z$ is not just a compression target — it is a **learned coordinate system** for the data.
+- Two questions about a latent space:
+  - **Geometry**: how are points arranged? Are similar samples close?
+  - **Interpolation**: does the line between $z_A$ and $z_B$ correspond to a smooth transition in $x$?
+::::
 
-- A multi-step manufacturing pipeline (mixing \\(\to\\) sintering \\(\to\\) testing) can be viewed as a computational graph.
-- Backpropagation through the process model computes how each process parameter affects the final product quality.
-- Gradient flow through process stages mirrors gradient flow through network layers.
+:::: {.notes}
+- Latent space geometry is the bridge to Unit 9.
+- Students should leave with the question: what makes a *good* latent space?
+::::
 
-## Interactive: Vanishing & Exploding Gradient Simulator
+## Latent space arithmetic (teaser)
 
-- Explore how activation choices and initialization scale affect gradient flow in a deep (15-layer) network.
-- **Notice:** Sigmoid shrinks gradients factorially back toward layer 1. ReLU sustains them much better!
+:::: {.incremental}
+- In some learned latents, **vector arithmetic** is meaningful.
+- Famous example (faces): $z_{\text{man with glasses}} - z_{\text{man}} + z_{\text{woman}} \approx z_{\text{woman with glasses}}$.
+- For materials: $z_{\text{brittle alloy}} - z_{\text{steel}} + z_{\text{aluminum}}$ might give a brittle aluminum alloy — a starting point for inverse design.
+- Standard AEs don't *guarantee* this structure; **VAEs** (Unit 11) do, by constraining the latent distribution.
+::::
 
-```{ojs}
-//| echo: false
-//| panel: input
-viewof simAct = Inputs.select(["Sigmoid", "Tanh", "ReLU"], {label: "Activation:"})
-viewof initScale = Inputs.range([0.1, 4.0], {value: 1.5, step: 0.1, label: "Weight Multiplier:"})
-```
+:::: {.notes}
+- Latent arithmetic is a property of *some* learned latents, not all of them.
+- This sets up VAEs in Unit 11 as the principled fix.
+::::
 
-```{ojs}
-//| echo: false
-simData = {
-  const L = 15;
-  let layerGrads = [];
-  let current_grad = 1.0; 
-  
-  // Approximate average derivative across the active region
-  let act_deriv_avg = 1.0; 
-  if (simAct === "Sigmoid") act_deriv_avg = 0.15; 
-  else if (simAct === "Tanh") act_deriv_avg = 0.5; 
-  else if (simAct === "ReLU") act_deriv_avg = 0.6; // Accounts for ~50% dead neurons
-  
-  // Effective multiplication factor per layer backward
-  let factor = initScale * act_deriv_avg;
-  
-  for (let l = L; l >= 1; l--) {
-    let log_val = Math.max(-20, Math.min(20, Math.log10(current_grad + 1e-30)));
-    layerGrads.push({ layer: l, "Gradient Magnitude (log10)": log_val });
-    current_grad = current_grad * factor;
-  }
-  return layerGrads.reverse();
-}
-```
+## Bridge to Unit 9 and Unit 11
 
-```{ojs}
-//| echo: false
-Plot.plot({
-  grid: true,
-  height: 450,
-  x: { domain: [0, 16], label: "Layer (1 = Input, 15 = Output)", tickFormat: "d", ticks: 15 },
-  y: { domain: [-21, 21], label: "Gradient Norm (Log10 scale)" },
-  marks: [
-    Plot.ruleY([0], {stroke: "white", strokeDasharray: "3,3", strokeOpacity: 0.5}),
-    Plot.line(simData, {x: "layer", y: "Gradient Magnitude (log10)", stroke: "#e15759", strokeWidth: 3, marker: "circle"}),
-    Plot.text(simData.filter(d => d.layer === 1 || d.layer === 15), {
-      x: "layer",
-      y: d => d["Gradient Magnitude (log10)"] + (d["Gradient Magnitude (log10)"] > 0 ? 1.5 : -1.5),
-      text: d => `10^${Math.round(d["Gradient Magnitude (log10)"])}`,
-      fill: "white"
-    })
-  ]
-})
-```
+:::: {.incremental}
+- Unit 9: **what makes a latent space good?** Visualization (t-SNE, UMAP), contrastive learning, foundation embeddings.
+- Unit 11: **generative models** that sample from the latent: VAEs and diffusion.
+- Today plants the seed: an AE bottleneck is a learned representation, and learned representations are the substrate for everything that follows.
+::::
 
-## Practical diagnostic: gradient norm plots
+:::: {.notes}
+- The course narrative: clusters → continuous latents → structured latents → generative models.
+::::
 
-- During training, plot \\(\|\nabla_{\mathbf{W}^{(\ell)}} J\|\\) for each layer \\(\ell\\) over epochs.
-- **Healthy training**: gradient norms are comparable across layers.
-- **Vanishing**: early-layer norms orders of magnitude smaller than late layers.
-- **Exploding**: norms grow rapidly, often preceding NaN losses.
-- **This is the diagnostic that motivates skip connections and residual blocks** — the structural fix for very deep nets that you will see in next week's ML-PC lecture (CNNs, ResNet).
+<!-- ===== §10. Materials examples ===== -->
 
-## Automatic differentiation vs manual backprop
+## Materials example 1 — alloy composition clustering
 
-- Modern frameworks (PyTorch, JAX, TensorFlow) implement backprop automatically.
-- You define the forward computation; the framework builds the computational graph and computes gradients.
-- Understanding the internals is still essential for debugging, architecture design, and efficiency.
+:::: {.incremental}
+- 5000 alloys, each described by 12 elemental fractions.
+- Run K-means with $K = 8$, k-means++ init, 10 restarts.
+- Resulting clusters track known **alloy families** (austenitic stainless, martensitic stainless, low-alloy steels, ...).
+- Outliers in each cluster: candidate novel compositions worth lab investigation.
+::::
 
-## Lecture-essential vs exercise content split
+:::: {.notes}
+- Clustering recovering known phase families is a sanity check.
+- The real value is in the outliers and in clusters that don't match expectations.
+::::
 
-- **Lecture**: chain rule derivation, delta recursion, gradient flow theory, vanishing/exploding analysis, Jacobian interpretation.
-- **Exercise**: manual gradient computation on paper, NumPy forward/backward implementation, gradient magnitude visualization, activation function comparison.
+## Materials example 2 — spectral compression
 
-## Exercise setup: manual backprop for a 2-layer network
+:::: {.incremental}
+- 1D conv autoencoder on 8000 XRD patterns, each with 2000 angular channels.
+- Bottleneck 32 → reconstruction error $< 2\%$ on held-out patterns.
+- 60× compression of the dataset.
+- Encoder output usable as input to a downstream phase-classifier with 50× fewer parameters.
+::::
 
-- **Pen-and-paper**: derive all partial derivatives for a network with 2 inputs, 2 hidden (sigmoid), 1 output.
-- **NumPy**: implement the forward and backward pass from scratch (no autograd).
-- **Verification**: compare your gradients against PyTorch's `autograd` or finite differences.
+:::: {.notes}
+- This is a real win story: the AE makes the rest of the pipeline faster and more sample-efficient.
+::::
 
-## Exercise extension: sigmoid vs ReLU gradient visualization
+## Materials example 3 — defect anomaly detection
 
-- Train identical 5-layer architectures with sigmoid vs ReLU activation.
-- Plot per-layer gradient norms over 100 training epochs.
-- Observe the vanishing gradient effect directly.
-- Repeat with He initialization and compare.
+:::: {.incremental}
+- Train conv AE on micrographs of **defect-free** material (no labels needed).
+- Test on 200 micrographs, including some with cracks, voids, or unusual texture.
+- Pixel-wise reconstruction error highlights defect locations as bright spots.
+- ROC-AUC > 0.9 for flagging defective images, without ever showing a defect at training time.
+::::
 
-## Unit summary
+:::: {.notes}
+- Anomaly detection without labeled defects is the unique selling point of unsupervised methods.
+- Show one sample image with reconstruction error overlay if a figure is available.
+::::
 
-- Backprop = chain rule applied in reverse order, costing $O(W)$ per gradient — the only reason deep learning is feasible.
-- Gradient flow through a deep net is a *product* of Jacobians; the product structure dictates whether early layers learn at all.
-- ReLU + variance-preserving init (Xavier/He) are the two ingredients that keep that product near 1.
-- Per-layer gradient norms are the first diagnostic to reach for when training stalls.
+<!-- ===== §11. Wrap-up ===== -->
 
-## References + reading assignment for next unit
+## Three exam-must-knows
 
-- **Required reading before Unit 6:**
-  - Neuer: Ch. 4.5.4–4.5.5
-  - McClarren: Ch. 5.2–5.3.2
-- **Optional depth:**
-  - Bishop: Ch. 5.3 (error backpropagation)
-  - Goodfellow et al.: Ch. 6.5 (computational graphs, backpropagation)
-- Next unit: **Loss Landscapes and Optimization Behavior** — what does the surface we are descending on actually look like?
+:::: {.incremental}
+1. **K-means** minimizes the within-cluster sum of squares; convergence is to a local optimum and depends on initialization (use K-means++ + restarts). Spherical clusters only.
+2. **EM for GMM** alternates an E-step (compute responsibilities $\gamma_{ik}$) and an M-step (weighted update of $\pi_k, \mu_k, \Sigma_k$); each step is guaranteed not to decrease the data log-likelihood.
+3. **Linear autoencoder = PCA**; nonlinearity + bottleneck generalize PCA to curved manifolds; conv AEs do this for spatial data.
+::::
 
-::: {#refs}
-:::
+:::: {.notes}
+- These three are the load-bearing facts.
+- Likely exam formats: hand-trace one Lloyd or EM iteration; identify which method fits a given data shape; argue linear AE recovers PCA.
+::::
 
-## Example Notebook
+## Reading and bridge to Unit 6
 
-::: {.callout-note icon=false}
-## Week 5: Manual Backprop & Gradient Flow — DigitsDataset
-[Open rendered notebook →](https://eclipse-lab.github.io/Ai4MatLectures/notebooks/MFML/week05_backprop_digits.html)  
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ECLIPSE-Lab/Ai4MatLectures/blob/main/notebooks/MFML/week05_backprop_digits.ipynb)
-:::
+:::: {.callout-note icon=false}
+**Reading for Unit 6.** Skim Neuer Ch. 5 (unsupervised) and McClarren Ch. 4 + Ch. 8 to consolidate today's content. For Unit 6 (Loss Landscapes & Optimization), read Sandfeld's chapters on gradient descent and ADAM.
+::::
+
+:::: {.fragment}
+**Unit 6**: now that we have a richer set of objective functions (clustering objectives, reconstruction loss), what does their landscape look like? When does ADAM beat plain gradient descent? Why does **flat vs sharp** matter for generalization?
+::::
+
+:::: {.notes}
+- The transition: today added new losses (K-means objective, AE reconstruction). Unit 6 zooms in on what their landscapes look like.
+::::
+
+## Notebook companion + references
+
+:::: {.callout-note icon=false}
+### Week 5 notebooks (in `example_notebooks/` once added)
+- K-means by hand (NumPy) on alloy compositions.
+- K-means vs GMM on synthetic Gaussian mixture (sklearn).
+- AE on Fashion-MNIST: train, plot 2-D latent, reconstruct.
+- AE for anomaly detection: corrupt 5% of test images, threshold reconstruction error, report ROC-AUC.
+::::
+
+:::: {.fragment}
+**Self-study supplement (Unit 4):** the chain-rule and gradient-flow material is in `04_neural_networks_backprop/02_backprop_self_study.qmd` plus the `18.3` and `18.5` notebooks. A short warm-up question on the next exercise sheet uses it.
+::::
+
+:::: {.notes}
+- Make sure students know where the supplement lives and that there is a graded warm-up.
+::::
+
+## Learning outcomes — recap
+
+By the end of this unit, students can:
+
+:::: {.incremental}
+- **Distinguish** supervised vs unsupervised learning and recognize where each fits.
+- **Run** K-means by hand and explain its convergence and failure modes.
+- **State** the GMM likelihood and intuit the EM algorithm as alternating optimization.
+- **Describe** the autoencoder architecture and explain why a linear AE recovers PCA.
+- **Use** an autoencoder for compression and for anomaly detection.
+- **Anticipate** how the latent space connects to Unit 9 (representation learning) and Unit 11 (generative models).
+::::
+
+:::: {.notes}
+- These are also the assessment targets.
+- If a student remembers only the three must-knows, they have the core.
+::::
+
+:::: {#refs}
+::::

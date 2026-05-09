@@ -1,0 +1,776 @@
+---
+title: |
+  Mathematical Foundations of AI & ML<br>Unit 10: Attention & Transformers
+bibliography: ref.bib
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation:
+      - FAU Erlangen-Nürnberg
+execute:
+  eval: true
+  echo: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+      - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: "eclipse_logo_small.png"
+    background-transition: fade
+    footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
+    menu:
+      side: left
+      loadIcons: true
+    navigationMode: default
+    controls: true
+---
+
+<!-- ===== §1. Framing ===== -->
+
+## Where we are in the course
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Behind us:**
+
+- Unit 4: convolutional networks. Locality + weight-sharing as a built-in **prior**.
+- Unit 9: pre-trained encoders produce useful embeddings.
+- We praised "the encoder" without asking *what it actually is*.
+::::
+:::: {.column width="50%"}
+**Today (Unit 10):**
+
+- Open the encoder. Today's answer to "what is the encoder?" is almost always: **a transformer**.
+- Self-attention as content-based addressing.
+- Why transformers replaced CNNs/RNNs as the default modern architecture.
+- Vision Transformer (ViT) for materials data.
+::::
+::::
+
+:::: {.notes}
+- The narrative arc this term: features (Unit 4 CNN) → representations (Unit 9) → the architecture behind modern representations (Unit 10) → generation (Unit 11).
+- Today's content is among the most important in the entire course for what students will encounter in 2026.
+::::
+
+## Why this unit matters in 2026
+
+:::: {.incremental}
+- Every modern foundation model is a transformer: GPT (text), BERT (text), ViT (images), DINO (self-supervised vision), CLIP (multimodal), AlphaFold-2 (proteins).
+- Materials work increasingly uses transformers: composition tokens, micrograph patches, spectra sequences.
+- A 2026 ML practitioner who can't read transformer code is professionally limited.
+- Today is **the** missing piece in the original course plan.
+::::
+
+:::: {.notes}
+- This is the most-cited paper in modern ML history (Vaswani et al. 2017, "Attention is All You Need", > 100k citations).
+- Acknowledge to students: you are about to learn the architecture behind ChatGPT.
+::::
+
+## Recap: CNNs encode a *prior*
+
+:::: {.incremental}
+- A CNN layer assumes:
+  - **Locality**: nearby pixels matter most.
+  - **Translation equivariance**: a feature shifted in input shifts the same way in output.
+  - **Weight sharing**: the same kernel is applied everywhere.
+- These assumptions are **inductive biases** — they bake in human knowledge about images.
+- Cost: when these assumptions are wrong, CNNs hit a ceiling.
+::::
+
+:::: {.notes}
+- This is the core framing for today: CNN priors are useful, but they are *fixed*.
+- What if we let the model decide which positions interact?
+::::
+
+## When CNN locality fails
+
+:::: {.incremental}
+- **Long-range dependencies**: a defect in one corner of a micrograph correlates with grain structure on the other side.
+- **Sets**: composition fractions are a set of (element, fraction) pairs — order doesn't matter, but interactions do.
+- **Sequences with arbitrary range**: SMILES strings, XRD peaks, spectra interpreted as sequences.
+- **Graphs**: molecular bonds — neighbors aren't defined by spatial proximity.
+::::
+
+:::: {.fragment}
+For all of these, locality is **the wrong inductive bias**. We need a layer where any position can attend to any other.
+::::
+
+:::: {.notes}
+- Materials examples are concrete: don't let students think transformers are "just for language."
+- The graph case is for chemistry / molecule work.
+::::
+
+## Learning outcomes
+
+By the end of this unit, students can:
+
+:::: {.incremental}
+- **Explain** when CNN locality is the wrong prior.
+- **Derive** scaled dot-product self-attention as content-based addressing.
+- **Trace** an attention computation by hand for a small sequence.
+- **Sketch** a transformer block: attention + MLP + residual + LayerNorm.
+- **Describe** Vision Transformer (ViT) as "transformer on patch sequences."
+- **Explain** why scaling drove transformer dominance.
+::::
+
+:::: {.notes}
+- Three tiers: attention mechanism (the math), transformer block (the architecture), foundation models (the empirical phenomenon).
+::::
+
+## Roadmap of today's 90 min
+
+:::: {.incremental}
+1. **From CNN to attention** (~7 min) — motivating the new layer.
+2. **Self-attention as soft dictionary lookup** (~13 min) — the intuition.
+3. **The scaled dot-product formula** (~10 min) — the math.
+4. **Multi-head attention** (~10 min) — parallel subspaces.
+5. **Positional encoding** (~10 min) — restoring order information.
+6. **The transformer block** (~10 min) — putting it together.
+7. **Architecture variants** (~7 min) — encoder-only, decoder-only, encoder-decoder.
+8. **Vision Transformer** (~13 min) — transformers on images.
+9. **Foundation models** (~7 min) — why scaling won.
+10. **Wrap** (~3 min)
+::::
+
+:::: {.notes}
+- Pace warning: protect blocks 2-3 (attention idea + formula). The rest builds on them.
+- ViT is the most concrete example for materials students; protect block 8.
+::::
+
+<!-- ===== §2. From CNN to attention ===== -->
+
+## The motivating question
+
+:::: {.incremental}
+- A CNN says: "every position should be combined with its **spatial neighbors**."
+- An MLP says: "every position should be combined with **every other position** (with a fixed weight)."
+- **What if the combination weights were *learned per input*?**
+- That is the core idea of attention: weights that depend on **content**, not just position.
+::::
+
+:::: {.notes}
+- The "attention as dynamic, content-aware combination" framing is the cleanest way to think about it.
+- Contrast with CNN (fixed local kernel) and MLP (fixed dense matrix).
+::::
+
+## Soft dictionary lookup
+
+:::: {.incremental}
+- A regular Python dict: `d["key"] → value`. Match must be exact.
+- A **soft** dictionary: any query matches *every* key, with similarity-weighted strength. The result is a weighted average of values.
+- Self-attention is a soft dictionary lookup over the input itself.
+::::
+
+:::: {.fragment}
+For each query, return $\sum_i \mathrm{similarity}(\text{query}, \text{key}_i) \cdot \text{value}_i$.
+::::
+
+:::: {.notes}
+- The soft dictionary analogy is the single most useful mental model for self-attention.
+- It also generalizes: attention is used outside transformers (for cross-modal alignment, retrieval, etc.).
+::::
+
+<!-- ===== §3. Self-attention idea ===== -->
+
+## Self-attention — the players
+
+For each position $i$ in a sequence of length $n$ with embeddings $x_i \in \mathbb{R}^{d_{\text{model}}}$, compute three vectors:
+
+:::: {.incremental}
+- $q_i = W^Q x_i$ — the **query**: "what am I looking for?"
+- $k_i = W^K x_i$ — the **key**: "what do I offer for matching?"
+- $v_i = W^V x_i$ — the **value**: "what would I contribute if matched?"
+::::
+
+:::: {.fragment}
+$W^Q, W^K, W^V \in \mathbb{R}^{d_k \times d_{\text{model}}}$ are **learned** projection matrices.
+::::
+
+:::: {.notes}
+- The Q/K/V vocabulary comes from information retrieval (databases, search engines).
+- Q, K, V are computed from the *same* sequence — that is what makes it *self*-attention.
+::::
+
+## Self-attention — the computation
+
+For each query $q_i$:
+
+:::: {.incremental}
+1. Score against every key: $s_{ij} = q_i^T k_j$.
+2. Normalize via softmax: $\alpha_{ij} = \mathrm{softmax}_j(s_{ij})$.
+3. Weighted sum of values: $z_i = \sum_j \alpha_{ij} v_j$.
+::::
+
+:::: {.fragment}
+The output $z_i$ is a content-weighted blend of all values in the sequence.
+::::
+
+:::: {.notes}
+- One position can pull information from any other position; no locality assumed.
+- Step 2 ensures the weights sum to 1 — the "soft" in "soft dictionary."
+::::
+
+## Hand-traced example: 4 tokens
+
+Sequence: tokens $A, B, C, D$ with $d_{\text{model}} = 2$.
+
+After applying $W^Q, W^K, W^V$ (small toy values):
+
+| | Q | K | V |
+|---|---|---|---|
+| A | (1, 0) | (1, 0) | (10, 0) |
+| B | (0, 1) | (0, 1) | (0, 10) |
+| C | (1, 1) | (1, 1) | (5, 5) |
+| D | (1,-1) | (1,-1) | (3,-3) |
+
+:::: {.notes}
+- Walk through this on the board.
+- Compute Q_A · K for all 4 keys: gets (1, 0, 1, 1).
+- After softmax (with temperature ~1): roughly (0.31, 0.11, 0.31, 0.31). Drop sqrt(d_k) for now to keep arithmetic clean.
+- Weighted sum of V: blend of mostly A, C, D.
+::::
+
+## Hand-traced example: query A's output
+
+Compute $s_{A, \cdot} = q_A^T k_j$:
+
+- $q_A^T k_A = (1,0)\cdot(1,0) = 1$
+- $q_A^T k_B = (1,0)\cdot(0,1) = 0$
+- $q_A^T k_C = (1,0)\cdot(1,1) = 1$
+- $q_A^T k_D = (1,0)\cdot(1,-1) = 1$
+
+:::: {.fragment}
+Softmax of $(1, 0, 1, 1)$ ≈ $(0.31, 0.11, 0.31, 0.31)$. So $A$ attends mostly to $A$, $C$, $D$.
+::::
+
+:::: {.fragment}
+$z_A = 0.31 \cdot v_A + 0.11 \cdot v_B + 0.31 \cdot v_C + 0.31 \cdot v_D$.
+::::
+
+:::: {.notes}
+- Concrete arithmetic: students should be able to reproduce this on paper.
+- Notice: A attends *strongly* to A (self-attention often does this), and to all positions whose keys align with A's query direction.
+::::
+
+## Self-attention — the matrix view
+
+Stack queries, keys, values into matrices:
+
+$$
+Q = X W^Q \in \mathbb{R}^{n \times d_k}, \quad K = X W^K \in \mathbb{R}^{n \times d_k}, \quad V = X W^V \in \mathbb{R}^{n \times d_v}.
+$$
+
+:::: {.fragment}
+All scores at once: $S = Q K^T \in \mathbb{R}^{n \times n}$. Each row is one query's scores against all keys.
+::::
+
+:::: {.fragment}
+Output: $Z = \mathrm{softmax}(S) V \in \mathbb{R}^{n \times d_v}$.
+::::
+
+:::: {.notes}
+- The matrix form is what GPUs love: one big matmul, one softmax, another matmul.
+- The n × n score matrix is also where the famous "quadratic in sequence length" cost comes from.
+::::
+
+## What does the attention matrix tell us?
+
+:::: {.incremental}
+- $\mathrm{softmax}(S) \in \mathbb{R}^{n \times n}$: each row sums to 1.
+- Entry $(i, j)$ is "how much position $i$ pays attention to position $j$."
+- **Visualizing this matrix is one of the most useful interpretability tools in modern ML.**
+- For a ViT classifying a defect: the attention map shows *which image patches the model used*.
+::::
+
+:::: {.notes}
+- Attention maps are the closest thing transformers have to a built-in saliency map.
+- Caveat: not all attention is informative; some heads do "register" tasks that don't correspond to interpretable focus.
+::::
+
+<!-- ===== §4. Self-attention formula ===== -->
+
+## The scaled dot-product formula
+
+The full self-attention layer:
+
+$$
+\boxed{\,\mathrm{Attention}(Q, K, V) = \mathrm{softmax}\!\left(\frac{QK^T}{\sqrt{d_k}}\right) V.\,}
+$$
+
+:::: {.fragment}
+The only difference from what we just derived: the **scaling factor $\sqrt{d_k}$**.
+::::
+
+:::: {.notes}
+- This is THE formula. It belongs on the board for the rest of the lecture.
+- Vaswani et al. 2017 introduce it in this exact form.
+::::
+
+## Why $\sqrt{d_k}$?
+
+:::: {.incremental}
+- Without scaling: as $d_k$ grows, $q_i^T k_j$ has variance proportional to $d_k$ (sum of $d_k$ products).
+- Large variance scores → softmax saturates → gradients vanish on most entries.
+- Dividing by $\sqrt{d_k}$ keeps the variance constant, so the softmax stays in its responsive range.
+- For typical $d_k = 64$: divide by 8. Small detail, big effect on training.
+::::
+
+:::: {.notes}
+- This is one of those numerical details that distinguishes a working transformer from a non-working one.
+- The "scaled" in scaled dot-product attention.
+::::
+
+## Geometric intuition
+
+:::: {.incremental}
+- $q_i^T k_j$ is large when $q_i$ and $k_j$ point in similar directions.
+- After softmax: each query "votes" for the values whose keys align with it.
+- The output $z_i$ is a similarity-weighted average of $V$ — geometrically, a centroid biased toward aligned keys.
+- All operations are differentiable, so the projection matrices learn to *make the right keys align with the right queries* for the task.
+::::
+
+:::: {.notes}
+- This is the geometric heart of attention.
+- The model isn't given the alignments; it learns them.
+::::
+
+## Masking (briefly)
+
+:::: {.incremental}
+- Before softmax, set selected scores to $-\infty$.
+- **Causal mask**: position $i$ may not attend to positions $j > i$. Used in autoregressive models (GPT-style).
+- **Padding mask**: ignore padding tokens that don't correspond to real input.
+- A "decoder" layer is just a self-attention layer with a causal mask.
+::::
+
+:::: {.notes}
+- Masking is a small modification with big architectural consequences.
+- For materials work (which is rarely autoregressive), padding masks matter; causal masks usually don't.
+::::
+
+<!-- ===== §5. Multi-head ===== -->
+
+## Why one head is not enough
+
+:::: {.incremental}
+- A single attention head produces one weighted average per position.
+- Often we want to attend to **multiple things at once** — for a defect classifier, maybe one head focuses on shape, another on texture, another on spatial context.
+- Solution: run several attention layers in parallel, with different learned projections.
+::::
+
+:::: {.notes}
+- Multiple heads = multiple "questions" asked simultaneously about the input.
+- Compare to CNNs: multiple filters per layer, each detecting different features.
+::::
+
+## Multi-head attention — definition
+
+For each head $i = 1, \ldots, h$:
+
+$$
+\mathrm{head}_i = \mathrm{Attention}(Q W_i^Q, K W_i^K, V W_i^V),
+$$
+
+with each head's projection matrices independent. Concatenate and project:
+
+$$
+\mathrm{MultiHead}(Q, K, V) = \mathrm{Concat}(\mathrm{head}_1, \ldots, \mathrm{head}_h) W^O.
+$$
+
+:::: {.notes}
+- Each head sees a different subspace of the embeddings.
+- The final W^O lets the model recombine information across heads.
+::::
+
+## Multi-head — sizes that work
+
+Standard recipe (Vaswani et al. 2017):
+
+:::: {.incremental}
+- $d_{\text{model}} = 512$, $h = 8$, $d_k = d_v = d_{\text{model}} / h = 64$.
+- Each head's projection: $\mathbb{R}^{d_{\text{model}}} \to \mathbb{R}^{d_k}$.
+- Concatenated output: $h \cdot d_v = 512 = d_{\text{model}}$. Same shape going in and out.
+- Total compute: roughly the same as a single full-width attention.
+::::
+
+:::: {.notes}
+- The shape-preserving design is what lets transformer blocks stack cleanly.
+- Modern models (GPT-3, ViT-Large) use larger d_model but the same recipe.
+::::
+
+## What different heads attend to
+
+:::: {.incremental}
+- Trained transformers often develop **specialized heads**:
+  - Some heads attend strictly to the previous token.
+  - Some attend to syntactically related tokens (in language).
+  - Some attend uniformly (a "summarize" head).
+- For ViT on materials micrographs: heads can specialize to *texture*, *shape*, *grain boundary structure*.
+- Visualizing per-head attention is a common interpretability practice.
+::::
+
+:::: {.notes}
+- Head specialization is empirical, not designed. It emerges from training.
+- For materials interpretability, per-head attention maps are often more informative than aggregated maps.
+::::
+
+<!-- ===== §6. Positional encoding ===== -->
+
+## Attention is permutation-equivariant
+
+:::: {.incremental}
+- Suppose we shuffle the input tokens.
+- All Q, K, V vectors are computed from individual tokens — no positional information.
+- The attention operation doesn't care about order: the output is the *same set of vectors*, just reordered.
+- **For language and sequences, order matters.** "Dog bites man" ≠ "Man bites dog."
+::::
+
+:::: {.fragment}
+We need to inject positional information explicitly.
+::::
+
+:::: {.notes}
+- This is a real bug in vanilla attention — and the fix is one of the cleanest tricks in modern ML.
+- For materials applications: composition tokens are a *set* (no order), but micrograph patches and spectra peaks are *sequences* (order matters).
+::::
+
+## Sinusoidal positional encoding
+
+For position $\mathrm{pos}$ and embedding dimension $i$:
+
+$$
+\mathrm{PE}(\mathrm{pos}, 2i) = \sin(\mathrm{pos} / 10000^{2i/d_{\text{model}}}),
+$$
+$$
+\mathrm{PE}(\mathrm{pos}, 2i+1) = \cos(\mathrm{pos} / 10000^{2i/d_{\text{model}}}).
+$$
+
+:::: {.fragment}
+Add $\mathrm{PE}$ to the token embeddings before the first attention layer: $\tilde x_i = x_i + \mathrm{PE}(i, \cdot)$.
+::::
+
+:::: {.notes}
+- The frequencies span exponentially many scales, so the model can resolve both nearby and far positional differences.
+- This is what the original transformer paper used; later models (BERT, ViT) often switch to learned positional embeddings.
+::::
+
+## Why sinusoidal works
+
+:::: {.incremental}
+- Different frequencies → each position has a unique "fingerprint" across embedding dimensions.
+- Properties:
+  - **Bounded**: PE values stay in [-1, 1], so they don't dominate the token embedding.
+  - **Generalizes**: PE for position $\mathrm{pos} + k$ is a linear function of PE at $\mathrm{pos}$ — the model can extrapolate.
+  - **Inductive**: useful for sequences longer than seen in training.
+::::
+
+:::: {.notes}
+- The "linear function of PE at pos" property is what lets the model learn relative position relationships.
+- Some students will ask why sinusoidal — the honest answer is: it works, it generalizes, alternatives also work.
+::::
+
+## Learned vs sinusoidal vs RoPE
+
+:::: {.incremental}
+- **Sinusoidal** (Vaswani 2017): fixed, generalizes to longer sequences.
+- **Learned** (BERT, ViT): a learned lookup table indexed by position. Simpler, slightly better in-distribution, doesn't extrapolate.
+- **Rotary Position Embedding (RoPE)** (Su et al. 2021): rotates Q and K vectors by position-dependent angles. Now standard in LLaMA, GPT-NeoX, and most modern LLMs.
+::::
+
+:::: {.fragment}
+**For this course**: assume sinusoidal or learned. RoPE is for the curious.
+::::
+
+:::: {.notes}
+- Modern practice has largely moved past sinusoidal, but the original paper's choice is still pedagogically useful.
+- Don't dwell on RoPE; mention as a pointer.
+::::
+
+<!-- ===== §7. Transformer block ===== -->
+
+## The transformer block
+
+```
+   x  ──┐
+        ├─► LayerNorm ─► Multi-Head Attn ──► (+) ─►
+        └────────────────────────────────────┘   │
+                                                 │
+        ┌────────────────────────────────────────┘
+        │
+        ├─► LayerNorm ─► MLP (2-layer FF) ─────► (+) ─► output
+        └─────────────────────────────────────────┘
+```
+
+:::: {.fragment}
+Two sublayers: attention (mixes positions) and MLP (transforms each position independently). Each wrapped in a residual connection and LayerNorm.
+::::
+
+:::: {.notes}
+- This block is the basic unit of every transformer.
+- The diagram shows "pre-norm" (LayerNorm before each sublayer); "post-norm" puts it after. Pre-norm is now standard because it trains more stably.
+::::
+
+## What each sublayer does
+
+:::: {.incremental}
+- **Attention sublayer**: each position pulls in information from other positions. *Mixes across positions.*
+- **MLP sublayer**: a 2-layer fully-connected net (typically with GELU activation), applied **independently** to each position. *Transforms within positions.*
+- **Residual connections**: stable gradients, easier optimization (Unit 5 self-study material!).
+- **LayerNorm**: stabilizes activations, like BatchNorm but along the feature dimension.
+::::
+
+:::: {.notes}
+- The attention/MLP split is sometimes summarized as: attention does communication; MLP does computation.
+- Residuals are why deep transformers train at all — pure stacks of attention without residuals fail.
+::::
+
+## Stacking blocks
+
+:::: {.incremental}
+- Stack $L$ identical transformer blocks. Typical: $L = 6$ to $L = 96$.
+- Each layer refines the representation: lower layers tend to capture surface features, higher layers capture more abstract relationships.
+- Final layer's output is the **representation** used downstream (classification head, generation, etc.).
+::::
+
+:::: {.notes}
+- Modern LLMs are dozens to hundreds of layers deep.
+- For materials work, $L = 4$ to $L = 12$ is usually plenty.
+::::
+
+<!-- ===== §8. Architecture variants ===== -->
+
+## Three transformer architectures
+
+:::: {.incremental}
+- **Encoder-only** (BERT, ViT, DINO): bidirectional attention; takes input, produces representation. Used for classification, retrieval, embeddings.
+- **Decoder-only** (GPT, LLaMA): causal-masked attention; generates tokens one at a time. Used for autoregressive generation.
+- **Encoder-decoder** (original transformer, T5): encoder reads input; decoder generates output, attending to both itself (causal) and encoder output (cross-attention). Used for translation, summarization.
+::::
+
+:::: {.notes}
+- Three patterns cover almost everything you'll see in 2026.
+- For materials work: encoder-only is most common (representations, classification); decoder-only used for SMILES generation; encoder-decoder for sequence-to-sequence tasks.
+::::
+
+## Cross-attention (briefly)
+
+:::: {.incremental}
+- In encoder-decoder, the decoder's middle sublayer is **cross-attention**: queries from the decoder, keys and values from the encoder.
+- "Each decoder position decides what to pull from the encoder representation."
+- Used in image captioning, translation, and conditional generation in Unit 11.
+::::
+
+:::: {.notes}
+- Cross-attention is just "self-attention but Q comes from a different sequence than K, V."
+- Will reappear in conditional diffusion (Unit 11).
+::::
+
+<!-- ===== §9. Vision Transformer ===== -->
+
+## Vision Transformer (ViT)
+
+:::: {.incremental}
+- Take an image. Split it into a grid of fixed-size patches (e.g., 16×16 pixels).
+- Flatten each patch to a vector. Apply a learned linear projection to get a token embedding.
+- The image is now a *sequence* of patch tokens. Add positional embeddings.
+- Apply a standard transformer encoder. Use the output of a special [CLS] token as the image representation.
+::::
+
+:::: {.fragment}
+**That's it.** ViT is "transformer on patches." No convolutions, no spatial inductive bias.
+::::
+
+:::: {.notes}
+- The simplicity of ViT was the surprise of 2020: people expected vision-specific changes; what worked was no changes.
+- Dosovitskiy et al. 2020, "An Image is Worth 16x16 Words."
+::::
+
+## ViT — patch embedding
+
+:::: {.columns}
+:::: {.column width="50%"}
+For a $224 \times 224$ image with $16 \times 16$ patches:
+
+- Number of patches: $14 \times 14 = 196$.
+- Each patch: $16 \times 16 \times 3 = 768$-dim.
+- Linear projection to $d_{\text{model}}$ (e.g., 768).
+- Sequence length: $196 + 1$ (the [CLS] token) = $197$.
+::::
+:::: {.column width="50%"}
+The [CLS] token is a learned vector prepended to the sequence. After all transformer blocks, its final representation is used as the image embedding.
+
+This is the same trick BERT uses for sentence classification.
+::::
+::::
+
+:::: {.notes}
+- The [CLS] token is a "pooling" trick that avoids needing average-pooling at the end.
+- Modern ViTs sometimes drop it in favor of average-pooling over patch tokens.
+::::
+
+## ViT vs CNN — when does ViT win?
+
+:::: {.incremental}
+- **ViT wins**: when there is **lots** of pre-training data (think ImageNet-21k or JFT-300M).
+- **CNN wins**: when training data is **limited** — locality is a useful prior that ViT has to learn from scratch.
+- A common hybrid: pre-train ViT on a huge corpus, fine-tune on your small materials dataset. Best of both worlds.
+::::
+
+:::: {.fragment}
+For materials work: a pre-trained ViT (e.g., DINOv2) frozen + linear probe is often the strongest baseline. (Unit 9 told you this; now you know what's inside the encoder.)
+::::
+
+:::: {.notes}
+- The "data efficiency" axis is the key trade-off.
+- Cite the original ViT paper's data-efficiency curve: ViT crosses CNN around 100M images.
+::::
+
+## ViT for materials micrographs
+
+:::: {.incremental}
+- A pre-trained ViT (DINOv2) embeds 256×256 SEM patches into 768-D vectors.
+- For defect classification: train a linear classifier on top of the frozen embeddings. 5,000 labeled examples → 95% accuracy.
+- Attention map: shows which patches the model "looks at" — typically defect regions, grain boundaries, contrast transitions.
+- This is interpretable in a way CNN feature maps usually aren't.
+::::
+
+:::: {.notes}
+- Concrete materials win story.
+- Attention as built-in saliency is a real practical advantage for engineering review of model decisions.
+::::
+
+## ViT attention maps as saliency
+
+:::: {.incremental}
+- For each transformer block, the attention from the [CLS] token to each patch is a *patch-importance score*.
+- Average across heads or visualize per-head.
+- Materials engineers can verify: "the model classified this as a defect, and it was looking at the actual defect."
+- Compare to GradCAM for CNNs — attention maps require no extra computation, no gradient backflow.
+::::
+
+:::: {.notes}
+- This connects forward to Unit 14 (explainability): attention is one of the cleanest interpretability tools available.
+- Caveat (research-level): attention is not a complete explanation; some recent work argues attention can be misleading. Don't oversell.
+::::
+
+<!-- ===== §10. Foundation models ===== -->
+
+## Why scaling won
+
+:::: {.incremental}
+- Transformers scale *gracefully*: doubling parameters and data gives predictable performance gains (scaling laws — Kaplan et al., Hoffmann et al.).
+- Self-attention has no built-in inductive bias — which sounds bad — but means the model is **flexible**: with enough data, it learns the right priors.
+- Hardware loves matmul; transformers are mostly matmul. GPUs and TPUs were designed around them (or vice versa).
+- **Result**: the same architecture, scaled up with more data and compute, kept getting better.
+::::
+
+:::: {.notes}
+- The "no inductive bias is the bias" framing is the deep lesson.
+- For materials: today's foundation models will look quaint in 5 years; the *recipe* is what matters.
+::::
+
+## The foundation model recipe
+
+:::: {.incremental}
+1. Pre-train a large transformer on a massive unlabeled corpus.
+2. Use a self-supervised objective: language modeling (text), masked patch prediction or contrastive learning (images).
+3. Freeze (or lightly fine-tune) the encoder.
+4. Reuse it for downstream tasks via embeddings + small heads.
+::::
+
+:::: {.fragment}
+This is the dominant paradigm in 2026. For materials, true domain-specific foundation models are emerging (Materials Project's MatBench Discovery, MoLFormer for molecules, MaterialsAtlas).
+::::
+
+:::: {.notes}
+- Self-supervised objectives connect back to Unit 9 (contrastive learning).
+- Materials foundation models are a frontier area; students entering research now may build them.
+::::
+
+## Tokenization (briefly)
+
+:::: {.incremental}
+- For language: BPE / WordPiece — splits text into subword pieces.
+- For images: patch embedding (we just saw).
+- For materials: open question. Composition fractions as tokens? Element types? Crystal symmetries?
+- Tokenization choice **defines what units the model can reason about**.
+::::
+
+:::: {.notes}
+- Tokenization is its own design space; for materials work, this is an active research question.
+- Don't go deep — just acknowledge it as a step.
+::::
+
+<!-- ===== §11. Wrap ===== -->
+
+## Three exam-must-knows
+
+:::: {.incremental}
+1. **Self-attention** computes $\mathrm{softmax}(QK^T / \sqrt{d_k}) V$ — a similarity-weighted average of value vectors, where similarity is content-based (Q vs K dot product). Multi-head runs several attentions in parallel on different learned subspaces.
+2. **A transformer block** = multi-head attention + MLP, each wrapped in a residual connection and LayerNorm. Positional encoding is added at input because attention is permutation-equivariant.
+3. **ViT** treats an image as a sequence of patch tokens and applies a standard transformer. ViT beats CNNs with enough data; CNNs win with less data because of their locality prior.
+::::
+
+:::: {.notes}
+- These are the load-bearing facts.
+- Likely exam formats: derive scaled dot-product attention; explain why the √d_k scaling is needed; sketch a transformer block.
+::::
+
+## Reading and bridge to Unit 11
+
+:::: {.callout-note icon=false}
+**Reading for Unit 11 (Generative Models: VAE & Diffusion).** Skim Kingma & Welling (2013) "Auto-Encoding Variational Bayes" for VAE, and Lilian Weng's blog post "What are diffusion models?" for diffusion intuition. Murphy (2023) Ch. 28 is the textbook reference.
+::::
+
+:::: {.fragment}
+**Unit 11**: today's transformer can be an encoder. What if we want a *generator* — something that produces new molecules, microstructures, designs? VAEs add a probabilistic latent; diffusion learns to denoise. The U-Net inside Stable Diffusion is, increasingly, a **transformer**.
+::::
+
+:::: {.notes}
+- The bridge: representations are now solved (Unit 9 + Unit 10); generation is next (Unit 11).
+- Modern diffusion models use transformer-based denoisers — DiT, Stable Diffusion 3.
+::::
+
+## Notebook companion + references
+
+:::: {.callout-note icon=false}
+### Week 10 notebooks (in `example_notebooks/` once added)
+- Single-head attention from scratch in 10 lines of PyTorch; inspect attention weights on a toy sequence.
+- Hand-trace one full attention computation for $n = 3$, $d_k = 2$; verify against autograd.
+- Tiny ViT on CIFAR-10 or a small materials dataset; compare to a CNN of similar parameter count.
+- Pre-trained ViT (DINOv2 from `timm` or HuggingFace): attention map visualization on micrographs.
+::::
+
+:::: {.fragment}
+**Strongly recommended take-home**: Karpathy's "Let's build GPT" notebook (nanoGPT). 200 lines, demystifies decoder-only transformers entirely.
+::::
+
+:::: {.notes}
+- Karpathy's video walk-through is a 2-hour investment that pays off for the rest of a career.
+- Make it explicit that this is the gold-standard introduction.
+::::
+
+## Learning outcomes — recap
+
+By the end of this unit, students can:
+
+:::: {.incremental}
+- **Explain** when CNN locality is the wrong inductive bias.
+- **Derive** scaled dot-product self-attention as content-based addressing.
+- **Trace** an attention computation by hand for a small sequence.
+- **Sketch** a transformer block: attention + MLP + residual + LayerNorm.
+- **Describe** the Vision Transformer as "transformer on patch sequences."
+- **Explain** why scaling drove transformer dominance.
+::::
+
+:::: {.notes}
+- Final recap = exam targets.
+- The deep takeaway: a single architecture, scaled up, ate the entire field.
+::::
+
+:::: {#refs}
+::::

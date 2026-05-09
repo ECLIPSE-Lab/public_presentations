@@ -1,0 +1,866 @@
+---
+title: |
+  Mathematical Foundations of AI & ML<br>Unit 11: Generative Models — VAE & Diffusion
+bibliography: ref.bib
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation:
+      - FAU Erlangen-Nürnberg
+execute:
+  eval: true
+  echo: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+      - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: "eclipse_logo_small.png"
+    background-transition: fade
+    footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
+    menu:
+      side: left
+      loadIcons: true
+    navigationMode: default
+    controls: true
+---
+
+<!-- ===== §1. Framing ===== -->
+
+## Where we are in the course
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Behind us:**
+
+- Unit 5: autoencoders compress.
+- Unit 8: KL divergence and Bayesian thinking.
+- Units 9–10: encoders that produce useful representations; transformers as the architecture behind them.
+- We can encode. We cannot **generate**.
+::::
+:::: {.column width="50%"}
+**Today (Unit 11):**
+
+- From discriminative to **generative**.
+- Variational Autoencoders (VAEs): probabilistic latent + sampling.
+- Diffusion models: learn to denoise.
+- The dominant generative paradigms of the 2020s.
+::::
+::::
+
+:::: {.notes}
+- The pivot today: from "encode and discriminate" to "encode, sample, decode."
+- Modern generative AI (Stable Diffusion, GPT image generation, AlphaFold-3 structure prediction) is mostly diffusion + transformer.
+::::
+
+## Why this unit matters
+
+:::: {.incremental}
+- **Inverse design**: generate a microstructure with target Young's modulus and density.
+- **Data augmentation**: synthesize plausible spectra to expand a labeled training set.
+- **Scientific discovery**: sample candidate molecules conditioned on a desired property.
+- **Modern AI literacy**: every "AI generates X" headline since 2022 is a diffusion model.
+::::
+
+:::: {.notes}
+- Inverse design is the killer application for materials/engineering.
+- Generative models are also useful for understanding: a model that can sample x ~ p(x) has captured the data distribution.
+::::
+
+## Recap: what an autoencoder cannot do
+
+:::: {.incremental}
+- An AE encoder $f_\phi: \mathbb{R}^d \to \mathbb{R}^k$ maps **observed** $x$ to a deterministic latent $z = f_\phi(x)$.
+- Question: can we sample a *new* $x$? Specifically, can we sample some $z$ and decode?
+- **No.** We don't know the distribution of $z$ over the training data — the latent might cluster weirdly, leave gaps ("holes"), or have no clean prior structure.
+- Sampling random $z$ from $\mathcal{N}(0, I)$ → decode → garbage.
+::::
+
+:::: {.fragment}
+**Missing piece**: a controllable distribution over $z$ — and a tractable way to sample from it.
+::::
+
+:::: {.notes}
+- This sets up the VAE as the principled fix.
+- The "holes in the latent" point is concrete: vanilla AE latents are not space-filling.
+::::
+
+## What is a generative model?
+
+A generative model represents (or approximates) the data distribution $p(x)$. It must support:
+
+:::: {.incremental}
+- **Sampling**: produce $x \sim p(x)$.
+- **Likelihood** (sometimes): evaluate $p(x)$ for a given $x$.
+- **Conditioning**: sample from $p(x \mid c)$ for a condition $c$ (target property, class label, prompt).
+::::
+
+:::: {.fragment}
+**Today**: VAEs (sampling + approximate likelihood) and diffusion (sampling, no exact likelihood, but extraordinary quality).
+::::
+
+:::: {.notes}
+- Different generative models trade off these capabilities differently. Listing them now sets up the comparison at the end.
+- VAE: tractable likelihood lower bound + fast sampling, blurry samples.
+- Diffusion: no exact likelihood, slow sampling, sharp samples.
+::::
+
+## Learning outcomes
+
+By the end of this unit, students can:
+
+:::: {.incremental}
+- **Explain** why a vanilla autoencoder cannot generate new samples.
+- **Derive** the VAE ELBO at intuition depth and use the reparameterization trick.
+- **Use** a trained VAE: encode, sample latent, decode.
+- **Describe** the forward (noising) and reverse (denoising) processes of a diffusion model.
+- **Apply** classifier-free guidance for conditional generation.
+- **Compare** VAEs, diffusion, GANs, and normalizing flows on the trade-off axes.
+::::
+
+:::: {.notes}
+- Three tiers: VAE math (the principled lower-bound framework), diffusion mechanics, applied design choices.
+::::
+
+## Roadmap of today's 90 min
+
+:::: {.incremental}
+1. **What is a generative model?** (~5 min)
+2. **VAE setup and intuition** (~10 min)
+3. **VAE loss: ELBO + reparameterization** (~15 min)
+4. **Training and using a VAE** (~5 min)
+5. **VAE → diffusion bridge** (~5 min)
+6. **Forward diffusion** (~10 min)
+7. **Reverse diffusion** (~15 min)
+8. **Sampling and conditional generation** (~10 min)
+9. **Score matching, alternatives, materials applications** (~10 min)
+10. **Wrap** (~5 min)
+::::
+
+:::: {.notes}
+- Pace warning: ELBO and reverse diffusion are the dense blocks; protect them.
+- Score matching is a 1-slide pointer, not a derivation.
+::::
+
+<!-- ===== §2. VAE setup ===== -->
+
+## VAE — the architectural change
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Vanilla AE**:
+
+$$
+x \xrightarrow{f_\phi} z \xrightarrow{g_\theta} \hat x
+$$
+
+Encoder produces a single point $z$.
+::::
+:::: {.column width="50%"}
+**VAE**:
+
+$$
+x \xrightarrow{f_\phi} (\mu, \sigma) \xrightarrow{\text{sample}} z \xrightarrow{g_\theta} \hat x
+$$
+
+Encoder produces a *distribution* $\mathcal{N}(\mu, \sigma^2 I)$. Sample $z$ from it.
+::::
+::::
+
+:::: {.fragment}
+The latent $z$ is now a random variable, not a deterministic function of $x$.
+::::
+
+:::: {.notes}
+- The encoder outputs the *parameters* of a Gaussian, not a single vector.
+- This is the architectural change. The training objective is what makes it work.
+::::
+
+## VAE — the prior on $z$
+
+:::: {.incremental}
+- We want a tractable distribution to **sample from at generation time**.
+- Choose a fixed prior $p(z) = \mathcal{N}(0, I)$ — the standard Gaussian on $\mathbb{R}^k$.
+- Constrain training so that the *aggregate* posterior $q_\phi(z) = \mathbb{E}_{x}[q_\phi(z \mid x)]$ stays close to $p(z)$.
+- At generation time: sample $z \sim \mathcal{N}(0, I)$, decode.
+::::
+
+:::: {.fragment}
+**This is the core trick**: train the encoder to push latents toward a known prior, so we can sample from that prior at test time.
+::::
+
+:::: {.notes}
+- The prior choice is conventional. Other priors (mixtures of Gaussians, vMF distributions) work but are less common.
+- The aggregate-posterior view is what really matters; per-x posteriors don't need to be Gaussian, just close.
+::::
+
+## VAE — the loss, intuitively
+
+For each training point $x$, the VAE loss has two terms:
+
+:::: {.incremental}
+- **Reconstruction term**: how well does decoding $z$ recover $x$? (Same as a vanilla AE.)
+- **Prior-matching term**: is $q_\phi(z \mid x)$ close to $p(z) = \mathcal{N}(0, I)$? Use **KL divergence**.
+::::
+
+:::: {.fragment}
+$$
+\mathcal{L}(\theta, \phi; x) = \underbrace{-\mathbb{E}_{z \sim q_\phi(z|x)}[\log p_\theta(x \mid z)]}_{\text{reconstruction}} + \underbrace{\mathrm{KL}(q_\phi(z \mid x) \,\|\, p(z))}_{\text{prior-matching}}
+$$
+::::
+
+:::: {.notes}
+- The reconstruction term is exactly the AE loss (reduce, in expectation, to MSE for Gaussian decoder).
+- The KL term is the new ingredient: pushes the per-x posterior toward the prior.
+::::
+
+<!-- ===== §3. VAE loss ===== -->
+
+## The ELBO — what's that?
+
+The actual quantity we want to maximize is $\log p_\theta(x)$ — but it is intractable (an integral over $z$).
+
+:::: {.fragment}
+**Trick**: derive a tractable **lower bound**.
+$$
+\log p_\theta(x) \geq \mathbb{E}_{q_\phi(z|x)}[\log p_\theta(x \mid z)] - \mathrm{KL}(q_\phi(z \mid x) \,\|\, p(z)) = \mathrm{ELBO}.
+$$
+::::
+
+:::: {.fragment}
+Maximizing the ELBO maximizes a lower bound on the log-likelihood. We are *almost* doing maximum likelihood.
+::::
+
+:::: {.notes}
+- ELBO = Evidence Lower BOund. "Evidence" is the marginal likelihood p(x).
+- Don't derive on the board — Bishop / Murphy have it. Just state and motivate.
+- The ELBO has been the workhorse of variational inference since the 1990s.
+::::
+
+## ELBO derivation sketch
+
+Start with $\log p(x) = \log \int p(x, z) dz$. Multiply and divide by $q_\phi(z|x)$:
+
+$$
+\log p(x) = \log \int q_\phi(z|x) \frac{p(x, z)}{q_\phi(z|x)} dz \geq \int q_\phi(z|x) \log \frac{p(x, z)}{q_\phi(z|x)} dz \quad \text{(Jensen)}.
+$$
+
+:::: {.fragment}
+Expanding $p(x, z) = p(x|z) p(z)$ and rearranging:
+$$
+\log p(x) \geq \mathbb{E}_q[\log p(x|z)] - \mathrm{KL}(q(z|x) \| p(z)).
+$$
+::::
+
+:::: {.notes}
+- Walk through Jensen briefly: log of an expectation ≥ expectation of log for concave log.
+- The lower bound is tight when q matches the true posterior — the gap is KL(q(z|x) || p(z|x)).
+::::
+
+## The reparameterization trick
+
+:::: {.incremental}
+- We need to backpropagate through the **sampling step** $z \sim \mathcal{N}(\mu, \sigma^2)$.
+- Problem: sampling is not differentiable.
+- Solution: rewrite the sample as a deterministic function of a noise variable:
+$$
+z = \mu_\phi(x) + \sigma_\phi(x) \odot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I).
+$$
+::::
+
+:::: {.fragment}
+The randomness sits in $\epsilon$ (no parameters); $\mu, \sigma$ are deterministic functions of $\phi$. Now gradients flow from the loss through $z$ back to $\phi$.
+::::
+
+:::: {.notes}
+- The reparameterization trick is what makes VAEs trainable end-to-end.
+- This trick is one of the most reused ideas in modern ML — also used in Bayesian neural networks, normalizing flows, etc.
+::::
+
+## KL between Gaussians — closed form
+
+When $q_\phi(z \mid x) = \mathcal{N}(\mu, \mathrm{diag}(\sigma^2))$ and $p(z) = \mathcal{N}(0, I)$:
+
+$$
+\mathrm{KL}(q \,\|\, p) = \frac{1}{2}\sum_{j=1}^{k}\!\left(\mu_j^2 + \sigma_j^2 - \log \sigma_j^2 - 1\right).
+$$
+
+:::: {.fragment}
+- $\mu_j^2$: penalize means away from 0.
+- $\sigma_j^2 - \log \sigma_j^2 - 1$: penalize variances away from 1 (minimum at $\sigma_j = 1$).
+- Easy to compute, no Monte Carlo needed.
+::::
+
+:::: {.notes}
+- The closed-form KL is what makes VAE training fast.
+- Each per-dimension term is independent — we minimize a sum of small per-dim penalties.
+- Plot the second term as a function of σ to show the minimum at 1.
+::::
+
+## VAE training step — the recipe
+
+```python
+mu, log_sigma = encoder(x)
+epsilon = torch.randn_like(mu)
+z = mu + torch.exp(log_sigma) * epsilon
+x_recon = decoder(z)
+
+recon_loss = ((x - x_recon)**2).mean()
+kl_loss = 0.5 * (mu**2 + (2*log_sigma).exp() - 2*log_sigma - 1).sum()
+loss = recon_loss + kl_loss
+loss.backward()
+```
+
+:::: {.fragment}
+~10 lines. Encoder predicts $\log \sigma$ for numerical stability. Sample once per training step (more samples = lower-variance gradient estimate but more compute).
+::::
+
+:::: {.notes}
+- Show this code; the mechanics are simple.
+- Predicting log_sigma instead of sigma is a numerical trick: avoids negatives.
+::::
+
+## β-VAE: weighted KL
+
+:::: {.incremental}
+- Vanilla VAE: equal weight on reconstruction and KL.
+- β-VAE: $\mathcal{L} = \mathrm{recon} + \beta \cdot \mathrm{KL}$.
+- $\beta > 1$: stricter prior matching → more disentangled, smoother latent, *worse* reconstruction.
+- $\beta < 1$: looser prior → sharper reconstruction, latent less Gaussian.
+- Choice depends on use case: generation quality vs interpretability.
+::::
+
+:::: {.notes}
+- β-VAE (Higgins et al. 2017) is the standard practical knob.
+- For materials work, β > 1 helps when you want interpretable latent dimensions.
+::::
+
+## Posterior collapse
+
+:::: {.incremental}
+- Failure mode: the encoder outputs $\mu \approx 0, \sigma \approx 1$ for *all* inputs — the latent ignores $x$.
+- The decoder then ignores $z$ and reconstructs from "average" data.
+- Symptom: KL term ≈ 0; reconstruction is poor.
+- Causes: too-strong KL weight; too-powerful decoder.
+- Mitigations: KL warm-up (start with low β, increase); weaker decoder; β-VAE with $\beta < 1$.
+::::
+
+:::: {.notes}
+- Posterior collapse is the #1 failure mode of VAEs in practice. Worth flagging.
+- Especially common with autoregressive decoders (RNN/transformer decoders); CNNs less so.
+::::
+
+<!-- ===== §4. Using a VAE ===== -->
+
+## Generating new data from a trained VAE
+
+:::: {.incremental}
+1. Sample $z \sim \mathcal{N}(0, I)$.
+2. Decode: $x_{\text{new}} = g_\theta(z)$.
+3. (Optional) for a stochastic decoder: also sample $x \sim p_\theta(x \mid z)$.
+::::
+
+:::: {.fragment}
+That's it. No labels needed; no special procedure. The trained encoder/decoder pair is now also a sampler.
+::::
+
+:::: {.notes}
+- This is the payoff of all the math: clean, fast generation.
+- For materials: sample a candidate microstructure; decode; check if it satisfies constraints.
+::::
+
+## Latent interpolation in a VAE
+
+:::: {.incremental}
+- Encode two real samples $x_A, x_B$ → latents $z_A, z_B$.
+- Interpolate: $z_t = (1-t) z_A + t z_B$ for $t \in [0, 1]$.
+- Decode each $z_t$.
+- Result in a well-trained VAE: a **smooth path** between the two outputs in $x$-space.
+::::
+
+:::: {.fragment}
+For materials: interpolate between two micrographs to see how phases transition; interpolate between two compositions to traverse phase space.
+::::
+
+:::: {.notes}
+- VAE interpolation is the cleanest demonstration that the latent has meaningful geometry.
+- Compare to vanilla AE interpolation, which often passes through "hole" regions.
+::::
+
+## VAE summary
+
+:::: {.incremental}
+- **Architecture**: encoder → distribution → reparameterized sample → decoder.
+- **Loss**: reconstruction + KL to standard Gaussian prior.
+- **Sampling**: $z \sim \mathcal{N}(0, I)$, decode.
+- **Strengths**: principled, fast sampling, smooth latent.
+- **Weaknesses**: blurry samples (the KL prior tends to "smooth out" generation).
+::::
+
+:::: {.notes}
+- VAE summary in five bullets — these are the must-knows for the VAE half of the unit.
+- The blurriness is the historical motivation for GANs, then for diffusion.
+::::
+
+<!-- ===== §5. VAE → diffusion bridge ===== -->
+
+## VAEs sample in one step. What if we used many?
+
+:::: {.incremental}
+- A VAE samples $z$ from a learned prior, then decodes in **one** step.
+- The single-step decode has to do all the work — and produces blurry outputs.
+- **What if we generated through many small steps**, each easier than the last?
+::::
+
+:::: {.fragment}
+This is the **diffusion idea**: start from pure noise, gradually denoise to produce a sample.
+::::
+
+:::: {.notes}
+- The one-step vs many-step framing is the cleanest motivation for diffusion.
+- Many small steps = each network call solves a simpler problem.
+::::
+
+## The diffusion picture
+
+```
+   x_0  →  x_1  →  x_2  →  ...  →  x_T  ≈  N(0, I)
+   data                              pure noise
+   (forward: add noise gradually)
+```
+
+:::: {.incremental}
+- **Forward process** (fixed, no learning): gradually add Gaussian noise to data.
+- **Reverse process** (learned): gradually remove noise to recover data.
+- At training time: pick a random timestep $t$, add the right amount of noise to a real sample, train a network to predict the noise.
+- At generation time: start from $x_T \sim \mathcal{N}(0, I)$, iterate the learned reverse process.
+::::
+
+:::: {.notes}
+- The two processes are the heart of diffusion.
+- The forward process is fixed; only the reverse is learned. This is a key simplification.
+::::
+
+<!-- ===== §6. Forward diffusion ===== -->
+
+## Forward process — definition
+
+A Markov chain that progressively adds Gaussian noise:
+
+$$
+q(x_t \mid x_{t-1}) = \mathcal{N}\!\left(x_t;\; \sqrt{1 - \beta_t}\, x_{t-1},\; \beta_t I\right).
+$$
+
+:::: {.incremental}
+- $\beta_t \in (0, 1)$ is a **noise schedule**, typically small (e.g., 0.0001 to 0.02 over 1000 steps).
+- Each step shrinks the signal by $\sqrt{1 - \beta_t}$ and adds isotropic Gaussian noise of variance $\beta_t$.
+- After enough steps, $x_T$ is approximately $\mathcal{N}(0, I)$.
+::::
+
+:::: {.notes}
+- The √(1 - β_t) factor keeps the variance of x_t bounded as t grows — important for the closed-form below.
+- Common schedules: linear, cosine. Cosine (Nichol & Dhariwal 2021) is now standard.
+::::
+
+## Forward process — closed-form marginal
+
+The composition of $t$ Gaussian steps is itself Gaussian:
+
+$$
+q(x_t \mid x_0) = \mathcal{N}\!\left(x_t;\; \sqrt{\bar\alpha_t}\, x_0,\; (1 - \bar\alpha_t) I\right),
+$$
+
+where $\alpha_t = 1 - \beta_t$ and $\bar\alpha_t = \prod_{s=1}^{t} \alpha_s$.
+
+:::: {.fragment}
+Equivalently:
+$$
+x_t = \sqrt{\bar\alpha_t}\, x_0 + \sqrt{1 - \bar\alpha_t}\, \epsilon, \quad \epsilon \sim \mathcal{N}(0, I).
+$$
+::::
+
+:::: {.notes}
+- This is the forward-process formula students will remember.
+- We can sample x_t for any t directly from x_0 — no iteration needed at training time.
+- This is what makes training tractable.
+::::
+
+## What the schedule looks like
+
+:::: {.incremental}
+- $t = 0$: pure data. $\bar\alpha_0 = 1$, no noise.
+- $t \approx T/2$: half noise, half data. The hard regime — both signal and noise visible.
+- $t = T$: $\bar\alpha_T \approx 0$. Effectively pure Gaussian noise.
+- Total steps $T$: typically 1000 in DDPM, fewer (50–250) in modern accelerated samplers.
+::::
+
+:::: {.notes}
+- The schedule is a hyperparameter. Cosine schedules avoid the abrupt early-step destruction of linear schedules.
+- The "destruction trajectory" is what the reverse network has to learn to invert.
+::::
+
+<!-- ===== §7. Reverse diffusion ===== -->
+
+## Reverse process — what we want
+
+Ideally:
+
+$$
+p(x_{t-1} \mid x_t) = ?
+$$
+
+:::: {.incremental}
+- We want to undo the noising step: given $x_t$, where was $x_{t-1}$?
+- This *is* a Gaussian — but its mean and variance depend on the unknown $x_0$.
+- We approximate $p(x_{t-1} \mid x_t)$ with a **learned Gaussian** $p_\theta(x_{t-1} \mid x_t)$.
+::::
+
+:::: {.notes}
+- The reverse Gaussian assumption is justified asymptotically when β_t is small.
+- The learned model fills in the gap of not knowing x_0.
+::::
+
+## Reverse process — parameterization
+
+The cleanest parameterization: train a network $\epsilon_\theta(x_t, t)$ to predict the noise that was added:
+
+$$
+\epsilon_\theta(x_t, t) \approx \epsilon \quad \text{where} \quad x_t = \sqrt{\bar\alpha_t}\, x_0 + \sqrt{1 - \bar\alpha_t}\, \epsilon.
+$$
+
+:::: {.fragment}
+**Why predict noise (instead of $x_0$ or $x_{t-1}$)?** Empirically: noise prediction trains more stably and produces better samples. Also: noise has unit variance everywhere, so the network output is well-scaled.
+::::
+
+:::: {.notes}
+- DDPM (Ho et al. 2020) introduces this parameterization. It is now standard.
+- Other parameterizations (predict x_0, predict v) work; noise prediction is the default.
+::::
+
+## The DDPM training loss
+
+The simplified loss is just MSE on noise:
+
+$$
+\mathcal{L}_{\text{simple}} = \mathbb{E}_{t, x_0, \epsilon}\!\left[\left\| \epsilon - \epsilon_\theta\!\left(\sqrt{\bar\alpha_t} x_0 + \sqrt{1 - \bar\alpha_t} \epsilon,\; t\right) \right\|^2\right].
+$$
+
+:::: {.fragment}
+**Algorithm (training)**:
+1. Sample $x_0$ from data, $t \sim \mathrm{Uniform}\{1, \ldots, T\}$, $\epsilon \sim \mathcal{N}(0, I)$.
+2. Compute $x_t = \sqrt{\bar\alpha_t} x_0 + \sqrt{1 - \bar\alpha_t}\, \epsilon$.
+3. Predict $\hat\epsilon = \epsilon_\theta(x_t, t)$.
+4. Loss: $\|\epsilon - \hat\epsilon\|^2$.
+5. Backpropagate.
+::::
+
+:::: {.notes}
+- The loss is shockingly simple — a key reason diffusion took off.
+- Compare to GANs: no adversarial dynamics, no min-max optimization, just stable supervised learning.
+::::
+
+## What is $\epsilon_\theta$?
+
+:::: {.incremental}
+- A neural network that takes a noisy image and a timestep, outputs predicted noise.
+- Most common architecture: a **U-Net** with timestep embedding (sinusoidal).
+- Modern alternative: a **transformer** (DiT — Diffusion Transformer; Stable Diffusion 3).
+- Receives time $t$ as an additional input — same network handles all timesteps.
+::::
+
+:::: {.notes}
+- The U-Net inheritance from medical imaging is what made diffusion practical at scale.
+- DiT (Peebles & Xie 2023) replaces U-Net with a transformer; this is the convergence point with Unit 10.
+::::
+
+<!-- ===== §8. Sampling ===== -->
+
+## Sampling from a trained diffusion model
+
+```
+Input:  trained ε_θ
+1. x_T ← sample from N(0, I)
+2. for t = T, T-1, ..., 1:
+3.     ε̂ ← ε_θ(x_t, t)
+4.     compute mean μ_t and variance σ_t² from ε̂
+5.     x_{t-1} ← μ_t + σ_t · z       where z ~ N(0, I), z = 0 when t = 1
+6. return x_0
+```
+
+:::: {.fragment}
+$T$ network calls per sample. With $T = 1000$, this is **slow** compared to a VAE (1 call) — the dominant practical limitation.
+::::
+
+:::: {.notes}
+- Sampling speed is THE complaint about diffusion.
+- Modern accelerated samplers (DDIM, DPM-Solver) reduce T to 20-50 with little quality loss.
+::::
+
+## DDIM and faster sampling
+
+:::: {.incremental}
+- DDPM uses stochastic reverse steps. Each step has injected noise.
+- **DDIM** (Song et al. 2021): a deterministic reverse process. Same trained network, fewer steps.
+- 50 DDIM steps ≈ 1000 DDPM steps in quality.
+- Modern solvers (DPM-Solver, EDM): 10–25 steps with state-of-the-art quality.
+::::
+
+:::: {.notes}
+- The trained network is shared; only the sampler changes.
+- This is why "Stable Diffusion runs in 25 steps on a phone" is real.
+::::
+
+<!-- ===== §9. Conditional generation ===== -->
+
+## Conditional diffusion
+
+:::: {.incremental}
+- We often want $p(x \mid c)$: generate an image conditioned on a caption, a microstructure conditioned on a target property.
+- Modify the network: $\epsilon_\theta(x_t, t, c)$ — pass the condition as additional input.
+- Train with $(x_0, c)$ pairs; sample with the desired $c$.
+::::
+
+:::: {.fragment}
+For text-to-image: $c$ is a text embedding (often from a frozen CLIP encoder; Unit 9).
+::::
+
+:::: {.notes}
+- Conditioning is straightforward; the magic is in the next slide (classifier-free guidance).
+- For materials: c could be (target Young's modulus, density), (processing parameters), (material category).
+::::
+
+## Classifier-free guidance
+
+The trick that makes conditional diffusion *actually work well*:
+
+:::: {.incremental}
+- During training: with probability $p$ (e.g., 10%), drop the condition. Train one model for both conditional and unconditional.
+- At sampling time:
+$$
+\tilde\epsilon_\theta(x_t, c) = (1 + w) \epsilon_\theta(x_t, c) - w \, \epsilon_\theta(x_t, \emptyset).
+$$
+- $w$: guidance scale. $w = 0$: pure conditional. $w > 0$: amplify the difference between conditional and unconditional → stronger conditioning.
+::::
+
+:::: {.notes}
+- Classifier-free guidance (Ho & Salimans 2022) is what makes Stable Diffusion follow prompts.
+- Practical guidance scale: w = 5-10 for image generation.
+- Higher w: more on-prompt but less diverse.
+::::
+
+## Latent diffusion (briefly)
+
+:::: {.incremental}
+- Diffusion in pixel space is expensive: 1024×1024 images mean huge networks.
+- **Latent diffusion** (Rombach et al. 2022, Stable Diffusion): train a VAE first, then run diffusion in the **VAE's latent space** (e.g., 64×64 latents from 512×512 images).
+- 64× fewer pixels in the diffusion process. Fast and high-quality.
+- VAE + diffusion together — both halves of today's lecture in one model.
+::::
+
+:::: {.notes}
+- This is the architecture of Stable Diffusion. Convergence point of the unit.
+- For materials: latent diffusion on a VAE of micrographs is a natural design.
+::::
+
+<!-- ===== §10. Score matching ===== -->
+
+## Score matching — one-slide pointer
+
+:::: {.incremental}
+- The **score** of a distribution: $s(x) = \nabla_x \log p(x)$.
+- Score matching: train a network to estimate the score directly.
+- **Key result** (Vincent 2011): denoising = score matching at small noise levels.
+- This is why predicting noise works: predicting noise is, up to a constant, predicting the score.
+- Diffusion models are formally **score-based generative models**.
+::::
+
+:::: {.notes}
+- The score-matching connection unifies diffusion with stochastic differential equations (Song et al. 2021).
+- For students who go on to research: this is the deep theory; for everyone else, it is a pointer.
+::::
+
+<!-- ===== §11. Alternatives ===== -->
+
+## GANs
+
+:::: {.incremental}
+- Generator $G$ produces fake samples. Discriminator $D$ distinguishes real from fake.
+- Two networks trained adversarially: $G$ minimizes, $D$ maximizes a min-max objective.
+- **Strengths**: very fast sampling (one network call), historically sharp samples.
+- **Weaknesses**: training instability, mode collapse, no likelihood, hard to evaluate.
+- Largely supplanted by diffusion since 2022, but still used (StyleGAN for fast image synthesis).
+::::
+
+:::: {.notes}
+- GANs (Goodfellow et al. 2014) dominated 2015-2021.
+- Their fundamental issue is the min-max optimization; diffusion has a clean MSE.
+::::
+
+## Normalizing flows
+
+:::: {.incremental}
+- A sequence of *invertible* transformations $f_1, \ldots, f_K$ from a base distribution (Gaussian) to data.
+- **Strengths**: exact likelihood, exact sampling.
+- **Weaknesses**: invertibility constraint restricts architecture choices; usually worse sample quality than diffusion.
+- Specialized uses: scientific applications where exact likelihoods matter (lattice QCD, free-energy estimation).
+::::
+
+:::: {.notes}
+- Normalizing flows (Dinh et al. 2014, RealNVP) trade flexibility for tractability.
+- For materials: flows are sometimes used for Boltzmann generators (sample from physics distributions).
+::::
+
+## Choosing the right generative model
+
+| | VAE | Diffusion | GAN | Flow |
+|---|---|---|---|---|
+| Sampling speed | fast | slow | fast | fast |
+| Sample quality | low (blurry) | very high | high | medium |
+| Training stability | good | very good | poor | good |
+| Exact likelihood | no (lower bound) | no | no | yes |
+| Best for | fast prototyping, latent geometry | high-quality generation, conditioning | speed-critical | exact likelihood |
+
+:::: {.notes}
+- This is the decision table students should remember.
+- Default for serious generation in 2026: diffusion. For fast latent exploration: VAE. For exact likelihoods: flow.
+::::
+
+<!-- ===== §12. Materials applications ===== -->
+
+## Inverse design via conditional diffusion
+
+:::: {.incremental}
+- **Goal**: find an $x$ (composition, microstructure, lattice) that satisfies a target property $y$.
+- Train a conditional diffusion model on $(x, y)$ pairs.
+- At inference: condition on the desired $y$; sample candidate $x$'s.
+- Verify candidates with a physics simulator or experiment.
+- Iterate: failed candidates → add to training data → re-train.
+::::
+
+:::: {.fragment}
+This is the materials-design loop in 2026: generative + simulator + experiment, in a closed loop.
+::::
+
+:::: {.notes}
+- "Inverse design" is the holy grail of materials informatics.
+- Generative models give us a way to sample candidates rather than search.
+::::
+
+## Microstructure generation
+
+:::: {.incremental}
+- Diffusion model on 2-D micrographs.
+- Conditional on processing parameters (temperature, cooling rate).
+- Generates plausible synthetic micrographs for parameters not in training data.
+- Use cases: data augmentation, exploratory design, surrogate for expensive characterization.
+::::
+
+:::: {.notes}
+- Active research area: condition on physical descriptors, generate microstructure that respects them.
+- Validation via two-point correlation functions, grain-size distributions.
+::::
+
+## Spectral synthesis
+
+:::: {.incremental}
+- 1-D diffusion or VAE for spectra (XRD, Raman, EELS).
+- Conditional on phase composition, processing state.
+- Useful for **data augmentation** when labeled measurements are scarce.
+- Useful for **simulation**: a fast sampler that respects measured statistics.
+::::
+
+:::: {.notes}
+- 1-D diffusion is essentially the same algorithm with 1-D U-Net or transformer.
+- Often easier to train than 2-D micrograph diffusion (fewer pixels).
+::::
+
+## Bridge to Unit 13: physics-constrained generation
+
+:::: {.incremental}
+- Pure generative models can produce *physically impossible* outputs.
+- **Fix**: encode physics as soft penalties in the diffusion loss (Unit 13 will dive in).
+- Or: train on simulator-validated data only.
+- Or: use a physics-aware decoder (e.g., differentiable PDE solver in the loop).
+::::
+
+:::: {.fragment}
+Generative + physics is one of the most active research frontiers in materials ML.
+::::
+
+:::: {.notes}
+- This sets up Unit 13 directly.
+- The conceptual link: today we learn p(x); next week we constrain p(x) by physics.
+::::
+
+<!-- ===== §13. Wrap ===== -->
+
+## Three exam-must-knows
+
+:::: {.incremental}
+1. **VAE** maximizes the **ELBO** = reconstruction term − KL divergence to a Gaussian prior. The **reparameterization trick** ($z = \mu + \sigma \odot \epsilon$) makes the gradient flow through sampling.
+2. **Diffusion** training: predict the noise added to a clean sample at a random timestep; loss is MSE on the predicted noise. Sampling: start from $\mathcal{N}(0, I)$, iterate the learned reverse process.
+3. **Trade-off**: VAE is fast at sampling and has explicit lower-bound likelihoods, but produces blurry samples. Diffusion is slow at sampling (many steps) but currently produces the highest-quality samples. Classifier-free guidance is the standard way to make conditional diffusion follow conditions strongly.
+::::
+
+:::: {.notes}
+- These are the load-bearing facts.
+- Likely exam formats: state the ELBO; explain why reparameterization is needed; sketch the DDPM training step; explain the role of guidance scale w.
+::::
+
+## Reading and bridge to Unit 12
+
+:::: {.callout-note icon=false}
+**Reading for Unit 12 (Uncertainty Quantification).** Skim Bishop Ch. 6 (kernel methods, Gaussian processes) and Murphy 2nd ed. Ch. 17 (Bayesian deep learning). Background reading: Rasmussen & Williams "Gaussian Processes for Machine Learning."
+::::
+
+:::: {.fragment}
+**Unit 12**: today we learned to *generate*. Next, we learn to *say what we don't know*. Gaussian processes give us calibrated uncertainty bands; deep ensembles and conformal prediction approximate this for neural networks.
+::::
+
+:::: {.notes}
+- Pivot to uncertainty.
+- The narrative: today we modeled distributions of x; next we model distributions of predictions y given x.
+::::
+
+## Notebook companion + references
+
+:::: {.callout-note icon=false}
+### Week 11 notebooks (in `example_notebooks/` once added)
+- VAE on Fashion-MNIST: train, plot 2-D latent, interpolate, generate, observe KL term.
+- Toy diffusion in 200 lines: 2-D Swiss roll, tiny U-Net, DDPM training and sampling.
+- Conditional diffusion with classifier-free guidance: vary $w$, observe diversity vs fidelity.
+- Bonus: latent diffusion — train a small VAE first, then a tiny diffusion in the latent space.
+::::
+
+:::: {.fragment}
+**Strongly recommended**: Lilian Weng's blog post "What are diffusion models?" — the best free overview, with derivations and intuition.
+::::
+
+:::: {.notes}
+- Lilian Weng's posts are gold-standard pedagogical resources for modern ML.
+::::
+
+## Learning outcomes — recap
+
+By the end of this unit, students can:
+
+:::: {.incremental}
+- **Explain** why a vanilla autoencoder cannot generate new samples.
+- **Derive** the VAE ELBO at intuition depth and use the reparameterization trick.
+- **Use** a trained VAE: encode, sample latent, decode.
+- **Describe** the forward and reverse processes of a diffusion model.
+- **Apply** classifier-free guidance for conditional generation.
+- **Compare** VAE, diffusion, GAN, and flow on the trade-off axes.
+::::
+
+:::: {.notes}
+- Final recap = exam targets.
+- The arc this unit closes: from the Unit 5 autoencoder (compress) → Unit 9 representation (shape) → Unit 11 generation (sample). Generation is the capstone of the representation-learning thread.
+::::
+
+:::: {#refs}
+::::

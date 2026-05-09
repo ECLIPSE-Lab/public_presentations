@@ -1,0 +1,716 @@
+---
+title: |
+  Mathematical Foundations of AI & ML<br>Unit 9: Latent Spaces & Advanced Representation Learning
+bibliography: ref.bib
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation:
+      - FAU Erlangen-Nürnberg
+execute:
+  eval: true
+  echo: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+      - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: "eclipse_logo_small.png"
+    background-transition: fade
+    footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
+    menu:
+      side: left
+      loadIcons: true
+    navigationMode: default
+    controls: true
+---
+
+<!-- ===== §1. Framing ===== -->
+
+## Where we are in the course
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Behind us:**
+
+- Unit 5: autoencoders compress data into a **latent space**.
+- Unit 8: KL divergence, MLE, Bayesian thinking.
+- We have *a* latent space. We have not asked: *is it any good?*
+::::
+:::: {.column width="50%"}
+**Today (Unit 9):**
+
+- What makes a latent space *good*?
+- How do we **visualize** high-dim embeddings? (t-SNE, UMAP)
+- How do we **shape** a latent space without reconstruction targets? (contrastive learning)
+- Why do **foundation models** transfer? (pre-trained embeddings)
+::::
+::::
+
+:::: {.notes}
+- The bridge from Unit 5: a vanilla AE gives a latent, but no guarantee that the latent is meaningful in any downstream sense.
+- Today's question is the deeper one: representations as the central currency of modern ML.
+::::
+
+## Recap: the autoencoder latent
+
+:::: {.incremental}
+- Encoder $f_\phi: \mathbb{R}^d \to \mathbb{R}^k$ compresses.
+- Decoder $g_\theta: \mathbb{R}^k \to \mathbb{R}^d$ reconstructs.
+- Loss: MSE reconstruction.
+- The bottleneck $z = f_\phi(x)$ is what we keep.
+::::
+
+:::: {.fragment}
+The reconstruction loss says only one thing: *encode enough information to undo*. It says **nothing** about whether similar inputs end up close, whether categories cluster, or whether interpolation is meaningful.
+::::
+
+:::: {.notes}
+- This is the key gap to motivate today's content: reconstruction is necessary but not sufficient for a useful latent.
+::::
+
+## What is a "good" latent space?
+
+Four desiderata, with examples that fail each:
+
+:::: {.incremental}
+- **Compactness within concept**: same-class samples are close. (Fails: AE trained on noisy spectra spreads each phase across the latent.)
+- **Separation across concepts**: different-class samples are far. (Fails: AE pushes the variance budget into reconstructing details, not separating classes.)
+- **Smooth interpolation**: the line between $z_A$ and $z_B$ corresponds to a smooth transition in $x$-space. (Fails: vanilla AE has "holes" — latents in dead regions decode to nonsense.)
+- **Transferability**: a small head trained on $z$ for task A also works for task B. (Fails: AE features overfit to reconstruction artifacts.)
+::::
+
+:::: {.notes}
+- The key insight: there is no single "right" representation; "good" depends on the downstream task.
+- These four desiderata are the rubric we will judge the rest of today's methods against.
+::::
+
+## Learning outcomes
+
+By the end of this unit, students can:
+
+:::: {.incremental}
+- **Critique** a latent space against the four desiderata above.
+- **Derive** the t-SNE objective and avoid common misinterpretations of t-SNE plots.
+- **Compare** t-SNE and UMAP at a conceptual level.
+- **Explain** contrastive learning as a self-supervised representation objective.
+- **Use** a foundation embedding as a feature extractor for downstream materials tasks.
+- **Anticipate** how the VAE (Unit 11) shapes the latent distribution explicitly.
+::::
+
+:::: {.notes}
+- Three tiers: visualization (t-SNE/UMAP), self-supervised shaping (contrastive), pre-training at scale (foundation models).
+::::
+
+## Roadmap of today's 90 min
+
+:::: {.incremental}
+1. **What makes a latent space good** (~7 min)
+2. **t-SNE deep dive** (~25 min) — *the* go-to visualization tool
+3. **UMAP** (~8 min) — the modern alternative
+4. **Contrastive learning** (~20 min) — shaping latents without labels
+5. **Foundation embeddings** (~17 min) — pre-trained encoders as features
+6. **Latent geometry recap** (~7 min) — bridge to Unit 11 (VAE)
+7. **Wrap** (~5 min)
+::::
+
+:::: {.notes}
+- Pace warning: t-SNE and contrastive are the dense blocks; protect them.
+- Foundation models gets less time but is essential — it is the modern recipe.
+::::
+
+<!-- ===== §2. t-SNE ===== -->
+
+## t-SNE: the goal
+
+We have $N$ high-dimensional points $\{x_1, \ldots, x_N\} \subset \mathbb{R}^d$. We want low-dimensional points $\{y_1, \ldots, y_N\} \subset \mathbb{R}^2$ such that:
+
+:::: {.fragment}
+**points that are close in $\mathbb{R}^d$ stay close in $\mathbb{R}^2$.**
+::::
+
+:::: {.fragment}
+This is harder than it sounds — distances in $\mathbb{R}^d$ generally cannot all be preserved in $\mathbb{R}^2$. t-SNE makes a specific trade-off: **preserve local structure, sacrifice global structure**.
+::::
+
+:::: {.notes}
+- t-SNE is a visualization tool, not a generic dimensionality reduction tool.
+- The local-vs-global trade-off is the most important caveat for interpretation.
+::::
+
+## t-SNE step 1: high-dim similarities
+
+For each pair $(i, j)$ in the high-dim space, define a **conditional probability**:
+
+$$
+p_{j|i} = \frac{\exp\!\left(-\|x_i - x_j\|^2 / 2\sigma_i^2\right)}{\sum_{k \neq i} \exp\!\left(-\|x_i - x_k\|^2 / 2\sigma_i^2\right)}.
+$$
+
+:::: {.fragment}
+Read this as: "*if you're $x_i$ and you pick a neighbor according to a Gaussian, with what probability would you pick $x_j$?*" Symmetrize: $p_{ij} = (p_{j|i} + p_{i|j}) / (2N)$.
+::::
+
+:::: {.notes}
+- The probability framing is the key: similarity becomes a distribution over neighbors.
+- Sigma_i is per-point: dense regions get a small sigma, sparse regions a large one.
+::::
+
+## What sets $\sigma_i$? Perplexity
+
+Define the entropy of $P_i = \{p_{j|i}\}_j$:
+
+$$
+H(P_i) = -\sum_{j} p_{j|i} \log_2 p_{j|i}.
+$$
+
+:::: {.fragment}
+**Perplexity** is $\mathrm{Perp}(P_i) = 2^{H(P_i)}$. Roughly: the *effective number of neighbors* of $x_i$.
+::::
+
+:::: {.fragment}
+The user picks perplexity (typical: 5-50). t-SNE then binary-searches $\sigma_i$ for each point so that $\mathrm{Perp}(P_i)$ matches the chosen value.
+::::
+
+:::: {.notes}
+- Perplexity is the user-facing knob; sigma is internal.
+- Low perplexity (~5) emphasizes very local structure; high perplexity (~50) blurs into mid-range.
+::::
+
+## t-SNE step 2: low-dim similarities (naive)
+
+Suppose we use a Gaussian in low-dim too:
+
+$$
+q_{ij}^{\text{Gaussian}} = \frac{\exp(-\|y_i - y_j\|^2)}{\sum_{k \neq l} \exp(-\|y_k - y_l\|^2)}.
+$$
+
+:::: {.fragment}
+Match $P$ and $Q$ by minimizing $\mathrm{KL}(P \| Q)$.
+::::
+
+:::: {.fragment}
+**This breaks.** It produces the **crowding problem**: in a low-dim space, there isn't room for all the moderate-distance neighbors that exist in high-dim, and the optimization crushes everything together.
+::::
+
+:::: {.notes}
+- The crowding problem is the single best reason to spend 1 slide on it: it motivates the Student-t fix.
+- High-dim has exponentially more "moderate-distance neighbors" than 2-D can accommodate.
+::::
+
+## The crowding problem, illustrated
+
+:::: {.columns}
+:::: {.column width="50%"}
+In $\mathbb{R}^d$, a point has many moderate-distance neighbors (a $d$-D shell of room).
+
+In $\mathbb{R}^2$, only ~6 nearest neighbors fit at the same distance.
+::::
+:::: {.column width="50%"}
+A Gaussian in $\mathbb{R}^2$ falls off too quickly: forcing all the moderate-distance high-dim neighbors close together creates **attractive forces that exceed available space**.
+
+The result: collapsed, tangled embeddings.
+::::
+::::
+
+:::: {.fragment}
+**Fix**: use a **heavy-tailed** kernel in low-dim. Moderate distances stay possible without infinite force.
+::::
+
+:::: {.notes}
+- The original t-SNE paper's most important contribution is recognizing this asymmetry.
+- Hinton's intuition: "give moderate similarities room to breathe."
+::::
+
+## t-SNE step 2 (corrected): Student-t in low dim
+
+Use a Student-t with one degree of freedom (a Cauchy distribution):
+
+$$
+q_{ij} = \frac{(1 + \|y_i - y_j\|^2)^{-1}}{\sum_{k \neq l} (1 + \|y_k - y_l\|^2)^{-1}}.
+$$
+
+:::: {.fragment}
+The heavy tail: pairs at moderate distance still have meaningful similarity. The crowding problem dissolves.
+::::
+
+:::: {.notes}
+- The "t" in t-SNE is for Student-t.
+- Single-degree-of-freedom Student-t = Cauchy. The math becomes especially clean.
+::::
+
+## t-SNE step 3: minimize KL
+
+Optimize the embedding $\{y_i\}$ to minimize:
+
+$$
+C(\{y_i\}) = \mathrm{KL}(P \,\|\, Q) = \sum_{i \neq j} p_{ij} \log \frac{p_{ij}}{q_{ij}}.
+$$
+
+:::: {.incremental}
+- The gradient $\partial C / \partial y_i$ has an attractive term (preserve high-dim neighbors) and a repulsive term (avoid collapse).
+- Optimization: gradient descent with momentum, typically 1000 iterations.
+- Random initialization → t-SNE plots **vary across runs**. Use the same seed when comparing.
+::::
+
+:::: {.notes}
+- The asymmetric KL — KL(P||Q), not KL(Q||P) — is what makes t-SNE focus on preserving close-range structure.
+- Don't chase a single t-SNE plot; rerun and confirm the structure is stable.
+::::
+
+## What t-SNE preserves — and doesn't
+
+:::: {.incremental}
+- **Preserved**: neighborhoods. If $x_i$ and $x_j$ are close in $\mathbb{R}^d$, they end up close in $\mathbb{R}^2$.
+- **Not preserved**: cluster sizes. A small dense cluster in $\mathbb{R}^d$ may render as a *big* blob in 2-D.
+- **Not preserved**: between-cluster distances. Two clusters that look "far apart" in a t-SNE plot are not necessarily far apart in $\mathbb{R}^d$.
+- **Not preserved**: density. Cluster densities in t-SNE are mostly an artifact of the algorithm.
+::::
+
+:::: {.fragment}
+**Read t-SNE plots qualitatively. Never quantitatively.**
+::::
+
+:::: {.notes}
+- This is the most-violated rule in published ML papers. Internalize it.
+- Wattenberg's "How to Use t-SNE Effectively" (Distill.pub) is the best single reference for these failure modes.
+::::
+
+## Common t-SNE misinterpretations
+
+:::: {.incremental}
+- *"These two clusters are 5x further apart than those two."* — Distance in t-SNE is not metric.
+- *"This cluster is bigger, so this class has more variance."* — Cluster size in t-SNE is not informative.
+- *"Run looks different from yesterday's run."* — Yes; t-SNE is stochastic. Set a seed.
+- *"Same data, different perplexity, different structure."* — Yes; perplexity changes the question being asked.
+::::
+
+:::: {.notes}
+- This slide is the practical takeaway for students who will publish papers using t-SNE.
+::::
+
+## t-SNE on a materials dataset
+
+:::: {.columns}
+:::: {.column width="50%"}
+- 5000 alloys, 12-dim composition.
+- Perplexity 30, 1000 iterations.
+- 2-D plot colored by known phase family.
+::::
+:::: {.column width="50%"}
+- **Useful**: phase families form clusters; outliers visible.
+- **Not useful**: don't measure the gap between austenitic and martensitic clusters; that distance is meaningless.
+::::
+::::
+
+:::: {.notes}
+- t-SNE on materials data: legitimate exploratory tool, illegitimate quantitative claim source.
+::::
+
+## t-SNE summary
+
+:::: {.incremental}
+- High-dim Gaussian similarities + low-dim Student-t similarities + KL minimization.
+- The Student-t fixes the crowding problem.
+- Excellent for **local** structure. Bad for **global** structure.
+- Stochastic, perplexity-sensitive, slow ($O(N^2)$ naïve, $O(N \log N)$ with Barnes-Hut).
+::::
+
+:::: {.notes}
+- One sentence each on the four properties; this is the must-knowable summary.
+::::
+
+<!-- ===== §3. UMAP ===== -->
+
+## UMAP: a modern alternative
+
+:::: {.incremental}
+- **U**niform **M**anifold **A**pproximation and **P**rojection (McInnes et al. 2018).
+- Same goal as t-SNE: 2-D visualization of high-dim data.
+- Different math: builds a fuzzy topological structure on the data, then optimizes a 2-D embedding to approximate it.
+- Faster: scales to millions of points (vs t-SNE's tens of thousands comfortably).
+- Preserves **more global structure** than t-SNE.
+::::
+
+:::: {.notes}
+- UMAP has largely replaced t-SNE as the default in practice — but t-SNE is still the better-understood algorithm.
+- The "fuzzy topology" framing is heavier math (algebraic topology); we won't derive it.
+::::
+
+## UMAP vs t-SNE: when to use which
+
+| | t-SNE | UMAP |
+|---|---|---|
+| Local structure | excellent | excellent |
+| Global structure | poor | better |
+| Speed | slow | fast |
+| Stability | stochastic | more stable across runs |
+| Theoretical grounding | KL minimization | fuzzy topology (denser math) |
+
+:::: {.fragment}
+**Practical rule**: try UMAP first; if results look weird, sanity-check with t-SNE; never use either to make quantitative distance claims.
+::::
+
+:::: {.notes}
+- Both methods are exploratory. Treat with respect, not reverence.
+::::
+
+## UMAP — key hyperparameters
+
+:::: {.incremental}
+- `n_neighbors` (analog of perplexity): local vs global trade-off. Low → local; high → global.
+- `min_dist`: how tight clusters can be in the output.
+- Both are forgiving in practice; defaults usually work.
+::::
+
+:::: {.notes}
+- One slide on knobs; not the place to dive deep.
+::::
+
+<!-- ===== §4. Contrastive learning ===== -->
+
+## Beyond reconstruction: shaping the latent
+
+:::: {.incremental}
+- Vanilla AE: minimize reconstruction error → latent encodes everything needed to reconstruct.
+- This often includes things we **don't** care about (lighting, noise, instrument-specific artifacts).
+- We want a latent that captures **semantic** similarity, not pixel-level similarity.
+::::
+
+:::: {.fragment}
+**Insight**: instead of asking "can you reconstruct?", ask "can you tell that *this* and *that* are the same thing?"
+::::
+
+:::: {.notes}
+- The pivot to contrastive: change the supervisory signal from reconstruction to *invariance*.
+- Same object under different conditions should map to the same latent.
+::::
+
+## Contrastive learning — the idea
+
+:::: {.incremental}
+- For each input $x$, generate two **augmentations** $x^+, x^{++}$ (e.g., crop + color jitter).
+- These two are a **positive pair** — they should map to nearby latents.
+- All other samples in the batch are **negatives** — they should map to far latents.
+- Loss: pull positives together, push negatives apart.
+::::
+
+:::: {.fragment}
+The augmentation choice **defines what invariances the latent learns.**
+::::
+
+:::: {.notes}
+- The augmentation choice is the most important design decision in contrastive learning.
+- For materials: rotations, lighting variations, mild crops; not class-label-changing transformations.
+::::
+
+## SimCLR: the canonical recipe
+
+:::: {.incremental}
+1. Sample a batch of $N$ inputs.
+2. Apply two random augmentations to each → $2N$ samples.
+3. Pass through encoder $f$ → projector $g$ → embedding $z_i$.
+4. For each $z_i$, the matched-augmentation $z_j$ is the positive; the other $2N - 2$ are negatives.
+5. Loss: NT-Xent (a softmax-style normalized temperature-scaled cross-entropy).
+::::
+
+:::: {.notes}
+- SimCLR (Chen et al. 2020) was the breakthrough that made contrastive learning competitive with supervised pre-training on ImageNet.
+- The projector head g is dropped after pre-training; only the encoder f is kept.
+::::
+
+## InfoNCE / NT-Xent loss
+
+For a positive pair $(i, j)$:
+
+$$
+\mathcal{L}_{i,j} = -\log \frac{\exp(\mathrm{sim}(z_i, z_j) / \tau)}{\sum_{k \neq i} \exp(\mathrm{sim}(z_i, z_k) / \tau)},
+$$
+
+where $\mathrm{sim}(u, v) = u^T v / (\|u\| \|v\|)$ (cosine similarity), and $\tau$ is a temperature hyperparameter.
+
+:::: {.fragment}
+Read this as: a $(2N-1)$-way classification — given $z_i$, identify $z_j$ among all candidates. Positives win when their similarity exceeds all negatives.
+::::
+
+:::: {.notes}
+- The InfoNCE loss is structurally a softmax cross-entropy with the positive as the "correct class."
+- Temperature τ controls how sharply the softmax separates positives from negatives.
+::::
+
+## Why contrastive learning works
+
+:::: {.incremental}
+- Positive pairs share **semantic** content (same object, augmented differently).
+- Negatives share nothing in particular (different objects from the batch).
+- Minimizing the loss forces the encoder to encode *what makes inputs the same object* and ignore augmentation-induced variation.
+- The latent ends up organized by semantic similarity, not pixel similarity.
+::::
+
+:::: {.fragment}
+This is **the** modern self-supervised pre-training story: 2018-2022 saw a string of contrastive methods (MoCo, SimCLR, BYOL, DINO) compete with and eventually surpass supervised pre-training on ImageNet.
+::::
+
+:::: {.notes}
+- The conceptual takeaway: design augmentations that respect the invariances you want; the loss does the rest.
+- BYOL and DINO drop negatives entirely and still work — surprisingly. This is current research depth.
+::::
+
+## Augmentation choices for materials
+
+:::: {.incremental}
+- **Micrographs**: random crops (preserve scale by physical units), rotations (if isotropic), brightness/contrast jitter.
+- **Spectra**: small wavelength shifts (within instrument tolerance), Gaussian noise injection, intensity scaling.
+- **Compositions**: ε-perturbations within physical bounds, charge-balance preservation.
+- **Avoid**: augmentations that change the *thing being identified*. A 50% intensity scaling on a spectrum is fine; a non-physical peak shift is not.
+::::
+
+:::: {.notes}
+- This is the slide where students should write down domain-specific intuition.
+- Bad augmentations break contrastive learning quietly: the model learns invariances we don't want.
+::::
+
+## Contrastive vs reconstruction
+
+| | AE (Unit 5) | Contrastive |
+|---|---|---|
+| Supervisory signal | reconstruct $x$ from $z$ | $z$-similarity for augmented pairs |
+| Invariances learned | none enforced | augmentation-defined |
+| Latent organization | reconstruction-driven | semantic |
+| Typical use | compression, anomaly | features for downstream tasks |
+
+:::: {.fragment}
+**For materials: contrastive embeddings often beat AE embeddings on downstream classification, especially when labels are scarce.**
+::::
+
+:::: {.notes}
+- The two methods are complementary; some pipelines stack them (AE for compression, contrastive on top for shaping).
+::::
+
+## Materials example: contrastive on micrographs
+
+:::: {.incremental}
+- 50,000 unlabeled SEM micrographs, no defect labels.
+- SimCLR pre-train: random crops + rotations + brightness jitter.
+- After pre-training, train a logistic regression on 200 labeled examples to classify defect/no-defect.
+- Result: 92% accuracy from a 200-label budget. AE-based features achieve 81%; raw pixels are random.
+::::
+
+:::: {.notes}
+- The label-efficiency story is what sells contrastive in materials work.
+- 200 labels is realistic; 50,000 unlabeled images is realistic; this is exactly the regime where the win matters.
+::::
+
+<!-- ===== §5. Foundation embeddings ===== -->
+
+## Foundation models — the recipe
+
+:::: {.incremental}
+- **Pre-train** a large encoder on a massive unlabeled corpus, often using contrastive or self-supervised objectives.
+- **Freeze** the encoder.
+- **Reuse** the encoder as a feature extractor for many downstream tasks.
+- Often: fine-tune a small head; sometimes: just use a linear classifier on the embeddings.
+::::
+
+:::: {.fragment}
+This is **the** dominant paradigm in modern ML. GPT, BERT, ViT, DINO, CLIP — all foundation models.
+::::
+
+:::: {.notes}
+- Foundation models are an empirical phenomenon: scale + a self-supervised objective + a versatile architecture (usually a transformer; Unit 10) → embeddings that transfer everywhere.
+- The rest of this section is "how to use them."
+::::
+
+## Why foundation embeddings transfer
+
+:::: {.incremental}
+- Pre-training data: orders of magnitude more diverse than any single downstream task's data.
+- Self-supervised objective: forces the model to encode broadly useful features.
+- The result: embeddings capture *general structure* of the input modality (images, text, etc.).
+- For a downstream task: the relevant variation is usually present in the pre-trained embedding; you just need to *select* it (linear probe) or *recombine* it (fine-tuning).
+::::
+
+:::: {.notes}
+- Scaling laws (Kaplan et al., Hoffmann et al.) quantify this empirically: more data + more parameters → better embeddings.
+- For materials, true foundation models for materials data are still emerging; in the meantime, image foundation models work surprisingly well on micrographs.
+::::
+
+## Pre-train + freeze + linear probe
+
+:::: {.incremental}
+1. Take a pre-trained encoder (DINOv2, CLIP image encoder, etc.).
+2. Compute embeddings $z_i = f(x_i)$ for your dataset.
+3. Train a logistic regression on $\{z_i, y_i\}$.
+4. Done.
+::::
+
+:::: {.fragment}
+This is often the **strongest baseline** in 2026 for any classification task with limited labels. Try it first.
+::::
+
+:::: {.notes}
+- Linear probing is a sanity check: if a frozen encoder + linear classifier works, you don't need fine-tuning.
+- Engineering preference: simpler pipelines win when they work.
+::::
+
+## CLIP-style multimodal embeddings
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Setup**: pre-train on (image, caption) pairs.
+
+- Image encoder $f_I$, text encoder $f_T$.
+- Loss: contrastive — matching pairs nearby, mismatched far.
+::::
+:::: {.column width="50%"}
+**Result**: a shared embedding space where text and images are comparable.
+
+- Zero-shot classification: encode "a photo of a cat" and a candidate image; nearest text wins.
+- Cross-modal retrieval: text → images, images → text.
+::::
+::::
+
+:::: {.notes}
+- CLIP (Radford et al. 2021) is the canonical example.
+- For materials: emerging work on (micrograph, processing recipe) and (composition, crystallography) multimodal embeddings.
+::::
+
+## Materials example: pre-trained ViT for micrograph similarity
+
+:::: {.incremental}
+- Take DINOv2 (Meta's self-supervised ViT, pre-trained on 142M natural images).
+- Embed 10,000 SEM micrographs.
+- For a query micrograph, find the top-10 nearest neighbors by cosine similarity.
+- Result: similar microstructures cluster together — without ever seeing materials data during pre-training.
+::::
+
+:::: {.fragment}
+This works because low-level visual features (edges, textures) transfer across domains. The encoder doesn't know what "martensite" is; it knows what "high-contrast textured region" is, and that turns out to be enough.
+::::
+
+:::: {.notes}
+- The transfer-from-natural-images story is genuinely surprising. It works in 2026; future materials-specific foundation models will work even better.
+::::
+
+## When foundation embeddings won't work
+
+:::: {.incremental}
+- **Out-of-distribution modalities**: a natural-image encoder won't help for STM atomic-resolution images that look nothing like ImageNet.
+- **Specialized invariances**: if your task requires invariance the encoder didn't learn (e.g., crystallographic symmetry), expect mediocre results.
+- **High-fidelity classification**: when the difference between classes is subtle, frozen embeddings may not separate them; fine-tuning then helps.
+::::
+
+:::: {.notes}
+- Realistic warnings; foundation models are not magic.
+- The fix is usually domain-specific pre-training or fine-tuning.
+::::
+
+<!-- ===== §6. Latent geometry recap & bridge ===== -->
+
+## Three ways to shape a latent
+
+:::: {.incremental}
+1. **Reconstruction** (Unit 5 AE): "encode enough to undo."
+2. **Visualization optimization** (t-SNE, UMAP): "preserve neighborhoods in 2-D."
+3. **Contrastive** (SimCLR, foundation models): "encode invariances; pull positives, push negatives."
+::::
+
+:::: {.fragment}
+**Missing** from all three: an explicit, controllable distribution over $z$ — necessary for **sampling new data**.
+::::
+
+:::: {.notes}
+- This sets up the Unit 11 motivation cleanly.
+- AE/contrastive give us encoders. They don't give us generators.
+::::
+
+## Latent space arithmetic — promise and limits
+
+:::: {.incremental}
+- In some learned latents, vector arithmetic is meaningful: $z_{\text{property A}} - z_{\text{baseline}} + z_{\text{property B baseline}} \approx z_{\text{property B with A}}$.
+- This works *empirically* in well-shaped latents; it is **not guaranteed** by the AE/contrastive objective.
+- VAEs (Unit 11) shape the latent to be approximately Gaussian — making interpolation reliable and arithmetic principled.
+::::
+
+:::: {.notes}
+- A taste of generative modeling without the math.
+- Sets up Unit 11 as the "principled fix" to latent geometry.
+::::
+
+## Bridge to Unit 11
+
+:::: {.incremental}
+- **Today**: encoders that produce useful representations.
+- **Unit 11**: encoders + decoders + a controllable distribution → **generative** models.
+- VAE: shapes the latent with a KL prior, samples by drawing from the prior.
+- Diffusion: skips an explicit latent prior, instead learns to denoise from pure noise.
+::::
+
+:::: {.notes}
+- Unit 11 will give them the missing capability: sampling new data, not just encoding existing data.
+::::
+
+<!-- ===== §7. Wrap ===== -->
+
+## Three exam-must-knows
+
+:::: {.incremental}
+1. **t-SNE** minimizes the KL between high-dim Gaussian similarities and low-dim Student-t similarities; the heavy tail in low-dim solves the **crowding problem**. Cluster sizes and between-cluster distances in t-SNE plots are **not** quantitatively meaningful.
+2. **Contrastive learning** (e.g., SimCLR with InfoNCE) shapes a latent without labels by pulling augmentations of the same sample together and pushing different samples apart; the augmentation choice defines the learned invariances.
+3. **Foundation models** are pre-trained encoders that transfer broadly. Pre-train + freeze + linear probe is often the strongest baseline for label-scarce tasks in 2026.
+::::
+
+:::: {.notes}
+- These are the load-bearing facts. Likely exam formats: identify a t-SNE misinterpretation; sketch the InfoNCE loss; explain why a frozen pre-trained encoder might transfer.
+::::
+
+## Reading and bridge to Unit 10
+
+:::: {.callout-note icon=false}
+**Reading for Unit 10 (Attention & Transformers).** Skim Vaswani et al. (2017) "Attention is All You Need" — at minimum the abstract and Section 3 (Model Architecture). Read Bishop 2nd ed. Ch. 12 if available.
+::::
+
+:::: {.fragment}
+**Unit 10**: today we praised "the encoder" as if it were a black box. Tomorrow we open it up. The architecture behind every modern foundation model — text, image, audio, materials — is the **transformer**. Self-attention as content-based addressing.
+::::
+
+:::: {.notes}
+- The narrative arc: representations (Unit 9) → architecture that makes them (Unit 10) → generation from them (Unit 11).
+::::
+
+## Notebook companion + references
+
+:::: {.callout-note icon=false}
+### Week 9 notebooks (in `example_notebooks/` once added)
+- t-SNE perplexity sweep on Fashion-MNIST and a materials composition dataset.
+- UMAP vs t-SNE side-by-side comparison.
+- SimCLR from scratch on a small dataset; InfoNCE loss implemented in 20 lines.
+- Pre-trained DINOv2 embeddings + linear probe for label-scarce classification.
+::::
+
+:::: {.notes}
+- The DINOv2 notebook is the most practical for materials students; emphasize it.
+::::
+
+## Learning outcomes — recap
+
+By the end of this unit, students can:
+
+:::: {.incremental}
+- **Critique** a latent space against four desiderata (compactness, separation, smooth interpolation, transferability).
+- **Derive** the t-SNE objective and avoid common misinterpretations of t-SNE plots.
+- **Compare** t-SNE and UMAP at a conceptual level.
+- **Explain** contrastive learning as a self-supervised representation objective.
+- **Use** a foundation embedding as a feature extractor for downstream tasks.
+- **Anticipate** how the VAE (Unit 11) shapes the latent distribution explicitly.
+::::
+
+:::: {.notes}
+- Final recap = exam targets.
+::::
+
+:::: {#refs}
+::::
