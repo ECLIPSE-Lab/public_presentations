@@ -193,6 +193,9 @@
     transform: translateY(0);
   }
   </style>
+  <script src="../../site_libs/quarto-diagram/mermaid.min.js"></script>
+  <script src="../../site_libs/quarto-diagram/mermaid-init.js"></script>
+  <link href="../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 <meta property="og:title" content="Machine Learning for Characterization and ProcessingUnit 12: Uncertainty-aware regression &amp; Gaussian Processes – ECLIPSE Presentations">
 <meta property="og:description" content="AI 4 Materials / KI-Materialtechnologie">
 <meta property="og:image" content="https://pelzlab.science/img/eclipse_header.png">
@@ -231,178 +234,699 @@
   <!-- </div> -->
   </section>
 <section>
-<section id="intro-the-cost-of-uncertainty" class="title-slide slide level1 center">
-<h1>01. Intro &amp; The Cost of Uncertainty</h1>
+<section id="from-mfml-theory-to-lab-practice" class="title-slide slide level1 center">
+<h1>01. From MFML theory to lab practice</h1>
 
 </section>
-<section id="the-danger-of-point-estimates" class="slide level2">
-<h2>The Danger of Point Estimates</h2>
-<ul>
-<li>Standard ML models give a single number (e.g., Yield strength = 800 MPa).</li>
-<li><strong>Problem</strong>: What if the model is “confused” due to sparse data?</li>
-<li>In engineering, a point estimate without an error bar is a liability.</li>
-<li><strong>Trust</strong> = Prediction + Confidence.</li>
-</ul>
+<section id="mfml-w12-recap-we-use-these-we-do-not-re-derive-them" class="slide level2">
+<h2>MFML W12 recap — we use these, we do not re-derive them</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>One-line summary</th>
+<th>When to reach for it</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Gaussian Process</strong></td>
+<td>Closed-form Bayesian regression over functions</td>
+<td>Small <span class="math inline">\(n\)</span> (<span class="math inline">\(\lesssim 10^3\)</span>), tabular, smooth response, need calibrated CI</td>
+</tr>
+<tr class="even">
+<td><strong>MC Dropout</strong></td>
+<td>Keep dropout on at inference, sample <span class="math inline">\(T\)</span> passes</td>
+<td>Big NN already trained, cheap epistemic estimate per pixel/voxel</td>
+</tr>
+<tr class="odd">
+<td><strong>Deep ensembles</strong></td>
+<td>Train <span class="math inline">\(M\)</span> independent NNs, use disagreement</td>
+<td>Best-calibrated NN UQ; budget for <span class="math inline">\(M\times\)</span> training</td>
+</tr>
+<tr class="even">
+<td><strong>MDN</strong></td>
+<td>NN outputs <span class="math inline">\((\pi_k, \mu_k, \sigma_k)\)</span> of a Gaussian mixture</td>
+<td>Multi-modal output (phase A or phase B from the same input)</td>
+</tr>
+<tr class="odd">
+<td><strong>Calibration</strong></td>
+<td>Reliability diagram + temperature scaling</td>
+<td>Mandatory before any deployed model</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>We are <strong>not</strong> re-deriving the math. See <strong>MFML W12</strong> for posteriors, ELBO, marginal likelihood. Today: which tool, on which lab task, with which numbers.</p>
+</div>
+</div>
+</div>
 </section>
-<section id="why-uq-in-materials-science" class="slide level2">
-<h2>Why UQ in Materials Science?</h2>
-<ul>
-<li><strong>Small Data</strong>: Experiments are expensive; we often have &lt;100 samples.</li>
-<li><strong>High Risk</strong>: Predicting material failure incorrectly leads to catastrophe.</li>
-<li><strong>Active Learning</strong>: We need to know where to perform the next experiment.</li>
-</ul>
-</section></section>
-<section>
-<section id="taxonomy-of-uncertainty" class="title-slide slide level1 center">
-<h1>02. Taxonomy of Uncertainty</h1>
-
-</section>
-<section id="aleatoric-uncertainty-statistical" class="slide level2">
-<h2>Aleatoric Uncertainty (Statistical)</h2>
-<ul>
-<li>“Uncertainty due to randomness.”</li>
-<li>Examples:
-<ul>
-<li>Sensor noise in a TEM.</li>
-<li>Thermal fluctuations during solidification.</li>
-</ul></li>
-<li><strong>Irreducible</strong>: More data won’t change the noise floor of the instrument.</li>
-</ul>
-</section>
-<section id="epistemic-uncertainty-systemic" class="slide level2">
-<h2>Epistemic Uncertainty (Systemic)</h2>
-<ul>
-<li>“Uncertainty due to lack of knowledge.”</li>
-<li>Examples:
-<ul>
-<li>Predicting properties of a new alloy family.</li>
-<li>Extrapolating beyond the training process window.</li>
-</ul></li>
-<li><strong>Reducible</strong>: Collecting more samples in that region “teaches” the model.</li>
-</ul>
-</section>
-<section id="total-uncertainty" class="slide level2">
-<h2>Total Uncertainty</h2>
-<ul>
-<li><span class="math inline">\(\sigma_{total}^2 = \sigma_{aleatoric}^2 + \sigma_{epistemic}^2\)</span>.</li>
-<li>Visualization: The “Uncertainty Ribbon” balloons in data-poor regions.</li>
-</ul>
+<section id="why-uq-matters-in-characterization-processing-labs" class="slide level2">
+<h2>Why UQ matters in characterization &amp; processing labs</h2>
 <div class="fragment">
-<p><img data-src="images/uncertainty_types.png" style="width:80.0%"></p>
+<ul>
+<li>One wrong tensile-strength call on a structural part: recall, scrap, or worst case a failure in service.</li>
+<li>One missed crack/pore in an SEM screen: a defective batch ships.</li>
+<li>A point estimate without a confidence band is <strong>not a deliverable</strong> to a lab manager or a certifying body.</li>
+</ul>
 </div>
-</section></section>
-<section>
-<section id="bayesian-regression" class="title-slide slide level1 center">
-<h1>03. Bayesian Regression</h1>
-
-</section>
-<section id="the-bayesian-philosophy" class="slide level2">
-<h2>The Bayesian Philosophy</h2>
-<ul>
-<li>(Bishop 3.3)</li>
-<li>Treat weights <span class="math inline">\(\mathbf{w}\)</span> as probability distributions, not single numbers.</li>
-<li><strong>Prior</strong> <span class="math inline">\(p(\mathbf{w})\)</span>: What we believe before seeing data (Expert knowledge).</li>
-<li><strong>Posterior</strong> <span class="math inline">\(p(\mathbf{w} | \text{Data})\)</span>: Our updated belief after experiments.</li>
-</ul>
-</section>
-<section id="predictive-distribution" class="slide level2">
-<h2>Predictive Distribution</h2>
-<ul>
-<li>Instead of one prediction, we average the predictions of ALL possible models.</li>
-<li>Result: Mean <span class="math inline">\(\mu(x)\)</span> (Best Guess) and Variance <span class="math inline">\(\sigma^2(x)\)</span> (Error Bar).</li>
-<li>The variance naturally increases away from the training data.</li>
-</ul>
-</section></section>
-<section>
-<section id="gaussian-processes-gps" class="title-slide slide level1 center">
-<h1>04. Gaussian Processes (GPs)</h1>
-
-</section>
-<section id="from-weights-to-function-space" class="slide level2">
-<h2>From Weights to Function Space</h2>
-<ul>
-<li>(Rasmussen &amp; Williams 2006)</li>
-<li>Instead of learning weights, we define a distribution over functions: <span class="math display">\[f(x) \sim \mathcal{GP}(m(x), k(x, x'))\]</span></li>
-<li><span class="math inline">\(k(x, x')\)</span> is the <strong>Kernel</strong> (Covariance function).</li>
-</ul>
-</section>
-<section id="kernels-the-heart-of-the-gp" class="slide level2">
-<h2>Kernels: The Heart of the GP</h2>
-<ul>
-<li>The Kernel defines “Similarity”: If <span class="math inline">\(x\)</span> and <span class="math inline">\(x'\)</span> are close, <span class="math inline">\(f(x)\)</span> and <span class="math inline">\(f(x')\)</span> should be similar.</li>
-<li><strong>RBF (Gaussian)</strong>: Smooth, infinitely differentiable.</li>
-<li><strong>Matern</strong>: Less smooth, better for “noisy” physical phenomena.</li>
-<li><strong>Periodic</strong>: For repeating structures (lattices).</li>
-</ul>
-</section>
-<section id="gp-regression-the-confidence-ribbon" class="slide level2">
-<h2>GP Regression: The “Confidence Ribbon”</h2>
-<ul>
-<li>Near training points: Uncertainty is low (pins the function).</li>
-<li>Away from data: Uncertainty grows back to the prior.</li>
-<li><strong>Mesh-free</strong>: Excellent for small, high-quality materials datasets.</li>
-</ul>
 <div class="fragment">
-<p><img data-src="images/gp_uncertainty.png" style="width:80.0%"></p>
+<ul>
+<li>Engineering decisions are <strong>threshold decisions</strong> — accept/reject, retest/release, explore/exploit.</li>
+<li>A threshold needs a distribution, not a number.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>Trust = prediction + <strong>calibrated</strong> confidence. The “calibrated” word is what most published materials-ML papers skip.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="two-pain-points-unique-to-materials-labs" class="slide level2">
+<h2>Two pain points unique to materials labs</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="fragment">
+<p><strong>(a) Tool / operator / coating domain shift</strong></p>
+<ul>
+<li>The training set was acquired on SEM #1 with operator A and a 5 nm Au coating.</li>
+<li>Inference happens on SEM #2, operator B, no coating, on Tuesday after a chamber vent.</li>
+<li>Your softmax does not know any of that. Your <strong>uncertainty</strong> had better grow.</li>
+</ul>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="fragment">
+<p><strong>(b) Experiments cost €1k+/h</strong></p>
+<ul>
+<li>Analytical S/TEM, AM build chambers, Gleeble dilatometry: each new label is hours of instrument time and days of prep.</li>
+<li>UQ is not a publication ornament — it is the <strong>input to the next experiment</strong>: active learning only works if uncertainty is honest and spatially resolved.</li>
+</ul>
+</div>
+</div></div>
+</section></section>
+<section>
+<section id="picking-a-uq-method-per-lab-task" class="title-slide slide level1 center">
+<h1>02. Picking a UQ method per lab task</h1>
+
+</section>
+<section id="decision-table-task-method-cost" class="slide level2">
+<h2>Decision table — task → method → cost</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Lab task</th>
+<th>Recommended UQ</th>
+<th>Rationale</th>
+<th>Cost driver</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Tabular regression, <span class="math inline">\(n \in [10, 300]\)</span> (composition <span class="math inline">\(\to\)</span> property)</td>
+<td><strong>GP</strong>, RBF or Matérn <span class="math inline">\(\nu{=}5/2\)</span></td>
+<td>Closed-form CI, smooth response, hyperparams interpretable</td>
+<td><span class="math inline">\(O(N^3)\)</span> once — fine for <span class="math inline">\(N \lesssim 10^3\)</span></td>
+</tr>
+<tr class="even">
+<td>Pixel-wise segmentation of microscopy (CNN, U-Net)</td>
+<td><strong>MC Dropout</strong>, <span class="math inline">\(T \approx 30\)</span></td>
+<td>Reuse trained net, get per-pixel variance map</td>
+<td><span class="math inline">\(T\times\)</span> inference per image</td>
+</tr>
+<tr class="odd">
+<td>High-stakes property regression with budget for retraining</td>
+<td><strong>Deep ensemble</strong>, <span class="math inline">\(M \in [5, 10]\)</span></td>
+<td>Best calibration in literature <span class="citation" data-cites="lakshminarayanan2017simple">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>lakshminarayanan2017simple?</strong></a>)</span></td>
+<td><span class="math inline">\(M\times\)</span> training</td>
+</tr>
+<tr class="even">
+<td>Multi-modal output (one input, two phases possible)</td>
+<td><strong>MDN</strong>, <span class="math inline">\(K \in \{2,3\}\)</span></td>
+<td>Bimodal <span class="math inline">\(p(y\|x)\)</span> — mean is meaningless</td>
+<td>One training, harder to fit</td>
+</tr>
+<tr class="odd">
+<td><strong>Any</strong> deployed model</td>
+<td><strong>Reliability diagram</strong> + temp scaling</td>
+<td>Free, post-hoc, on a held-out cal set</td>
+<td>Trivial</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="materials-specific-computational-budgets" class="slide level2">
+<h2>Materials-specific computational budgets</h2>
+<div class="fragment">
+<p><strong>Training-time vs inference-time tradeoff</strong> is more loaded in a lab than in webscale ML:</p>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Deep ensemble</strong> — cheap at inference (run <span class="math inline">\(M\)</span> small NNs, average), <strong>expensive at training</strong> (<span class="math inline">\(M\times\)</span> wall-clock + carbon). Acceptable when training is one-off and the model is shipped to many labs.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>MC Dropout</strong> — cheap at training (one network), <strong>expensive at inference</strong> (<span class="math inline">\(T\times\)</span> forward passes). Acceptable on a benchtop where you process tens of images per day; <strong>not</strong> acceptable for a real-time inline detector.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>GP</strong> — both small at the scales we operate (<span class="math inline">\(N \lesssim 1000\)</span>). Recompute per dataset; trivially cheap at inference.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>MC Dropout’s variance estimate <strong>degrades</strong> with very deep nets and very low dropout rates — it can collapse to near-zero variance and look overconfident. Always validate with a held-out reliability diagram.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="what-to-not-do" class="slide level2">
+<h2>What to <em>not</em> do</h2>
+<div class="fragment">
+<ul>
+<li>Do <strong>not</strong> quote raw softmax probability as “model confidence” — modern deep nets are systematically overconfident; a 0.97 softmax on an out-of-distribution micrograph is meaningless <span class="citation" data-cites="guo2017calibration">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>guo2017calibration?</strong></a>)</span>.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Do <strong>not</strong> report the variance of a <strong>single ensemble member’s</strong> Monte-Carlo dropout passes and call it ensemble uncertainty — you are mixing two distinct UQ techniques and double-counting.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Do <strong>not</strong> report a GP fit without showing the <strong>prior</strong> (kernel choice, length-scale prior). The kernel <strong>is</strong> the model. Hiding it makes the CI uninterpretable.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Do <strong>not</strong> report any UQ number without a <strong>reliability diagram</strong> on a held-out calibration set.</li>
+</ul>
 </div>
 </section></section>
 <section>
-<section id="uncertainty-in-deep-learning" class="title-slide slide level1 center">
-<h1>05. Uncertainty in Deep Learning</h1>
+<section id="case-study-a-gp-for-processtoproperty-mapping" class="title-slide slide level1 center">
+<h1>03. Case study A — GP for process<span class="math inline">\(\to\)</span>property mapping</h1>
 
 </section>
-<section id="scaling-the-trust" class="slide level2">
-<h2>Scaling the Trust</h2>
+<section id="setup-21crmov5-7-quench-and-temper" class="slide level2">
+<h2>Setup: 21CrMoV5-7 quench-and-temper</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<div class="fragment">
 <ul>
-<li>GPs are slow for large data (<span class="math inline">\(O(N^3)\)</span>).</li>
-<li>How to get UQ in Deep Learning?</li>
-<li><strong>MC Dropout</strong>: Keep dropout ON during testing to sample the model distribution.</li>
-<li><strong>Deep Ensembles</strong>: Train multiple models to see where they disagree.</li>
+<li>Steel grade DIN 1.7709 / <strong>21CrMoV5-7</strong> <span class="citation" data-cites="Mantzoukas_2021_17709">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Mantzoukas_2021_17709?</strong></a>)</span>.</li>
+<li>Process: austenitize 960 °C, oil quench, <strong>temper 2 h at variable <span class="math inline">\(T_{\text{temper}}\)</span></strong>.</li>
+<li>Input: <span class="math inline">\(T_{\text{temper}} \in [200, 700]\)</span> °C.</li>
+<li>Output: hardness <span class="math inline">\(\text{HRC}(T_{\text{temper}})\)</span>.</li>
+<li>Real published dataset, <span class="math inline">\(\sim 10\text{–}30\)</span> specimens per condition with measurement scatter.</li>
 </ul>
+</div>
+</div><div class="column" style="width:45%;">
+<div class="fragment">
+<p><strong>Why this is a textbook GP problem:</strong></p>
+<ul>
+<li><span class="math inline">\(n\)</span> small, <span class="math inline">\(d{=}1\)</span> input.</li>
+<li>Response <strong>monotonically softens</strong> with <span class="math inline">\(T\)</span> but is <strong>non-linear</strong> (carbide coarsening kinetics).</li>
+<li>We need a CI to skip half of the destructive tests.</li>
+</ul>
+</div>
+</div></div>
 </section>
-<section id="mixture-density-networks-mdns" class="slide level2">
-<h2>Mixture Density Networks (MDNs)</h2>
+<section id="why-gp-fits-this-lab-task" class="slide level2">
+<h2>Why GP fits this lab task</h2>
+<div class="fragment">
 <ul>
-<li>(Neuer 6.4.4)</li>
-<li>NN predicts the parameters of a distribution (<span class="math inline">\(\mu, \sigma, \pi\)</span>).</li>
-<li>Handles multi-modal physics (e.g., a process resulting in two possible phases).</li>
+<li><span class="math inline">\(n \sim 30\)</span>: <strong>too small for a deep net to give honest uncertainty</strong>, plenty for a GP.</li>
+<li>Output is smooth in input — RBF or Matérn <span class="math inline">\(\nu{=}5/2\)</span> is the right inductive bias.</li>
+<li>The GP delivers what the lab manager wants: <span class="math inline">\(\hat{y}(T) \pm 2\sigma(T)\)</span>, narrowing at sampled <span class="math inline">\(T\)</span>, widening between.</li>
 </ul>
-<div class="quarto-layout-panel" data-layout-ncol="2">
-<div class="quarto-layout-row">
-<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
-<p><img data-src="images/mdn_schema.png"> <img data-src="images/mdn_results.png"></p>
+</div>
+<div class="fragment">
+<ul>
+<li>Hyperparameters <span class="math inline">\((\ell, \sigma_f, \sigma_n)\)</span> are fit by maximizing the log marginal likelihood — see MFML W12 for the formula. We <strong>use</strong> the result.</li>
+</ul>
+</div>
+</section>
+<section id="kernel-choice-what-the-hyperparameters-mean-physically" class="slide level2">
+<h2>Kernel choice — what the hyperparameters mean <em>physically</em></h2>
+<p><span class="math display">\[
+k_{\text{RBF}}(T, T') = \sigma_f^2 \exp\!\left(-\frac{(T - T')^2}{2\,\ell^2}\right)
+\]</span></p>
+<div class="fragment">
+<ul>
+<li><strong>Length scale</strong> <span class="math inline">\(\ell\)</span>: the “characteristic process variability” on the temperature axis.
+<ul>
+<li><span class="math inline">\(\ell \approx 50\)</span> °C → response varies sharply with temper temperature; carbide kinetics regime-change is captured.</li>
+<li><span class="math inline">\(\ell \approx 300\)</span> °C → response is essentially a slow trend; we are oversmoothing.</li>
+</ul></li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Signal variance</strong> <span class="math inline">\(\sigma_f^2\)</span>: amplitude of the HRC variation across the explored window. Read off the data range.</li>
+<li><strong>Noise variance</strong> <span class="math inline">\(\sigma_n^2\)</span>: instrument + specimen scatter at fixed <span class="math inline">\(T\)</span>. <strong>Estimate it from replicates</strong>, do not let the optimizer absorb model misfit into noise.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>For metallurgical responses with regime changes, prefer <strong>Matérn <span class="math inline">\(\nu{=}5/2\)</span></strong> over RBF — it is once-differentiable instead of <span class="math inline">\(C^\infty\)</span>, which matches the physics better.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="the-fit-described" class="slide level2">
+<h2>The fit — described</h2>
+<div class="fragment">
+<ul>
+<li>Posterior mean: a smooth softening curve from <span class="math inline">\(\sim 55\)</span> HRC at 200 °C to <span class="math inline">\(\sim 25\)</span> HRC at 700 °C.</li>
+<li>95% CI ribbon: tight (<span class="math inline">\(\pm 1\)</span> HRC) at sampled tempers (300, 450, 600 °C), widens to <span class="math inline">\(\pm 4\)</span> HRC in the gaps.</li>
+<li>The reliability of the CI is checked on a leave-one-out CV reliability diagram — and <strong>only then</strong> do we trust the ribbon.</li>
+</ul>
+</div>
+<div class="fragment">
+<p><strong>Numerical example.</strong> With <span class="math inline">\(n{=}30\)</span>, <span class="math inline">\(\sigma_n \approx 0.8\)</span> HRC (from replicates), <span class="math inline">\(\ell \approx 60\)</span> °C: the GP posterior at <span class="math inline">\(T{=}500\)</span> °C (a held-out point) gives <span class="math inline">\(\hat{\text{HRC}} = 38.2 \pm 1.6\)</span> (2<span class="math inline">\(\sigma\)</span>). Spec sheet says 36–40 — we just skipped a destructive test.</p>
+</div>
+</section>
+<section id="when-to-trust-extrapolation-and-when-not-to" class="slide level2">
+<h2>When to trust extrapolation — and when not to</h2>
+<div class="fragment">
+<ul>
+<li>The GP variance grows back toward <span class="math inline">\(\sigma_f^2\)</span> as we move away from data.</li>
+<li>For 21CrMoV5-7: ribbon balloons <strong>outside</strong> <span class="math inline">\([200, 700]\)</span> °C — the model is honestly saying “I have not seen tempers below 200 or above 700, my prediction here is essentially the prior.”</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>This is the right answer. <strong>Do not</strong> clip the variance, <strong>do not</strong> force-fit a parametric extrapolation. If you need predictions at 750 °C, run the experiment.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>The CI growth is <strong>only honest if the kernel is correct</strong>. A too-long <span class="math inline">\(\ell\)</span> will make the GP overconfident outside the data. Always cross-check with a held-out CV reliability diagram before you trust extrapolation.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="what-this-enables-direct-roi" class="slide level2">
+<h2>What this enables — direct ROI</h2>
+<div class="fragment">
+<ul>
+<li>Pre-GP workflow: 6 destructive tensile + hardness tests per heat treatment recipe, 4 recipes, <strong>24 tests</strong> at €200/test → <strong>€4 800</strong>.</li>
+<li>Post-GP workflow: 3 anchor tests + GP interpolation. CI verified, sufficient for spec compliance on standard heats. <strong>12 tests, €2 400</strong>.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Saved per heat-treatment campaign: ~€2 400.</strong> Across a year of campaigns: into the tens of thousands.</li>
+<li>Cost of the GP: half a day of analyst time, no infrastructure.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Caveat: the GP <strong>does not replace</strong> verification at the spec extremes. It replaces redundant tests in the smooth interior of the process window.</li>
+</ul>
+</div>
+</section></section>
+<section>
+<section id="case-study-b-mc-dropout-for-sem-defect-segmentation" class="title-slide slide level1 center">
+<h1>04. Case study B — MC Dropout for SEM defect segmentation</h1>
+
+</section>
+<section id="setup-u-net-on-sem-micrographs" class="slide level2">
+<h2>Setup: U-Net on SEM micrographs</h2>
+<div class="fragment">
+<ul>
+<li>Task: per-pixel segmentation of SEM micrographs into {matrix, <strong>porosity</strong>, <strong>crack</strong>, <strong>inclusion</strong>}.</li>
+<li>Architecture: U-Net with dropout layers (<span class="math inline">\(p \approx 0.2\)</span>) in the bottleneck and decoder.</li>
+<li>Training data: <span class="math inline">\(\mathcal{O}(10^3)\)</span> labeled tiles, hand-segmented by an expert. Evaluation set drawn from a <strong>different</strong> SEM session to expose tool drift <span class="citation" data-cites="Modarres_2017_SEM">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Modarres_2017_SEM?</strong></a>)</span>.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>The point estimate (argmax over softmax) is fine on the training distribution and <strong>bad</strong> on the deployment distribution. We need a per-pixel uncertainty map to flag the bad regions.</li>
+</ul>
+</div>
+</section>
+<section id="mc-dropout-in-practice" class="slide level2">
+<h2>MC Dropout in practice</h2>
+<div class="fragment">
+<ul>
+<li>Training: standard, dropout active.</li>
+<li><strong>Inference: keep dropout on</strong>, run <span class="math inline">\(T = 30\)</span> stochastic forward passes per image.</li>
+<li>Per pixel <span class="math inline">\(i\)</span>: collect <span class="math inline">\(\{p_i^{(t)}\}_{t=1}^{T}\)</span> — softmax distributions over classes.</li>
+<li>Predictive mean: <span class="math inline">\(\bar{p}_i = \tfrac{1}{T}\sum_t p_i^{(t)}\)</span> → argmax for the class label.</li>
+<li>Per-pixel <strong>predictive entropy</strong>: <span class="math inline">\(H_i = -\sum_c \bar{p}_{i,c} \log \bar{p}_{i,c}\)</span> — the uncertainty map.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><span class="math inline">\(T{=}30\)</span> is the typical knee — below 10 the variance estimate is too noisy, above 50 you are paying for diminishing returns. <strong>Validate <span class="math inline">\(T\)</span> on a held-out reliability diagram.</strong></li>
+</ul>
+</div>
+</section>
+<section id="per-pixel-uncertainty-maps-what-they-look-like" class="slide level2">
+<h2>Per-pixel uncertainty maps — what they look like</h2>
+<div class="fragment">
+<ul>
+<li><strong>Low entropy</strong> in the bulk matrix and inside large, well-formed pores: easy classification.</li>
+<li><strong>High entropy</strong> where you would expect:
+<ul>
+<li>Grain-boundary triple junctions — class boundary on the image.</li>
+<li><strong>Edge artifacts</strong> of the field of view.</li>
+<li><strong>Charging zones</strong> — bright halos around insulators.</li>
+<li>Tile edges where the U-Net’s receptive field is incomplete.</li>
+</ul></li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>These are diagnostic: the model is <strong>honestly uncertain</strong> exactly where a human operator would also hesitate.</li>
+</ul>
+</div>
+</section>
+<section id="reject-for-human-review-threshold" class="slide level2">
+<h2>Reject-for-human-review threshold</h2>
+<div class="fragment">
+<ul>
+<li>Pick a per-pixel entropy threshold <span class="math inline">\(\tau\)</span>. Pixels with <span class="math inline">\(H_i &gt; \tau\)</span> are flagged for operator review; the rest are auto-classified.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Sweep <span class="math inline">\(\tau\)</span> to draw the operating curve: <strong>(human-review rate)</strong> on the x-axis vs <strong>(defect recall)</strong> on the y-axis.</li>
+<li>Typical knee on a benchtop SEM benchmark: at <strong>5% review rate</strong> we recover <strong>&gt;98% of defect pixels</strong>; at 1% review we drop to ~92%.</li>
+<li>The threshold is a business decision, not an ML decision — it depends on the cost of a missed defect vs the cost of operator time.</li>
+</ul>
+</div>
+</section>
+<section id="tool-shift-calibration" class="slide level2">
+<h2>Tool-shift calibration</h2>
+<div class="fragment">
+<ul>
+<li>The reliability diagram on <strong>SEM #1</strong> (training tool) is well-calibrated.</li>
+<li>The reliability diagram on <strong>SEM #2</strong> (different detector, different bias) is not — the model is overconfident on a slightly different contrast distribution.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Practical fix: <strong>per-tool temperature scaling</strong>. Collect a small (~50 image) calibration set on the new tool, fit a single scalar <span class="math inline">\(T\)</span> to recalibrate. Cheap, post-hoc, no retraining.</li>
+<li>Re-run calibration after any: detector swap, gun replacement, sample-coating change, large chamber vent.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>“My segmentation accuracy dropped after the chamber vent” is a <strong>calibration</strong> failure as often as a model failure. Diagnose with a reliability diagram before retraining.</p>
+</div>
 </div>
 </div>
 </div>
 </section></section>
 <section>
-<section id="case-studies-summary" class="title-slide slide level1 center">
-<h1>06. Case Studies &amp; Summary</h1>
+<section id="case-study-c-active-learning-loop-for-am-process-windows" class="title-slide slide level1 center">
+<h1>05. Case study C — Active learning loop for AM process windows</h1>
 
 </section>
-<section id="bayesian-optimization" class="slide level2">
-<h2>Bayesian Optimization</h2>
+<section id="setup-laser-powder-bed-fusion-process-map" class="slide level2">
+<h2>Setup: laser powder-bed fusion process map</h2>
+<div class="fragment">
 <ul>
-<li>Using the GP uncertainty to guide discovery.</li>
-<li>Acquisition Function: Balancing <strong>Exploitation</strong> (near good points) vs <strong>Exploration</strong> (uncertain points).</li>
-<li>Finding optimal properties with 90% fewer experiments.</li>
+<li>Process: laser powder-bed fusion (L-PBF) on a benchtop printer, single material.</li>
+<li>Two-axis design space: laser power <span class="math inline">\(P \in [80, 350]\)</span> W and scan speed <span class="math inline">\(v \in [200, 1500]\)</span> mm/s.</li>
+<li>Goal: identify the <strong>process window</strong> — the region in <span class="math inline">\((P, v)\)</span> where relative density <span class="math inline">\(\rho_{\text{rel}} &gt; 0.995\)</span> and no melt-pool collapse is observed.</li>
+<li>Each experiment: print a <span class="math inline">\(\sim 5\)</span> mm cube, cross-section, measure <span class="math inline">\(\rho_{\text{rel}}\)</span> — <strong>about €300</strong> in materials, machine time, and metallography.</li>
 </ul>
+</div>
+</section>
+<section id="the-active-learning-loop" class="slide level2">
+<h2>The active-learning loop</h2>
+<div class="cell" data-reveal="true" data-layout-align="center">
+<div class="cell-output-display">
+<div>
+<p></p><figure class=""><p></p>
+<div>
+
+</div>
+<p></p></figure><p></p>
+</div>
+</div>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>GP surrogate</strong>: <span class="math inline">\(\rho_{\text{rel}}(P, v)\)</span> with a 2-D RBF or Matérn kernel, separate length scales <span class="math inline">\(\ell_P, \ell_v\)</span>.</li>
+<li><strong>Acquisition function</strong>:
+<ul>
+<li>Upper Confidence Bound: <span class="math inline">\(\alpha_{\text{UCB}}(P,v) = \mu(P,v) + \beta\,\sigma(P,v)\)</span>.</li>
+<li>Expected Improvement: <span class="math inline">\(\alpha_{\text{EI}}\)</span> favours points likely to beat the current best.</li>
+</ul></li>
+<li>Choose the next experiment to maximize <span class="math inline">\(\alpha\)</span> — <strong>trade off mean (exploitation) vs variance (exploration)</strong> <span class="citation" data-cites="Hernandez-Lobato_2014_PES">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Hernandez-Lobato_2014_PES?</strong></a>)</span>.</li>
+</ul>
+</div>
+</section>
+<section id="closed-loop-with-the-printer-safety-constraints" class="slide level2">
+<h2>Closed loop with the printer + safety constraints</h2>
+<div class="fragment">
+<ul>
+<li>Hard constraints the acquisition cannot violate:
+<ul>
+<li><span class="math inline">\(P/v\)</span> ratio — prevent keyhole regime that damages optics.</li>
+<li>Absolute caps — machine specs.</li>
+<li>“No-go” zones from prior failures — flagged manually.</li>
+</ul></li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Constrained Bayesian optimization: <span class="math inline">\(\max_{(P,v)} \alpha(P,v)\)</span> subject to <span class="math inline">\(g_k(P,v) \leq 0\)</span>.</li>
+<li>Implementation: rejection sampling on the candidate set, or a <strong>second</strong> GP modeling the constraint probability.</li>
+<li>Budget cap: stop the loop after <span class="math inline">\(N_{\max} = 30\)</span> experiments or when the process-window area stabilizes — whichever comes first.</li>
+</ul>
+</div>
+</section>
+<section id="result-pareto-frontier-of-effort-vs-window-discovered" class="slide level2">
+<h2>Result: pareto frontier of effort vs window discovered</h2>
+<div class="fragment">
+<ul>
+<li>Plot: x-axis = number of experiments run, y-axis = area (in <span class="math inline">\((P, v)\)</span> units) classified with <span class="math inline">\(P[\rho_{\text{rel}} &gt; 0.995] &gt; 0.9\)</span>.</li>
+<li>Active-learning curve climbs steeply early — UCB / EI route experiments straight to the boundary of the process window.</li>
+<li>Grid-search baseline: <span class="math inline">\(14 \times 14 = 196\)</span> experiments to span the design at the same resolution.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Typical result</strong> on this kind of L-PBF problem: <strong>~30 active-learning experiments find the process-window area that grid-search needs ~200 for</strong> — a roughly <strong>6–7× reduction in experimental cost</strong> <span class="citation" data-cites="Hernandez-Lobato_2014_PES">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Hernandez-Lobato_2014_PES?</strong></a>)</span>.</li>
+<li>At €300/experiment: <strong>€51 000 saved per material</strong>.</li>
+</ul>
+</div>
+</section>
+<section id="materials-acceleration-platform-framing" class="slide level2">
+<h2>Materials-acceleration-platform framing</h2>
+<div class="fragment">
+<ul>
+<li>This loop — surrogate model + acquisition + closed-loop instrument + safety constraints — is the prototype of a <strong>self-driving lab</strong>.</li>
+<li>Aspuru-Guzik and Berlinguette groups have built versions of this loop for catalysis and thin-film electrochemistry. Same pattern, different instrument <span class="citation" data-cites="Hernandez-Lobato_2014_PES">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Hernandez-Lobato_2014_PES?</strong></a>)</span>.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>The <strong>only</strong> ingredient that makes this work is <strong>honest UQ</strong>. With overconfident or miscalibrated <span class="math inline">\(\sigma\)</span>, the acquisition function picks the wrong next experiment and you waste your budget. UQ is not a slide at the end — it is the engine.</li>
+</ul>
+</div>
+</section></section>
+<section>
+<section id="calibration-deployment-hygiene" class="title-slide slide level1 center">
+<h1>06. Calibration &amp; deployment hygiene</h1>
+
+</section>
+<section id="reliability-diagrams-on-lab-data" class="slide level2">
+<h2>Reliability diagrams on lab data</h2>
+<div class="fragment">
+<ul>
+<li>Bin predictions into 10 confidence bins. For each bin, compare <strong>predicted confidence</strong> vs <strong>observed accuracy</strong> (or coverage of the CI).</li>
+<li>Perfect calibration: diagonal.</li>
+<li>Above the diagonal: under-confident. Below: <strong>over-confident</strong> (the dangerous failure mode).</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Where typical materials models break:</strong>
+<ul>
+<li>Out-of-distribution alloy family — model is highly confident, accuracy collapses.</li>
+<li>Different microscope / coating / operator — softmax stays at 0.95+, accuracy drops 20 points.</li>
+<li>Long-tail rare defect classes — confidence is high on the wrong class.</li>
+</ul></li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Always run a reliability diagram on a <strong>held-out, lab-realistic</strong> calibration set — not a random split of the training data.</li>
+</ul>
+</div>
+</section>
+<section id="ood-detection-when-the-model-sees-something-new" class="slide level2">
+<h2>OOD detection — when the model sees something new</h2>
+<div class="fragment">
+<ul>
+<li>Symptoms: confidence is high, prediction is wrong. Calibration alone cannot save you — you need to <strong>detect</strong> the OOD case and refuse to predict.</li>
+</ul>
+</div>
+<div class="fragment">
+<p><strong>Practical detectors:</strong></p>
+<ul>
+<li><strong>Mahalanobis distance</strong> in feature space (penultimate-layer activations vs the training-set Gaussian) — cheap, surprisingly effective on microscopy.</li>
+<li><strong>Ensemble disagreement</strong> — for a deep ensemble, high prediction variance across members <span class="math inline">\(\Rightarrow\)</span> OOD. Free if you already have an ensemble.</li>
+<li><strong>GP variance</strong> — for GP surrogates, <span class="math inline">\(\sigma^2 \to \sigma_f^2\)</span> flags inputs far from training. This is the same mechanism as the AL loop in §5.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li>Workflow: train your model, fit a Mahalanobis detector on training features, <strong>reject</strong> any inference with detector score above a threshold and route to a human.</li>
+</ul>
+</div>
+</section>
+<section id="reproducibility-hygiene" class="slide level2">
+<h2>Reproducibility hygiene</h2>
+<div class="fragment">
+<ul>
+<li><strong>Random seed logged</strong> for: data split, model init, dropout sampling, ensemble members, BO acquisition.</li>
+<li><strong>Model card</strong> alongside the model artifact: training data version, test metrics, calibration plot, OOD detector ROC, list of known failure modes.</li>
+<li><strong>Dataset version pin</strong>: hash of the labeled set; never silently update.</li>
+</ul>
+</div>
+<div class="fragment">
+<p><strong>The one-paragraph “uncertainty section” of a model card:</strong></p>
+<blockquote>
+<p><em>“Uncertainty is reported as 95% CIs from <span class="math inline">\(T{=}30\)</span> MC-dropout passes. The model is calibrated by temperature scaling on a 200-image held-out set; expected calibration error 0.03. The model is in-distribution iff Mahalanobis score <span class="math inline">\(&lt;\tau_{\text{OOD}} = 14.2\)</span>; outside that, predictions are not returned.”</em></p>
+</blockquote>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>If you cannot write that paragraph for your model, you cannot deploy it.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="what-mfml-w12-covers-that-we-skipped" class="slide level2">
+<h2>What MFML W12 covers that we skipped</h2>
+<div class="fragment">
+<p><strong>Pointer slide.</strong> If you want the math behind today’s tools, <strong>MFML W12</strong> has it:</p>
+<ul>
+<li>Bayesian predictive distribution and the variance decomposition (aleatory + epistemic).</li>
+<li>Marginal likelihood / evidence framework as automatic Occam’s razor.</li>
+<li>Closed-form GP posterior (mean + variance), kernel hyperparameter learning by log marginal likelihood.</li>
+<li>ELBO and variational interpretation of MC Dropout.</li>
+<li>Calibration formalism (reliability, ECE) and recalibration methods (temperature scaling, Platt, isotonic).</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>In ML-PC</strong>: we <strong>use</strong> these results on real lab data. Pick the right tool, validate it on a reliability diagram, and trust the answer enough to skip a destructive test or pick the next experiment.</li>
+</ul>
+</div>
+</section></section>
+<section>
+<section id="wrap" class="title-slide slide level1 center">
+<h1>07. Wrap</h1>
+
 </section>
 <section id="recap-unit-12" class="slide level2">
 <h2>Recap: Unit 12</h2>
-<ul>
-<li>Point estimates hide risk; distributions reveal it.</li>
-<li><strong>GPs</strong> provide principled, non-parametric UQ.</li>
-<li><strong>Kernels</strong> encode physical length scales.</li>
-<li>Uncertainty is the guide for <strong>Smart Experimental Design</strong>.</li>
-</ul>
+<div class="fragment">
+<ol type="1">
+<li><strong>Pick the UQ tool per task</strong>: GP for small tabular data, MC dropout for trained CNNs, ensembles for high-stakes regression, MDN for multi-modal outputs.</li>
+<li><strong>Calibrate before deploying</strong> — a reliability diagram on a held-out lab-realistic set is non-negotiable.</li>
+<li><strong>UQ enables active learning</strong> — and active learning is how labs scale beyond the brute-force grid search.</li>
+<li><strong>OOD detection</strong> complements calibration — confidence is meaningless when the input is outside the training distribution.</li>
+<li><strong>The math lives in MFML W12.</strong> ML-PC W12 is about <strong>using</strong> that math to save tests, find process windows, and ship trustworthy models.</li>
+</ol>
+</div>
 </section>
 <section id="references-further-reading" class="slide level2 smaller scrollable">
-<h2>References &amp; Further Reading</h2>
+<h2>References &amp; further reading</h2>
 <ul>
-<li><strong>Neuer (2024)</strong>: Ch. 6.4 (Stochastic Methods)</li>
-<li><strong>Bishop (2006)</strong>: Ch. 3.3 &amp; 3.5 (Bayesian Linear Models)</li>
-<li><strong>Rasmussen &amp; Williams (2006)</strong>: Gaussian Processes for ML</li>
+<li><strong>Mantzoukas et al.&nbsp;(2021)</strong> — 21CrMoV5-7 quench-and-temper data used in §3 <span class="citation" data-cites="Mantzoukas_2021_17709">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Mantzoukas_2021_17709?</strong></a>)</span>.</li>
+<li><strong>Modarres et al.&nbsp;(2017)</strong> — SEM benchmark for the segmentation/classification setup of §4 <span class="citation" data-cites="Modarres_2017_SEM">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Modarres_2017_SEM?</strong></a>)</span>.</li>
+<li><strong>Gal &amp; Ghahramani (2016)</strong> — MC Dropout as approximate Bayesian inference <span class="citation" data-cites="gal2016dropout">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>gal2016dropout?</strong></a>)</span>.</li>
+<li><strong>Lakshminarayanan et al.&nbsp;(2017)</strong> — Deep ensembles, the empirical gold standard for NN UQ <span class="citation" data-cites="lakshminarayanan2017simple">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>lakshminarayanan2017simple?</strong></a>)</span>.</li>
+<li><strong>Hernández-Lobato et al.&nbsp;(2014)</strong> — Predictive entropy search; foundational for BO/active learning in materials <span class="citation" data-cites="Hernandez-Lobato_2014_PES">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>Hernandez-Lobato_2014_PES?</strong></a>)</span>.</li>
+<li><strong>Guo et al.&nbsp;(2017)</strong> — Modern NNs are miscalibrated; temperature scaling <span class="citation" data-cites="guo2017calibration">(<a href="#/references-further-reading" role="doc-biblioref" onclick=""><strong>guo2017calibration?</strong></a>)</span>.</li>
+<li><strong>Rasmussen &amp; Williams (2006)</strong> — GP reference text.</li>
+<li><strong>Aspuru-Guzik &amp; Berlinguette</strong> — self-driving lab perspective; materials-acceleration platforms.</li>
+<li><strong>MFML W12</strong> — full mathematical treatment of all methods used here.</li>
 </ul>
 <div id="refs" role="list">
 
