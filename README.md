@@ -73,5 +73,6 @@ Central link index for lecture decks and units.
 
 - `Slides` links point to the published site path on `pelzlab.science`.
 - `Source` links point to editable Quarto source files in this repository.
-- Materials Genomics Units 2–4 were realigned 2026-05-09 to introduce QM, quantum chemistry, and thermodynamics content (the original databases / descriptors / simulation-methods topics were redistributed across MG U6, U12, and dropped where redundant with MFML / ML-PC). See `materials_genomics/REALIGNMENT_2026-05-09.md` and `materials_genomics/REALIGNMENT_OLD_TO_NEW_MAPPING.md`.
+- **Print / PDF export**: append `?print-pdf` to any slide URL (e.g. `…/01_intro.html?print-pdf`) and `Ctrl/Cmd+P → Save as PDF` for an offline-ready archival copy. This is a built-in RevealJS feature, no extra render needed.
+- Materials Genomics Units 2–4 were realigned 2026-05-09 to introduce QM, quantum chemistry, and thermodynamics content (original databases / descriptors / simulation-methods topics were redistributed across MG U6, U12, and dropped where redundant with MFML / ML-PC). See `materials_genomics/REALIGNMENT_2026-05-09.md` for the active map and `internal/mg_realignment_old_to_new.md` for historical context.
 - ML-PC units use the `unitNN_topic` folder convention; units 9–14 keep the deck file as `<NN>_<topic>.qmd` rather than `01_intro.qmd`.
