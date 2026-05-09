@@ -1,11 +1,10 @@
 ---
-title: |
-  Materials Genomics<br>Unit 9: Representation Learning and Feature Discovery
-bibliography: ref.bib
+title: 'Materials Genomics<br>Unit 9: Representation Learning and Feature Discovery'
 author:
-  - name: Prof. Dr. Philipp Pelz
-    affiliation:
-      - FAU Erlangen-Nürnberg
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
 execute:
   eval: false
 format:
@@ -14,241 +13,1512 @@ format:
     width: 1920
     height: 1080
     template-partials:
-      - title-slide.html
+    - title-slide.html
     css: custom.css
     theme: custom.scss
     slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
     menu:
       side: left
       loadIcons: true
-    logo: "eclipse_logo_small.png"
-    footer: "© Philipp Pelz - Materials Genomics"
+    footer: © Philipp Pelz - Materials Genomics
 ---
-- **Workflow Role**: Replaces manual descriptor engineering with automated, data-driven feature extraction. {.fragment}
-- "Along the lips of the mystic portal he discovered writings which after a little study he was able to decipher." — Nathanael West [@ryan2021machine] {.fragment}
-- This unit explores how models "decipher" the language of crystal structures. {.fragment}
+# §0 · Frame {.section}
 
-## 02. Learning outcomes for Unit 9
-
-By the end of this unit, students can:
-- explain the bottleneck principle and the role of the latent space in autoencoders, {.fragment}
-- distinguish between linear (PCA) and nonlinear (Autoencoder) dimensionality reduction, {.fragment}
-- evaluate embedding quality using separability, transferability, and probe tests, {.fragment}
-- identify failure modes such as shortcut learning and over-compression in materials tasks, {.fragment}
-- implement a representation-learning pipeline for spectral or structural data. {.fragment}
-
-## 03. Recap: Where we are in the curriculum
-
-- **Unit 7**: Regression on fixed features (descriptors). {.fragment}
-- **Unit 8**: Neural surrogates (MLPs) on fixed features. {.fragment}
-- **Unit 9 (Today)**: The representation itself is now learned from the data. {.fragment}
-- **Dependency**: Builds on neural networks (MFML) and crystal structure fundamentals (MG Unit 2). {.fragment}
-
-## 04. The bottleneck of hand-crafted descriptors
-
-- Many structure-property relations are too complex for fixed fingerprints (e.g., Magpie, SOAP). {.fragment}
-- Engineered features often saturate in performance or miss subtle structural interactions. {.fragment}
-- **Feature Discovery**: Instead of telling the model what to look for, we let the model find the most informative features [@neuer2024machine; @sandfeld_materials_data_science]. {.fragment}
-
-## 05. Representation learning as an unsupervised task
-
-- Most materials data is unlabeled (structure exists, but property $y$ is unknown). {.fragment}
-- Unsupervised learning seeks to uncover structure within the data itself. {.fragment}
-- Common paradigms: {.fragment}
-  - **Principal Component Analysis (PCA)**: Linear transformation. {.fragment}
-  - **Autoencoders**: Nonlinear neural network-based compression. {.fragment}
-  - **Manifold Learning**: t-SNE, UMAP. {.fragment}
-
-## 06. The Autoencoder (AE) Topology
-
-```{mermaid}
-graph LR
-  X[Input **x**] --> E[Encoder]
-  E --> Z((Latent Space **z**))
-  Z --> D[Decoder]
-  D --> X_hat[Reconstruction **x̂**]
-  style Z fill:#f9f,stroke:#333,stroke-width:4px
-```
-
-- An AE is a neural network trained to map the input to itself: $f(\mathbf{x}) = \mathbf{x}$. {.fragment}
-- **Encoder** $\mathcal{E}(\mathbf{x}) = \mathbf{z}$: Compresses input to a low-dimensional "code" $\mathbf{z}$. {.fragment}
-- **Decoder** $\mathcal{D}(\mathbf{z}) = \hat{\mathbf{x}}$: Reconstructs the input from the code. {.fragment}
-- **The Bottleneck**: A hidden layer with fewer neurons than the input, forcing information compression [@neuer2024machine; @ryan2021machine]. {.fragment}
-
-## 07. Formalizing the Identity Mapping
-
-- Training objective: Minimize reconstruction error (loss $J$): {.fragment}
-$$
-J = \sum_i \|\mathbf{x}_i - \mathcal{D}(\mathcal{E}(\mathbf{x}_i))\|^2
-$$
-- If reconstruction is successful, the latent vector $\mathbf{z}$ must contain all essential information about $\mathbf{x}$. {.fragment}
-- $\mathbf{z}$ is the **learned representation** or **embedding** [@bishop2006pattern]. {.fragment}
-
-## 08. PCA vs. Autoencoders: Linear vs. Nonlinear
+## 01. Today's Question
 
 ::: {.columns}
 ::: {.column width="50%"}
-**Principal Component Analysis (PCA)**
-- A linear projection onto the eigenspace of the covariance matrix. {.fragment}
-$$
-\hat{\mathbf{x}}_i = \mathbf{x}_i \mathbf{S}_C
-$$
-- Focuses on preserving variance. {.fragment}
+**Which pretrained crystal representation do we trust, on which downstream task?**
+
+- The 2018–2022 question was *should we learn a crystal representation?*
+- The 2024–2026 question is *which one* — among CGCNN, M3GNet, MACE-MP, OMat24-class, MatBERT, ChemFormer.
+- This unit answers it for materials, applying what MFML and ML-PC already taught.
+:::
+::: {.column width="50%" .fragment}
+**What this unit is *not*.**
+
+- Not a re-derivation of the autoencoder — that is **MFML W5** [@bishop2006pattern; @murphy2012machine].
+- Not a re-introduction to t-SNE / UMAP / contrastive learning — that is **MFML W9**.
+- Not a tour of conv-AEs on micrographs — that is **ML-PC W5**.
+- Today's job: stand on those three and apply representation learning to **crystals and materials data**.
+:::
 :::
 
+::: {.notes}
+**Open with a question, not a topic.** Last semester ended with the question "should we replace Magpie with a learned embedding?" By summer 2026 the answer is increasingly yes — but the operational question has shifted. We do not pick *whether* to learn a representation; we pick *which pretrained encoder* to plug in. That shift is what this unit is about.
+
+**Stake the lecture.** Seven sections. §A is a four-slide recap of MFML W9 — *recap, not re-teach*. §B explains what makes a crystal embedding different from an image embedding. §C is the centre of gravity: self-supervised pretraining on materials databases. §D specialises to contrastive crystal embeddings. §E surveys the 2024–2026 foundation-model landscape for materials. §F is diagnostics — how to tell a real embedding from a pretty t-SNE. §G is the wrap and the bridges to U10 (latent space) and U11 (clustering for discovery).
+
+**Pacing target.** 5 min frame; 10 min §B (materials-specific priors); 18 min §C (SSL pretraining — the longest section); 14 min §D (contrastive); 18 min §E (foundation models); 11 min §F (diagnostics); 7 min §G (wrap and bridges); 7 min slack. Keep §A under 5 minutes — if students need a longer recap, send them back to the MFML W9 deck tonight.
+
+**Pre-empt the obvious objection.** "If MFML and ML-PC already covered this, why do we need MG U9 at all?" Because crystals are not images, and chemistry is not text. The standard tricks of vision and NLP transfer only after we account for periodicity, equivariance, and chemical priors. That is the entire technical content of today.
+
+**Anti-hype frame.** The foundation-model wave is real, but in 2026 it is *not* the case that "always use a foundation embedding" is correct. SOAP + Gaussian Process still wins in some regimes. We will be explicit about *which* regimes in §G.
+:::
+
+## 02. Where We Are
+
+::: {.columns}
 ::: {.column width="50%"}
-**Autoencoder (AE)**
-- Uses nonlinear activation functions (ReLU, Sigmoid) to "unwrap" complex manifolds. {.fragment}
-- Focuses on minimizing reconstruction error. {.fragment}
+**Recap — what we already have**
+
+- **MFML W5:** autoencoder objective, encoder/decoder, bottleneck, K-means/GMM on embeddings.
+- **MFML W9:** latent-space geometry, t-SNE/UMAP, contrastive learning, the foundation-embedding *concept*.
+- **ML-PC W5:** convolutional AE on micrographs, frozen-CNN embeddings, AE anomaly detection.
+- **MG U6:** Magpie / matminer / SOAP / ACSF — the engineered-descriptor baseline we have to beat.
+:::
+::: {.column width="50%"}
+**Today — Unit 9 in one line**
+
+- Replace hand-crafted crystal descriptors with **pretrained, materials-specific embeddings** — and learn how to verify they are doing real work.
+- Five strands: **chemistry priors, SSL pretraining on MP/OQMD, contrastive crystal embeddings, foundation models for materials, embedding diagnostics.**
 :::
 :::
 
-| Feature | PCA | Autoencoder |
-|---------|-----|-------------|
-| Map | Linear | Nonlinear (usually) |
-| Optimizer | Eigendecomposition | Backpropagation |
-| Manifold | Hyperplane | Curved/Arbitrary |
-| Equivalent | AE with linear activations | General case |
+::: {.notes}
+**Position the unit.** Like ML-PC U5, this is a deployment unit, not a derivation unit. We are not deriving the InfoNCE loss or the AE backprop equations again. What is genuinely new today is the *materials-specific* layer: what the physics of crystals demands of a representation, and how the 2024–2026 model zoo answers that demand.
 
-: A single-layer AE with linear activations is mathematically equivalent to PCA [@bishop2006pattern; @ryan2021machine]. {.fragment}
+**Anchor to the triad.** If MFML W9 is fuzzy in students' heads, the AE-bottleneck-as-manifold-coordinate idea, the t-SNE "preserves local but not global" caveat, and the InfoNCE log-softmax form should all be revisited tonight. Today's vocabulary is: positive pair, negative pair, hard negative, pretext task, frozen encoder, linear probe, downstream task. None of those are new to the cohort.
 
-## 09. The Latent Space as a Coordinate System
+**Anchor to MG U6.** The Magpie / matminer / SOAP / ACSF descriptors from U6 are not deprecated. They reappear in §G as the baseline that any learned embedding must beat. *A learned embedding without a baseline comparison is unfalsifiable.*
 
-- The values in the bottleneck layer form the **latent space** $\mathbf{z}$. {.fragment}
-- We treat $\mathbf{z}$ as a continuous, searchable coordinate system for materials. {.fragment}
-- **Intuition**: Similar materials should lie close together in the latent space, forming a "materials manifold" [@sandfeld_materials_data_science; @murphy2012machine]. {.fragment}
+**Forward links, said aloud.** "The embeddings we frozen-evaluate today are the same embeddings whose internal axes we will *interpret* in U10, and the same embeddings we will *cluster for discovery* in U11. The whole second half of the semester runs on the foundation we lay this morning."
+:::
 
-## 10. Feature Discovery: Interpreting Latent Dimensions
+## 03. Learning Outcomes
 
-- What does $z_1$ or $z_2$ actually mean physically? {.fragment}
-- **Latent Traversal**: Vary one dimension of $\mathbf{z}$ while keeping others fixed and observe the decoded output $\hat{\mathbf{x}}$. {.fragment}
-- Example: Dimension $z_1$ might align with atomic volume, while $z_2$ captures octahedral tilting, discovered without explicit labels [@ryan2021machine]. {.fragment}
+By the end of 90 minutes, you can:
 
-## 11. Case Study: Compressing Leaf Spectra (McClarren 8.2)
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+1. Articulate why a **crystal embedding** is fundamentally different from an image or text embedding (chemistry, periodicity, equivariance).
+2. Describe **self-supervised pretext tasks** for crystal data — atom masking, edge masking, denoising, contrastive pairs — and the database substrate (MP / OQMD / AFLOW / NOMAD).
+3. Construct a **SimCLR-style contrastive setup for crystals**: positive pairs, hard negatives, InfoNCE loss.
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+4. Identify the **2024–2026 foundation-model families for materials** (M3GNet, MACE-MP, OMat24-class, MatBERT, ChemFormer) and pick the right one for a downstream task.
+5. **Diagnose** a learned embedding using linear probes and nearest-neighbour retrieval — and recognise the "pretty t-SNE, dead downstream" failure mode.
+6. Decide when a learned crystal embedding is justified **over a Magpie / SOAP baseline** and when it is not.
+:::
+:::
+:::
 
-- Data: Reflectance/transmittance spectra (2051 wavelengths). {.fragment}
-- **Goal**: Reduce 4102 features to a latent space of size $\ell=2$ or $\ell=4$. {.fragment}
-- **Result**: $\ell=4$ captures shape and intensity accurately (MAE 0.005). {.fragment}
-- **Observation**: Changing $z_1$ changes the overall spectrum level nonlinearly (not just scaling). {.fragment}
+::: {.notes}
+**Exam contract.** Outcomes 1, 2, 5, 6 are exam-weight — students should be able to articulate them in writing. Outcomes 3, 4 are skill-weight — the exercise tests them, the exam may ask for the conceptual sketch.
 
-## 12. Self-supervised learning in Materials Genomics
+**Five "must-know" statements that come up in the exam (introduce now, repeat at the end).**
 
-- "Self-supervised" means the data provides the label. {.fragment}
-- Leverages massive unlabeled databases (e.g., Materials Project). {.fragment}
-- **Masked Atom Modeling**: Predict missing atoms in a crystal structure. {.fragment}
-- **Contrastive Learning**: Learn that a rotated or translated crystal is the same material. {.fragment}
+1. A crystal embedding must respect translation, rotation, atom-permutation, and supercell-duplication invariance — the architecture or the augmentation must impose this.
+2. Self-supervised pretext tasks (atom masking, edge masking, denoising, contrastive) let us train large encoders on millions of unlabelled structures and reuse them on small labelled tasks.
+3. A "positive pair" of crystals is two views of the same material — rotated, supercell-duplicated, or thermally perturbed. *Substituting an element is not a positive pair.*
+4. A linear probe on a frozen embedding is the *honest* diagnostic. A 2D t-SNE plot is a teaser, not a verdict.
+5. There exist downstream regimes — small data, novel chemistry, calibrated uncertainty needed — where SOAP + GP still beats every foundation model.
 
-## 13. Embedding quality: separability and structure
+**Tell them where outcome 6 lives.** It is the most under-appreciated outcome of the unit. The hype gradient pushes students toward "always use the biggest pretrained thing"; the engineering gradient pushes them toward "use what works on your problem". Outcome 6 is about resisting the first and obeying the second.
+:::
 
-- A good embedding is more than just low reconstruction error. {.fragment}
-- **Separability Test**: Do chemistry families or prototypes cluster naturally? {.fragment}
-- **Neighborhood Consistency**: Do physical neighbors in "property space" remain neighbors in "latent space" (the space of $\mathbf{z}$)? {.fragment}
-- Visualization tools: t-SNE and UMAP help diagnose these properties [@sandfeld_materials_data_science]. {.fragment}
+# §A · MFML W9 Recap {.section}
 
-## 14. Transferability: Embeddings as pre-trained featurizers
+## 04. Latent space, in one slide
 
-```{mermaid}
-graph TD
-  A[Large Unlabeled Dataset] --> B[Self-supervised Training (Autoencoder)]
-  B --> C[Extract Encoder **E**]
-  C --> D[Freeze Encoder **E**]
-  D --> E[Small Labeled Dataset]
-  E --> F[Encoder **E** + Task-specific MLP]
-  F --> G[Target Property Prediction]
-  style C fill:#ccf,stroke:#333,stroke-width:2px
+::: {.columns}
+::: {.column width="50%"}
+**Restated from MFML W9**
+
+- $z = \mathcal{E}(x) \in \mathbb{R}^d$, $d \ll \dim(x)$.
+- $z$ is *low-dimensional, continuous, hopefully smooth in property-relevant directions* [@bishop2006pattern; @murphy2012machine].
+- An AE trained on materials data gives one such $z$. So does a contrastively trained encoder. So does a foundation model.
+:::
+::: {.column width="50%" .fragment}
+**The materials-specific question for today**
+
+- *What changes when the input $x$ is a crystal* rather than an image?
+- Answer (preview): chemistry, periodicity, equivariance, and supercell invariance must be respected — by the architecture or by the data augmentation.
+- Hold this question; we answer it in §B.
+:::
+:::
+
+::: {.notes}
+**Recap, not re-teach.** Three minutes maximum. If a student raises a hand and asks "wait, what's an autoencoder again?", point them at the MFML W9 deck and continue. We are not going to redraw the encoder–decoder–bottleneck diagram today. ML-PC W5 also has it.
+
+**The one-line takeaway from MFML W9 worth restating.** A latent space is *useful* to the extent that the property of interest is a *smooth* function of $z$. If similar materials have similar embeddings, downstream regression is easy; if they don't, the embedding is broken regardless of how well it reconstructs.
+
+**Why this slide exists at all.** To make explicit that the framework is not new. The students arrive in this lecture *already knowing* what $z$ is. What they do not know yet is what makes a *crystal* $z$ different from an *image* $z$. That is the gap §B closes.
+:::
+
+## 05. t-SNE / UMAP, in one slide
+
+::: {.columns}
+::: {.column width="50%"}
+**Restated from MFML W9**
+
+- 2D / 3D projections of high-dimensional $z$ for visualisation.
+- t-SNE preserves *local* neighbourhoods, distorts *global* topology.
+- UMAP preserves more global structure, still has artefacts.
+- Both are *exploration tools*, not metrics [@neuer2024machine; @sandfeld_materials_data_science].
+:::
+::: {.column width="50%" .fragment}
+**Why this matters for §F**
+
+- Materials students disproportionately publish a "pretty t-SNE" as evidence the embedding is good.
+- It is *necessary* (a hairball is bad news) but **not sufficient** (a clean t-SNE on cell-size metadata is worse than useless).
+- §F builds the honest diagnostic stack on top of probes, not projections.
+:::
+:::
+
+::: {.notes}
+**The one rule to drum in.** t-SNE / UMAP cluster appearance is a *function of the projection algorithm and its hyperparameters*, not just of the embedding. Two reasonable t-SNE perplexities can give qualitatively different pictures of the same embedding. Anyone who reads only the cluster picture and not the hyperparameters is publishing a hyperparameter, not a finding.
+
+**Concrete materials anti-pattern.** I have seen a paper claim "the embedding clusters by space group" — and the t-SNE was indeed beautifully clustered — except the linear probe of space group from the embedding was at chance. The embedding had clustered by *number of atoms in the cell*, which correlates with space group only because of how the dataset was constructed.
+
+**Forward link.** This is the seed for §F5, the "pretty t-SNE, dead downstream" anti-pattern. Plant it now; harvest it then.
+:::
+
+## 06. Contrastive learning, in one slide
+
+::: {.columns}
+::: {.column width="50%"}
+**Restated from MFML W9**
+
+- Pull positives together, push negatives apart, no labels.
+- InfoNCE: $\mathcal{L} = -\log \dfrac{\exp(\text{sim}(z_i, z_i^+)/\tau)}{\sum_j \exp(\text{sim}(z_i, z_j)/\tau)}$.
+- Image SimCLR: positives = augmented views of the same image.
+:::
+::: {.column width="50%" .fragment}
+**The materials-specific question for §D**
+
+- What is a "positive pair" of *crystals*?
+- What augmentations leave the *material* invariant while changing the input tensor?
+- Wrong answer: change an element. Right answer: rotate, duplicate the cell, perturb thermally.
+- Hold this; we develop it in §D.
+:::
+:::
+
+::: {.notes}
+**The temperature $\tau$ side note.** The temperature in InfoNCE controls how sharply negatives are pushed away. Standard values 0.07–0.5. This is identical to image SimCLR; it is not materials-specific. Mention it if asked.
+
+**The conceptual hook.** Contrastive learning works as well as it does in vision because *image augmentations are well-defined and cheap*: crop, flip, colour-jitter, rotate. Almost all of those leave the semantic content intact. The crystal analogue is harder because some "augmentations" (element substitution) cross the semantic boundary. This is the materials-specific subtlety §D will unpack.
+
+**Why I am holding the answer.** I want students to feel the cliffhanger. The MFML W9 framework is intact; what is at stake is the choice of augmentation, and that is a materials-physics question, not an ML question. That is the kind of decision §D will train.
+:::
+
+## 07. Foundation embeddings, in one slide
+
+::: {.columns}
+::: {.column width="50%"}
+**Restated from MFML W9**
+
+- A single large model, pretrained once on a broad unlabelled corpus.
+- Reused frozen — or fine-tuned — across many downstream tasks.
+- Vision: ImageNet-pretrained ResNets, ViTs. NLP: BERT, T5, GPT-class.
+- The pretraining cost is amortised across all downstream users.
+:::
+::: {.column width="50%" .fragment}
+**The materials-specific question for §E**
+
+- What is the materials equivalent of an ImageNet-pretrained ResNet?
+- The 2024–2026 candidates: M3GNet, MACE-MP, OMat24-class universal MLIPs, MatBERT, ChemFormer.
+- *None of them subsumes the others.* §E walks through which is good for what.
+:::
+:::
+
+::: {.notes}
+**Where materials sit in 2026.** Roughly where vision was in 2014–2015 — a handful of credible pretrained models, an emerging benchmark culture, and active argument about whether the pretraining is doing real work or just serving as architectural prior. We are *not* yet at the GPT-3 moment for materials. Be honest with the students about that.
+
+**The amortised-cost argument.** Pretraining a universal MLIP on Materials Project costs in the range of $10^4$–$10^5$ GPU-hours. No PhD student does this from scratch for a downstream task. The whole point of the foundation-model paradigm is that *one group does this once*; the rest of us load the checkpoint. This is genuinely new in materials — it was not the workflow in 2018.
+
+**Why I am holding the answer.** Same reason as the previous slide. We get to §E and walk through five concrete model families with their strengths and weaknesses. The students walk out knowing the menu.
+:::
+
+# §B · Why Materials Representations Need Their Own Treatment {.section}
+
+## 08. A crystal is not an image
+
+::: {.columns}
+::: {.column width="50%"}
+**An image**
+
+- Fixed-size pixel grid, $H \times W \times C$.
+- Top-down 2D Euclidean topology.
+- Pixels are interchangeable scalars (R, G, B).
+- CNN inductive bias (translation equivariance, local kernels) is *correct*.
+:::
+::: {.column width="50%"}
+**A crystal**
+
+- Variable atom count, periodic 3D unit cell.
+- Atoms are *typed* (element, oxidation state).
+- Topology is graph-like (bonds, neighbours), not grid-like.
+- A CNN on voxelised electron density loses chemistry; an image-style ViT loses periodicity.
+:::
+:::
+
+::: {.fragment}
+> **Consequence:** copy-pasting a vision encoder onto crystals discards the inductive biases that *make crystals tractable*. Every crystal-specific architecture (CGCNN, SchNet, M3GNet, MACE) is built around the right priors instead.
+:::
+
+::: {.notes}
+**The clearest single illustration.** Imagine encoding NaCl (rock salt) with a 2D CNN on a top-down projection. The translation equivariance is wrong (the crystal is 3D), the typing is wrong (Na and Cl get reduced to greyscale intensities), the periodicity is wrong (the CNN sees a finite image, not an infinite lattice). Every choice of vision-style architecture is a small lie about the physics. The lies compound; the embedding is bad.
+
+**Why does anyone ever try voxelised crystal CNNs anyway?** They do — there is a small literature on it, and it works *when the chemistry is fixed and only the geometry varies*. Outside that regime, graph-based crystal models dominate.
+
+**The student takeaway.** When you see a paper that uses a vision backbone on a crystal task, ask immediately: did they encode chemistry? did they encode periodicity? did they encode equivariance? If the answer to any of those is "no", the paper is benchmarking the architecture's blind spots, not its capacity.
+:::
+
+## 09. Chemistry priors
+
+::: {.columns}
+::: {.column width="50%"}
+**What a learned crystal embedding should know**
+
+- Element identity (not just $Z$ as a real number).
+- Valence-electron count.
+- Electronegativity, oxidation-state plausibility.
+- Ionic vs covalent vs metallic character.
+:::
+::: {.column width="50%"}
+**Where this knowledge enters**
+
+- **Initial atom features** (CGCNN-style one-hot or learned element embeddings).
+- **Discovered from data** during pretraining on millions of structures.
+- **Hybrid** — prior + learned residual; this is the dominant pattern in 2024–2026.
+:::
+:::
+
+::: {.notes}
+**The CGCNN trick, worth naming.** Xie & Grossman [@xie2018cgcnn] supplied a 92-dimensional initial atom feature vector per element — group, period, electronegativity, atomic radius, etc. — and let the GNN learn the rest. That architectural choice is *the* reason CGCNN worked on small datasets where a from-scratch element embedding would have starved.
+
+**Why "$Z$ as a real number" is wrong.** Treating atomic number as a continuous feature implies that, say, Na (11) and Mg (12) are nearer in the embedding than Na (11) and K (19). That is wrong: Na and K are alkali metals; Mg is an alkaline earth. The chemistry is *categorical*, organised by group, *not* by linear position on the number line. A naive embedding that fails to encode this dies in the first chemistry-OOD test.
+
+**The hybrid pattern.** Modern models (M3GNet, MACE-MP) start with an *learned* per-element embedding initialised either randomly or from chemistry priors, and let the network refine it. This buys both the prior knowledge and the data-driven discovery — the best of both.
+:::
+
+## 10. Structure priors
+
+::: {.columns}
+::: {.column width="50%"}
+**What a learned crystal embedding should know**
+
+- Bond lengths and bond angles (continuous, smooth).
+- Coordination polyhedra (tetrahedral, octahedral, etc.).
+- Space-group symmetry.
+- Dimensionality (0D / 1D / 2D / 3D motifs).
+:::
+::: {.column width="50%"}
+**Connection to MG U6**
+
+- SOAP and ACSF encoded these *by hand* with a fixed basis.
+- Learned crystal encoders (CGCNN, SchNet, M3GNet, MACE) compute message passes that *induce* equivalent local geometric features.
+- Same physics, two routes; the learned route scales [@neuer2024machine].
+:::
+:::
+
+::: {.notes}
+**Connect this back to MG U6.** SOAP gives you a *fixed* basis expansion of local atomic density around each atom; pooling those vectors gives a structure-level descriptor. CGCNN-style message passing gives you a *learned* basis: each message-passing layer is essentially a learned, data-conditioned analogue of a SOAP basis function. They converge on similar information; the learned version scales to millions of structures and adapts to the specific data distribution.
+
+**When does the hand-crafted version win?** Small data, novel chemistry, and any setting where you need calibrated uncertainty. SOAP + GP is much easier to reason about. We will return to this in §G.
+
+**The "same physics, two routes" framing.** This is the one I want students to internalise. The physics of local atomic environments is fixed by quantum mechanics. SOAP, ACSF, and the inner workings of CGCNN/SchNet/M3GNet are all *parameterisations* of that same physics. The choice between them is engineering, not physics.
+:::
+
+## 11. Periodic boundary conditions
+
+::: {.columns}
+::: {.column width="50%"}
+**The PBC requirement**
+
+- The same material in a $1\times1\times1$ cell and a $2\times2\times2$ supercell must produce the **same embedding** (up to a known scaling).
+- Naive GNNs *fail* this: more atoms → more messages → different aggregated embedding.
+- Architectural fixes: per-atom embedding then size-invariant pooling (mean, attention).
+:::
+::: {.column width="50%" .fragment}
+**The free positive pair**
+
+- Supercell duplication is therefore a *free augmentation* for contrastive learning.
+- Same material, different input tensor → guaranteed positive pair.
+- Architectural invariance + augmentation invariance reinforce each other.
+- Foreshadow §D2.
+:::
+:::
+
+::: {.notes}
+**Why PBC is non-negotiable.** Materials physics is invariant to the choice of unit cell. A representation that gives different embeddings for $1\times1\times1$ and $2\times2\times2$ supercells of the *same* crystal is wrong. Period. A model that fails this test is a model that has memorised the dataset's choice of cell convention, and it will fail the moment someone in another lab uses a different convention.
+
+**The free-positive-pair argument is genuinely nice.** Without doing any extra work, supercell duplication gives us a clean source of positive pairs for contrastive pretraining. The constraint is the augmentation. This is a *materials-specific* augmentation that does not exist in vision; image SimCLR has nothing analogous.
+
+**The polymorph subtlety, mention briefly.** Two distinct polymorphs of the same composition (e.g., rutile and anatase TiO$_2$) are *not* a positive pair — same composition, different structure, different properties. Architecturally we want the embedding to *distinguish* these. The augmentation should not blur them.
+:::
+
+## 12. Equivariance baked into the latent space
+
+::: {.columns}
+::: {.column width="50%"}
+**Symmetries to respect**
+
+- Translation: shift all atoms by the same vector → same embedding.
+- Rotation: rotate the cell → same embedding (or rotated, for tensor outputs).
+- Atom permutation: reorder the atom list → same embedding.
+- Inversion: invert through origin → same embedding (where physics demands).
+:::
+::: {.column width="50%"}
+**Where it comes from in 2026**
+
+- *Architectural*: equivariant message passing — NequIP, MACE, e3nn (math in MFML W9 and specialist courses, not here).
+- *Data-augmentation*: rotate / translate during training.
+- The architectural route generalises better with less data; the augmentation route is cheaper to implement.
+:::
+:::
+
+::: {.fragment}
+> **Default in 2026:** equivariant architecture for the encoder backbone; augmentations on top for contrastive pretraining. Both routes, in the same model.
+:::
+
+::: {.notes}
+**The high-level bargain.** Architectural equivariance is more *sample-efficient* — the model gets the symmetry for free, no data wasted teaching it. Augmentation-based equivariance is *cheaper to implement* — any plain GNN works, you just feed it rotated copies. The 2024–2026 leading models do both: equivariant backbones plus augmentations during contrastive pretraining.
+
+**The math is not for today.** Equivariant message passing requires spherical harmonics, Wigner-D matrices, tensor products of representations. That is a graduate-level topic in its own right (the e3nn library and the underlying group-equivariant deep learning literature). We name the result and move on. If a student wants the derivation, MFML W9 has pointers.
+
+**The empirical signal.** On benchmarks like MatBench discovery / formation-energy prediction, equivariant models (MACE, NequIP) consistently outperform non-equivariant baselines at the same parameter count. The bias is doing real work.
+:::
+
+# §C · Self-Supervised Pretraining on Materials Databases {.section}
+
+## 13. The unlabelled-data substrate
+
+::: {.columns}
+::: {.column width="50%"}
+**Database snapshot, SS26**
+
+| Database | Structures (approx.) | Labels |
+|---|---|---|
+| Materials Project [@jain2013materialsproject] | 1.5 M | DFT energies; some band gaps, elastic |
+| OQMD [@saal2013oqmd] | 1.0 M | Formation energies |
+| AFLOW [@curtarolo2012aflow] | 3.5 M | DFT energies, mostly intermetallics |
+| NOMAD [@draxl2018nomad] | 19 M (entries) | Heterogeneous, multi-source |
+:::
+::: {.column width="50%"}
+**The asymmetry that matters**
+
+- *Structures* — abundant.
+- *Property labels of interest* (band gap, conductivity, $T_c$, etc.) — scarce.
+- This asymmetry is *exactly* what self-supervised pretraining exploits.
+- We pretrain on structure; we fine-tune / probe on labels.
+:::
+:::
+
+::: {.notes}
+**Numbers will shift.** The 1.5 M / 1.0 M / 3.5 M / 19 M figures are correct as of early 2026 but will be out of date by 2027–2028. Update each year. The order of magnitude is what matters: *millions* of structures, *thousands* of property labels.
+
+**Why this is a triad-specific section.** MFML W9 covered "self-supervised pretraining" as a generic concept on whatever data exists. ML-PC W5 covered it for micrographs. Here we name the *materials* substrate explicitly because the materials student needs to know which database to point at. None of these databases existed in their current form until the 2010s; the SSL pretraining era for materials is genuinely new.
+
+**The single most important slide of §C.** Stop and let the asymmetry sink in. Without it, none of self-supervised pretraining makes sense. *Structures abundant, labels scarce* is the entire reason this whole sub-field exists.
+
+**Practical note for the exercise.** In the afternoon, students will load a Materials Project subset via the MP API. They do not need credentials beyond a free API key. Mention this so they can plan the exercise infrastructure.
+:::
+
+## 14. The pretraining recipe in one slide
+
+::: {.columns}
+::: {.column width="50%"}
+**Three knobs**
+
+1. **Corruption $T$** — what we hide / perturb in the input.
+2. **Architecture $\mathcal{E}$** — the encoder.
+3. **Substrate $\mathcal{D}$** — the unlabelled database.
+:::
+::: {.column width="50%"}
+**Pseudocode**
+
+```python
+for batch in loader(D):
+    x = batch
+    x_corrupt = T(x)       # mask, perturb, augment
+    z = encoder(x_corrupt) # the encoder we want to learn
+    loss = pretext_loss(z, x)  # reconstruct, contrast, predict
+    loss.backward()
 ```
+:::
+:::
 
-- **Workflow**: {.fragment}
-  1. Train AE on 1,000,000 unlabeled structures (e.g., MP). {.fragment}
-  2. Freeze the Encoder $\mathcal{E}$. {.fragment}
-  3. Use $\mathcal{E}(\mathbf{x})$ as input for a small-data property task (e.g., thermal conductivity). {.fragment}
-- The encoder has learned the "language" of crystal chemistry before seeing any property labels [@murphy2012machine]. {.fragment}
+::: {.fragment}
+> **Choosing $T$ defines the pretext task.** §C3–C6 walk through the four standard choices for crystal data.
+:::
 
-## 15. Probing embeddings: The Linear Readout Test
+::: {.notes}
+**The whole subfield in one for-loop.** This slide is deliberately the most schematic in the deck. Every modern self-supervised crystal pretraining paper is *some* instantiation of these three knobs. Atom masking, edge masking, denoising, contrastive — all are choices of $T$ and `pretext_loss`. The architecture changes (CGCNN, SchNet, M3GNet, MACE), the database changes (MP, OQMD, OMat24), but the loop is the same.
 
-- How "ready" is the representation for prediction? {.fragment}
-- **Linear Probe**: Train a simple linear regressor on $\mathbf{z}$ to predict property $y$. {.fragment}
-- If $\mathbf{z}$ can predict $y$ linearly, the autoencoder has successfully "linearized" the complex physics. {.fragment}
-- This is a standard diagnostic for representation quality. {.fragment}
+**Why this matters pedagogically.** Students hit a recent paper and panic at the apparent novelty. Once they recognise the for-loop, the novelty collapses to "what's the corruption, what's the architecture, what's the dataset" — three concrete questions they can answer.
 
-## 16. The Latent Space of Microstructures (Sandfeld 15.6)
+**The exercise echoes this slide.** The afternoon exercise has students plug a frozen pretrained encoder into their pipeline. They do not retrain from scratch; they instantiate this loop's *output* and use it. But knowing the loop is what lets them read the encoder's documentation intelligently.
+:::
 
-- Input: Microscopy images (TEM, SEM). {.fragment}
-- AE learns latent factors corresponding to: {.fragment}
-  - Phase fraction {.fragment}
-  - Grain size distribution {.fragment}
-  - Orientation motifs {.fragment}
-- Bridges the "pixel world" and "parameter world" of constitutive models [@sandfeld_materials_data_science]. {.fragment}
+## 15. Pretext task 1 — Atom Masking
 
-## 17. Visualization Pitfalls: t-SNE and UMAP
+::: {.columns}
+::: {.column width="50%"}
+**The task**
 
-- **Warning**: Projections to 2D can create "hallucinated" clusters or hide real distances. {.fragment}
-- t-SNE does not preserve global topology; UMAP is better but still subject to artifacts. {.fragment}
-- **Rule**: Pretty pictures are for hypothesis generation, not scientific proof [@neuer2024machine; @sandfeld_materials_data_science]. {.fragment}
+- Hide a random subset (~15%) of atom *identities*.
+- Encoder sees: positions, neighbourhoods, masked tokens.
+- Predict the masked elements from context.
+- Direct analogue: BERT's masked language modelling.
+:::
+::: {.column width="50%"}
+**What it teaches the encoder**
 
-## 18. Failure Mode: Shortcut Learning
+- Local *chemical context*: which elements coexist, which substitutions are plausible.
+- Implicit valence and electronegativity rules.
+- *Crystal Twins, Crystal-BERT-style* models (2022–2024).
+- Strong on chemistry-OOD generalisation; weaker on geometry.
+:::
+:::
 
-- The AE might "cheat" by memorizing dataset indices or artifacts of the simulation pipeline. {.fragment}
-- Example: Reconstructing a crystal by memorizing the order in the file, not the chemistry. {.fragment}
-- **Detection**: Test on an out-of-distribution (OOD) chemical family. {.fragment}
+::: {.notes}
+**The BERT analogy is exact and worth stating aloud.** BERT masks tokens in a sentence and predicts them from neighbours; atom-masking masks atoms in a structure and predicts them from neighbouring atoms. The fact that this analogy *just works* on crystals tells you the problem has the right structure for transformer-style pretraining.
 
-## 19. Failure Mode: Over-compression
+**The 15% number.** Inherited from BERT. Empirically robust; no one has shown that crystal-side pretraining benefits dramatically from a different mask rate, although it is occasionally tuned per dataset.
 
-- If the bottleneck is too narrow, critical physical nuances are lost. {.fragment}
-- A stable and an unstable polymorph might map to the same point $z$. {.fragment}
-- **Tradeoff**: Compression vs. Fidelity. {.fragment}
-- Choose $\text{dim}(z)$ by monitoring the elbow in reconstruction loss. {.fragment}
+**Limitation to flag honestly.** If the dataset is dominated by oxides, the model gets very good at predicting "oxygen" in oxygen-shaped slots and learns much less about the rare-earth side. Pretraining-distribution biases propagate to the embedding. This is the same lesson as imageNet-pretrained CNNs being unhelpful on medical imagery: pretraining tells you about the *pretraining* distribution.
 
-## 20. Variational Autoencoders (VAE) (Preview)
+**Connect to materials practice.** A rare student question: "is this just chemistry table lookup?" Partly yes — but chemistry-table lookup also requires knowing *what configuration the local environment is*, which is geometry. The atom masking task implicitly couples both.
+:::
 
-- VAEs add a probabilistic constraint: the latent space must follow a standard normal distribution $p(z) \sim \mathcal{N}(0, I)$.
-- **Benefit**: Smooths the latent space, making it better for **interpolation** and **generation**.
-- Prevents "holes" in the materials manifold where the decoder fails [@bishop2006pattern].
+## 16. Pretext task 2 — Edge / Bond Masking
 
-## 21. Embedding drift across domains
+::: {.columns}
+::: {.column width="50%"}
+**The task**
 
-- Embeddings are sensitive to the "source statistics" (e.g., DFT functional, relaxation settings).
-- An encoder trained on OQMD might fail on experimental data.
-- **Mitigation**: Domain adaptation or training on multi-source data.
+- Mask a random subset of edges in the crystal graph.
+- Predict bond presence and bond length from the rest of the structure.
+- Forces the encoder to internalise *local geometry*.
+:::
+::: {.column width="50%"}
+**When this is the right pretext**
 
-## 22. Hybrid pipelines: Grey-Box Modeling
+- Element vocabulary is *small* (atom masking is too easy).
+- Geometry is the actual signal (e.g., polymorph discrimination).
+- Common in materials sub-fields with restricted chemistry: alloys, allotropes, intercalation compounds.
+:::
+:::
 
-- Don't throw away human knowledge.
-- Concatenate engineered descriptors (which we trust) with learned embeddings (which capture complexity).
-- This "Grey-Box" approach balances interpretability and power [@sandfeld_materials_data_science].
+::: {.notes}
+**Atom-masking vs edge-masking — when does which win?** Rough rule: atom-masking dominates when the dataset spans the whole periodic table and chemistry is the discriminating signal. Edge-masking dominates when chemistry is fixed and geometry is what varies. Most papers use both, weighted in the loss.
 
-## 23. Uncertainty in the Latent Space
+**A common mistake to call out.** Naive edge masking on a periodic graph can leak information through the cell boundary — if the edge across the cell boundary is masked but the edge in the next cell is not, the model sees the answer. Implementations need to be *consistent across periodic images*. This is the kind of bug that shows up only in pretraining-distribution diagnostics, not in any single test sample.
 
-- Is the prediction uncertain because the regressor is weak, or because the latent representation is ambiguous?
-- Anomaly detection: If $x_{new}$ reconstructs poorly, the embedding is not valid for this region.
-- This is the foundation for active learning in materials discovery.
+**Forward link.** Edge-masking is conceptually adjacent to denoising (next slide) — both ask the model to predict perturbations. The difference is that edge-masking is *binary* (the edge is either there or not) while denoising is *continuous* (the position is shifted by some amount).
+:::
 
-## 24. Summary of Unit 9
+## 17. Pretext task 3 — Denoising
 
-- Representation learning replaces manual featurization with data-driven discovery.
-- Autoencoders use a bottleneck to extract salient structural information.
-- Latent spaces provide a continuous coordinate system for discovery and transfer.
-- Validation must go beyond reconstruction to include transfer and probe tests.
+::: {.columns}
+::: {.column width="50%"}
+**The task**
 
-## 25. Bridge to Unit 10: Generative Modeling
+- Perturb atomic positions by small Gaussian noise.
+- Predict the displacement field $\Delta r$ from the noisy structure.
+- Encoder learns the gradient of the energy landscape — implicitly.
+:::
+::: {.column width="50%"}
+**The pleasant surprise**
 
-- If we can **represent** materials in a latent space (Unit 9)...
-- ...we can **generate** new materials by sampling from that space (Unit 10).
-- **Rule**: Representation is the prerequisite for generation.
+- *M3GNet, MACE-MP, NequIP-Pretrained* are already trained this way — for energies and forces.
+- Their internal embeddings are usable as crystal representations *for free*.
+- One pretraining run, two products: a force field and a foundation embedding.
+:::
+:::
 
-## 26. Exercise: Comparing Descriptors vs. Embeddings
+::: {.notes}
+**The deepest of the four pretext tasks.** Predicting displacements is essentially asking the model to learn the local gradient of the potential energy surface. This is a *physics* task, not a generic ML task. Force fields trained this way produce embeddings whose geometry directly reflects energy-landscape geometry — meaning the embeddings are aligned with what physicists *care about* by construction.
 
-- **Task**: Implement a 100-32-10-32-100 AE for crystal data.
-- **Comparison**: Evaluate test RMSE using `matminer` descriptors vs. learned embeddings.
-- **Goal**: Identify which chemistry families benefit from learned features.
+**The "two products from one pretraining" point is genuinely big.** When you train MACE-MP on Materials Project, you get a working interatomic potential *and* a frozen encoder for downstream property prediction. That is unusually high ROI. The same training run that lets the chemistry-PhD do MD simulations gives the materials-genomics-PhD a featurizer.
 
-## 27. Exam Checklist
+**Connection to diffusion.** This is conceptually identical to denoising-diffusion training, where the network learns to remove Gaussian noise at each step. The diffusion connection becomes important in U10/U11 when we discuss *generation*; we sow the seed here.
+:::
 
-- [ ] Explain the role of the encoder and decoder.
-- [ ] Why is a bottleneck necessary for feature discovery?
-- [ ] How does a linear probe test a representation?
-- [ ] What is shortcut learning in an unsupervised context?
-- [ ] Why is PCA insufficient for complex structural manifolds?
+## 18. Pretext task 4 — Contrastive Pairs
+
+::: {.columns}
+::: {.column width="50%"}
+**The task**
+
+- Build positive pairs: two views of the same material.
+- Negative pairs: views of different materials.
+- InfoNCE / triplet loss pulls positives together, pushes negatives apart [@goodfellow2016deep].
+:::
+::: {.column width="50%"}
+**Where this gets interesting**
+
+- "Two views" is a *materials physics* decision, not an ML decision.
+- Rotation, supercell duplication, thermal perturbation — all valid views.
+- Element substitution — *not* a valid view.
+- §D develops this in detail.
+:::
+:::
+
+::: {.notes}
+**Bridge slide.** Use this slide to declare that we will spend the whole of §D on contrastive crystal embeddings. The conceptual machinery is identical to MFML W9; what is materials-specific is the augmentation choice.
+
+**The "valid view" question is the deepest pedagogical hinge of the unit.** If students leave with one transferable idea, it should be: *the augmentation in self-supervised learning encodes a definition of what counts as the same thing*. Image SimCLR's augmentations encode the definition that "rotated, recoloured cat is still cat". A crystal contrastive setup must encode "rotated, supercell-duplicated, thermally-jittered crystal is still crystal — but element-substituted crystal is **not**". This is a labelling decision in disguise.
+
+**Why I am repeating myself.** Because this is the slide where students need to wake up. The previous three pretext tasks were variations on a single theme (mask and reconstruct). Contrastive learning is qualitatively different — it requires a *definition of equivalence* that has to come from the physics of the problem.
+:::
+
+## 19. CGCNN as a Featurizer
+
+::: {.columns}
+::: {.column width="50%"}
+**The 2018 baseline**
+
+- Crystal Graph Convolutional Neural Network [@xie2018cgcnn].
+- Trained for formation-energy prediction on Materials Project.
+- 92-dim per-element initial features + graph convolutions + pooling → per-material vector.
+:::
+::: {.column width="50%"}
+**Why it matters in 2026**
+
+- The first widely adopted *learned* crystal representation.
+- Even a *property-supervised* CGCNN gives a usable frozen embedding.
+- Set this as the *minimum bar* — any 2024–2026 foundation embedding should beat a frozen CGCNN on equal footing [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**The historical positioning.** Pre-2018, the standard crystal featurizer was Magpie or matminer — engineered, MG U6 territory. CGCNN was the first paper to convincingly say "let the network learn the features, given the right inductive bias". The community absorbed this within two years; by 2020, CGCNN-style featurizers were standard.
+
+**The conceptual upgrade and what it taught us.** CGCNN was *not* self-supervised — it was supervised on formation energy. But its internal embeddings turn out to be useful for *other* property predictions, which is the property a foundation embedding wants. So CGCNN was foundation-shaped before "foundation model" was vocabulary.
+
+**The minimum bar argument.** Whenever a 2024–2026 paper claims a new embedding beats Magpie, ask: does it also beat a frozen CGCNN trained on formation energy? Many do; some don't. The CGCNN bar separates real progress from architectural noise.
+:::
+
+## 20. M3GNet and MACE Pretrained on Millions of Structures
+
+::: {.columns}
+::: {.column width="50%"}
+**M3GNet** [@chen2022m3gnet]
+
+- Graph-based, three-body terms.
+- Trained on the MPF.2021 dataset (~10$^6$ relaxation snapshots).
+- Predicts energies, forces, stresses across the periodic table.
+- Frozen node embeddings → crystal representation.
+:::
+::: {.column width="50%"}
+**MACE-MP-0** [@batatia2024macemp]
+
+- Higher-order equivariant message passing.
+- Trained on Materials Project relaxations.
+- Stronger out-of-distribution behaviour than M3GNet.
+- Now widely used as a "universal MLIP" — and its embeddings are usable too.
+:::
+:::
+
+::: {.notes}
+**The "universal MLIP" framing.** A *universal* machine-learning interatomic potential is one trained on enough chemistry to be deployable on a structure the user did not show up with. M3GNet aspired to this; MACE-MP got closer; the OMat24-class models go further still. Universality is a function of pretraining-data coverage *and* architectural inductive bias.
+
+**Why we mention these here, in §C, before §E.** They are the canonical examples of large-scale self-supervised pretraining on materials databases. They deserve to appear here, in the SSL section, as the substrate for the foundation-model conversation in §E. §E will return to them with more detail and context.
+
+**Practical workflow note.** The MACE-MP-0 weights are public; loading them takes ~5 lines of Python. The students will use exactly this in the afternoon exercise. This is not an aspirational future workflow; it is the workflow they are about to do.
+:::
+
+## 21. Frozen-Embedding Downstream Property Prediction
+
+::: {.columns}
+::: {.column width="50%"}
+**The standard 2026 recipe**
+
+```python
+encoder = load_pretrained("MACE-MP-0")
+encoder.eval()             # freeze
+for batch in train_loader:
+    z = encoder(batch.x).detach()
+    y_hat = head(z)        # small MLP / linear / GP
+    loss = mse(y_hat, batch.y)
+    loss.backward()        # head only
+```
+:::
+::: {.column width="50%"}
+**What to compare against**
+
+- Magpie + matminer + tree model (MG U6 baseline).
+- SOAP + GP (MG U6 baseline).
+- Same architecture trained from scratch on the small set.
+- The third comparison catches "the architecture is doing the work, the pretraining did nothing".
+:::
+:::
+
+::: {.notes}
+**The recipe is short for a reason.** Once the encoder exists, downstream is trivial. Five lines of head-training. This is exactly why the field is moving toward foundation models — the per-task cost collapses.
+
+**The hidden cost.** That `load_pretrained("MACE-MP-0")` line hides $10^4$ to $10^5$ GPU-hours of pretraining. Students should know this. The pretraining is only "free" because someone else paid for it. This is one of the reasons foundation models concentrate research power among well-resourced groups, and worth flagging as a sociological feature of the era.
+
+**The third comparison is the one that distinguishes serious work.** A from-scratch baseline at the *same architecture* tells you whether the pretraining contributed. Many papers omit this comparison and overstate the value of pretraining. Train students to demand it.
+
+**Forward link.** The exercise this afternoon includes exactly this comparison. The students will make a four-row table: Magpie, SOAP+GP, frozen MACE-MP, from-scratch MACE-MP. Their job is to interpret the rows.
+:::
+
+## 22. What Pretraining Actually Buys You
+
+::: {.columns}
+::: {.column width="50%"}
+**Pretraining helps most when**
+
+- Downstream labels are *scarce* (< 1k examples).
+- Downstream chemistry overlaps the pretraining distribution.
+- Target is correlated with the pretraining objective (energetic, geometric).
+:::
+::: {.column width="50%"}
+**Pretraining helps least when**
+
+- Downstream chemistry is *outside* the pretraining distribution.
+- Target is decoupled from pretraining (e.g., synthesis yield from a structural encoder).
+- Downstream dataset is large enough to train from scratch.
+:::
+:::
+
+::: {.fragment}
+> **Empirical pattern (2023–2026 literature):** the small-data, in-distribution regime is where foundation embeddings dominate. Outside that regime, *Magpie or SOAP often catch up* — and they cost orders of magnitude less.
+:::
+
+::: {.notes}
+**The most important practical slide of §C.** Memorise this slide. Students will return to it for years after the lecture.
+
+**Why scarce labels matter.** Pretraining gives the encoder a head start on the chemistry. With 50 labelled examples, you have no chance of learning chemistry from the labels alone — the head start is everything. With 50 000 labelled examples, you can learn chemistry from the labels; the head start is worth less.
+
+**Why distribution overlap matters.** A model pretrained on inorganic crystals knows nothing about organic molecules. Asking M3GNet to embed a small-molecule SMILES is asking a librarian for a recipe. Pretraining-distribution coverage is destiny for the downstream task.
+
+**The honest part.** I want students to leave knowing the answer is *not* always "foundation model". The vision-style hype gradient suggests otherwise. The materials-engineering reality is: it depends. §G makes this explicit.
+:::
+
+# §D · Contrastive Learning of Crystal Embeddings {.section}
+
+## 23. The Materials Version of SimCLR
+
+::: {.columns}
+::: {.column width="50%"}
+**The pattern, restated**
+
+- Two augmentations $T_1, T_2$ of the same crystal $x$.
+- Pass through encoder + projection head: $z_1, z_2$.
+- InfoNCE: $\mathcal{L} = -\log \dfrac{\exp(\text{sim}(z_1, z_2)/\tau)}{\sum_{j} \exp(\text{sim}(z_1, z_j)/\tau)}$.
+- $\tau$: temperature; sum runs over batch negatives.
+:::
+::: {.column width="50%"}
+**What is materials-specific**
+
+- Architecture: equivariant graph net (not a CNN).
+- Augmentations: physical operations that leave the *material* invariant.
+- Negatives: other crystals in the batch — possibly *hard-mined* by composition / prototype similarity.
+:::
+:::
+
+::: {.notes}
+**The slide is deliberately a duplicate of MFML W9 plus annotations.** That is the point — if the contrastive recipe were materially different from image SimCLR, MFML W9 wouldn't cover it. What is different is *augmentation*, *architecture*, and *negative-mining strategy*, three concrete choices we will walk through.
+
+**The projection-head detail.** Most modern contrastive setups use a small MLP "projection head" after the encoder before computing similarities, then *discard the projection head* at downstream-use time. This is a SimCLR-2020 detail; it improves the embedding quality. We mention it but don't dwell.
+
+**Pacing.** §D is shorter than §C and §E because the conceptual machinery is borrowed from MFML W9. We focus on what is materials-specific.
+:::
+
+## 24. Positive-Pair Construction for Crystals
+
+::: {.columns}
+::: {.column width="50%"}
+**Four standard moves**
+
+1. **Random rotation** of the unit cell.
+2. **Supercell duplication** ($1\times1\times1 \leftrightarrow 2\times2\times2$).
+3. **Atomic-position perturbation** within thermal-fluctuation envelope.
+4. **Origin shift** (translation of the cell origin).
+:::
+::: {.column width="50%"}
+**Why each is valid**
+
+- Rotation: physics is rotation-invariant.
+- Supercell: physics is independent of the choice of cell.
+- Perturbation: at finite $T$, the *real* material is jittered — small noise is on-distribution.
+- Origin shift: physics is translation-invariant.
+:::
+:::
+
+::: {.notes}
+**The four moves to internalise.** These are the canonical positive-pair constructions for crystals as of 2026. None of them is image-specific; all of them are *physics-justified*.
+
+**The thermal-perturbation envelope.** Typical noise scale: 0.05–0.2 Å, smaller than thermal RMS displacement at room temperature for most solids. Large enough to change the input tensor; small enough to leave the material physically unambiguous. Tuning this is a hyperparameter; defaults from the literature are reasonable starting points.
+
+**A subtle point worth raising.** Origin shift only matters if the architecture is not already translation-invariant. Equivariant GNNs handle origin shift automatically via the aggregation, so origin-shift augmentation is redundant for those architectures. For non-equivariant CNN-on-voxel encoders, origin shift is a useful augmentation.
+
+**Why I am stating positives before negatives.** The negative side is mostly bookkeeping (in-batch negatives, hard mining). The positive side is where the *physics decision* lives. That is where we should spend the conceptual airtime.
+:::
+
+## 25. What Does NOT Count as a Positive Pair
+
+::: {.columns}
+::: {.column width="50%"}
+**Three ways to get this wrong**
+
+- **Element substitution.** NaCl and KCl are *different materials*.
+- **Space-group change.** Rutile and anatase TiO$_2$ are *different polymorphs*.
+- **Atom removal / addition.** A vacancy is a *different* material with *different* properties.
+:::
+::: {.column width="50%" .fragment}
+**Why this matters**
+
+- A "bad" augmentation that crosses the line trains the encoder to *erase* the discriminating signal.
+- The bug shows up as a great pretraining loss and *bad downstream performance*.
+- This is a silent labelling bug; it has no symptom in the pretraining metrics.
+:::
+:::
+
+::: {.notes}
+**The single most failure-prone decision in contrastive crystal pretraining.** I have read papers that included element substitution as an augmentation "for diversity". The resulting embeddings cannot distinguish NaCl from KCl. The downstream property prediction is correspondingly bad. The pretraining loss looks fine. The bug is invisible without a downstream evaluation.
+
+**Why is this temptation so strong?** Because in image SimCLR, *colour-jitter* is a valid augmentation — colour is often not semantically discriminative for object classification. By analogy, "element-jitter" sounds reasonable. But chemistry is not colour; element identity is the *primary* semantic content of a crystal. Crossing this line is wrong.
+
+**The diagnostic.** Always evaluate contrastive embeddings on a *property-discrimination* task before declaring success. If your embedding cannot tell NaCl from KCl on a linear probe, your augmentation policy is blurring chemistry.
+
+**The pedagogical takeaway, said aloud.** Augmentations encode invariances. Choose them as carefully as you choose loss functions. They are not free, they are not symmetric, and they are not portable across modalities.
+:::
+
+## 26. Negative Pairs and the In-Batch Trick
+
+::: {.columns}
+::: {.column width="50%"}
+**In-batch negatives**
+
+- Every other crystal in the same training batch is a negative.
+- $N-1$ negatives per anchor at batch size $N$.
+- Cheap; no extra forward passes.
+- Standard since SimCLR (2020).
+:::
+::: {.column width="50%"}
+**Batch size matters**
+
+- Larger batches → more diverse negatives → better embeddings.
+- For crystal SimCLR variants, $N \in [256, 4096]$ is typical.
+- Memory-bound for large encoders; gradient accumulation or memory banks help.
+:::
+:::
+
+::: {.notes}
+**The cheapest part of the algorithm.** In-batch negatives gave us SimCLR-style contrastive learning at sane compute budgets. Before that, you needed an explicit memory bank (MoCo) or a supervised proxy task. The "every other thing in the batch is a negative" trick is the engineering insight that made the modern era possible.
+
+**The batch-size sensitivity is real.** SimCLR plateaued at batch sizes where most labs couldn't fit the model in memory. Materials-side variants inherit the same scaling. For students with single-GPU budgets, the practical rule is: as large a batch as you can fit, with gradient accumulation if needed.
+
+**Memory-bank alternatives, named for completeness.** MoCo-style memory banks store a queue of recent embeddings to act as negatives without requiring them in the batch. This is sometimes useful for very small per-step batches. Materials-side use of MoCo-style is rarer but exists. Don't dwell.
+:::
+
+## 27. Hard-Negative Mining
+
+::: {.columns}
+::: {.column width="50%"}
+**The signal asymmetry**
+
+- An anchor crystal vs a totally unrelated crystal: easy negative, low gradient.
+- An anchor crystal vs a *similar* but different crystal (same composition, different polymorph): hard negative, *high* gradient.
+- Most of the learning signal lives in the hard negatives.
+:::
+::: {.column width="50%"}
+**Mining strategies**
+
+- *Nearest-neighbour mining*: pick negatives closest to the anchor in the current embedding.
+- *Prototype-based mining*: deliberately include same-prototype, different-composition pairs.
+- *Polymorph-aware mining*: ensure each composition has multiple polymorphs in the batch.
+:::
+:::
+
+::: {.notes}
+**The pedagogical hook.** "Most of the learning signal is in the hard negatives" is a transferable insight. It also applies to triplet-loss face-recognition [@schroff2015facenet], where hard-negative mining produced most of the gains. Materials inherit the lesson directly.
+
+**Why polymorph-aware mining is the materials-specific twist.** A pair of polymorphs (TiO$_2$ as rutile vs anatase) is the canonical hard negative: identical composition, different structure, different properties. Forcing the encoder to distinguish them is exactly the discrimination we want for downstream property prediction. If the contrastive setup never sees polymorph pairs, it will not learn to discriminate them.
+
+**Diminishing returns.** Hard-negative mining helps a lot in the early phase of training, less so once the embedding has converged. Schedules that ramp from random to hard mining over training are common.
+:::
+
+## 28. InfoNCE vs Triplet Loss
+
+::: {.columns}
+::: {.column width="50%"}
+**InfoNCE**
+
+$$\mathcal{L} = -\log \dfrac{\exp(\text{sim}(z_a, z_p)/\tau)}{\sum_{j} \exp(\text{sim}(z_a, z_j)/\tau)}$$
+
+- Log-softmax over (positive, negatives).
+- Scales with batch size.
+- The 2024–2026 default.
+:::
+::: {.column width="50%"}
+**Triplet**
+
+$$\mathcal{L} = \max\bigl(0, \, d(z_a, z_p) - d(z_a, z_n) + m\bigr)$$
+
+- Margin $m$.
+- Single positive, single negative per anchor.
+- Heavier reliance on hard-negative mining.
+:::
+:::
+
+::: {.notes}
+**Both work; InfoNCE is the modern default.** The shift from triplet (FaceNet-2015 era) to InfoNCE (SimCLR-2020 era) was driven by the batch-size argument: InfoNCE uses *all* in-batch negatives at once, triplet uses one per step. For the same compute, InfoNCE sees more negatives and converges faster.
+
+**Margin $m$ in triplet.** Typical values 0.2–1.0. Hyperparameter; tunable. The corresponding sensitivity in InfoNCE is the temperature $\tau$ (typical 0.07–0.5).
+
+**This is a one-slide topic deliberately.** Students saw both losses in MFML W9; the materials-specific decision is *which one* and the answer is "InfoNCE in 2026, with triplet as a fallback for memory-constrained settings". Don't spend more than two minutes here.
+:::
+
+## 29. Published Crystal-Contrastive Results
+
+::: {.columns}
+::: {.column width="50%"}
+**Notable systems (2022–2025)**
+
+- *Crystal Twins* [@magar2022crystaltwins] — Barlow-Twins variant.
+- *CrystalCLR* [@koker2022crystalclr] — SimCLR-style on crystal graphs.
+- *MatNet*-class encoders (various).
+- Built on MP / OQMD as substrate.
+:::
+::: {.column width="50%"}
+**Headline results**
+
+- Match or beat property-supervised CGCNN baselines on small downstream tasks.
+- Strongest gains on **small-label, in-distribution** tasks — consistent with §C22.
+- Modest or no gains on large-label, well-covered targets.
+:::
+:::
+
+::: {.notes}
+**Naming dates and authors.** The names will need to be re-checked in 2027 — citation hygiene. The pattern is what matters: by 2024 there were multiple credible contrastive crystal encoders, and they all sat in roughly the same performance band on standard benchmarks.
+
+**The honest summary.** Contrastive pretraining on crystals works. It is not magic. The gains over CGCNN-supervised pretraining are real but modest (~5–15% relative MAE improvement on small-data tasks). The biggest gains are in transfer to new chemistry, where supervised CGCNN is itself biased toward its training-target distribution.
+
+**Why I don't put more numbers on the slide.** Numbers move year-on-year. The *qualitative* claim — contrastive embeddings match or exceed supervised baselines on small-data tasks — is what students should remember. Specific MAE numbers will be obsolete by the time they finish their thesis.
+
+**Bib gap to flag.** None of CrystalTwins, CrystalCLR, MatNet are currently in `ref.bib`. The qmd uses author-year text without citation keys for these. Adding them is follow-up.
+:::
+
+## 30. Embedding Similarity as Retrieval
+
+::: {.columns}
+::: {.column width="50%"}
+**The retrieval task**
+
+- Given a query crystal $q$, return its $k$ nearest neighbours in the database.
+- $k$-NN in embedding space, not feature space.
+- Returns: same prototype? same composition family? similar properties?
+:::
+::: {.column width="50%"}
+**Why retrieval beats t-SNE for diagnostics**
+
+- Operates in *full embedding dimension* — no 2D projection artefacts.
+- Operates *per-query* — local quality, not global.
+- Generalises directly to the **U12 active-discovery loop**: "find me a candidate similar to this one".
+:::
+:::
+
+::: {.notes}
+**Retrieval is the most under-rated diagnostic in materials representation learning.** Everyone publishes a t-SNE; almost no one publishes a retrieval evaluation. This is backwards: retrieval is honest, t-SNE is decorative.
+
+**The discovery-loop connection.** Suppose a student is hunting for new perovskite solar absorbers. They have one known good candidate. They want to find ten more. The right question is not "give me a 2D plot of all perovskites" — it's "give me the ten nearest neighbours to this candidate in the embedding space". That is the U12 active-discovery loop, in one sentence.
+
+**Practical evaluation.** Manually inspect retrieval results for 20 query crystals across the periodic table. Score: of the 10 nearest neighbours, how many are the same prototype? how many have the same composition family? how many have property values within $X\%$? This is qualitative but powerful.
+
+**Forward link.** This is the seed for §F3 (nearest-neighbour retrieval as a diagnostic) and for U12 (active discovery via embedding similarity).
+:::
+
+# §E · Foundation Models for Materials {.section}
+
+## 31. What "Foundation Model" Means in Materials
+
+::: {.columns}
+::: {.column width="50%"}
+**Borrowed from NLP/Vision**
+
+- A single large model.
+- Pretrained once on a broad unlabelled corpus.
+- Reused frozen — or fine-tuned — across many downstream tasks.
+- Pretraining cost amortised across all downstream users.
+:::
+::: {.column width="50%"}
+**The materials version, in 2026**
+
+- Multiple credible candidates across structure, chemistry, text.
+- *None* dominates; the choice depends on modality and downstream task.
+- We are roughly where vision was in 2014–2015.
+- The benchmarks are emerging, the consensus is not.
+:::
+:::
+
+::: {.notes}
+**The honest framing.** Materials are not at the GPT-3 moment. There is no single model that "knows materials science" the way GPT-3 "knows English". What there *is* is a small zoo of useful pretrained encoders, each strong in its lane, and the engineering question is which one fits a given downstream task.
+
+**Why I am being careful about hype.** The students will read papers from 2024–2026 that claim "the first foundation model for materials". Several of these claims are credible; several are marketing. Teaching them to distinguish requires teaching the criteria — coverage of pretraining data, generality of architecture, demonstrated transfer.
+
+**The amortised-cost argument, restated.** The single biggest practical justification for foundation models is that *one* group does the expensive pretraining and *everyone else* loads the checkpoint. The same argument that justifies pretrained ResNets in computer vision justifies pretrained M3GNet/MACE-MP in materials. It is not about model capacity; it is about who pays for the pretraining.
+:::
+
+## 32. Modalities of Materials Foundation Models
+
+::: {.columns}
+::: {.column width="50%"}
+**Three lanes**
+
+1. **Text** — MatBERT, SciBERT, materials-text-LLMs.
+2. **Chemistry strings** — ChemFormer, MoLFormer (SMILES / SELFIES).
+3. **Structure** — CGCNN, M3GNet, MACE-MP, OMat24-class (crystal graphs / atomistic configs).
+:::
+::: {.column width="50%"}
+**No lane subsumes the others**
+
+- A text model knows synthesis recipes; not a structure file.
+- A SMILES model knows organic chemistry; not periodic solids.
+- A structure model knows crystals; not the literature.
+- *Multimodal materials models exist but are early-stage in 2026.*
+:::
+:::
+
+::: {.notes}
+**Three lanes, three pretraining substrates, three target downstreams.** The single most useful organising principle of §E.
+
+**The multimodal frontier, mentioned in passing.** There are emerging efforts (mostly 2024–2026) to build models that ingest text + structure + spectroscopy jointly. They exist; they are not mature. By 2027–2028 this slide may have a fourth lane labelled "multimodal" with credible candidates. As of SS26, the three-lane decomposition is the right mental model.
+
+**Why this matters for the downstream-decision slide (E10).** The downstream task lives in one of the three modalities (or in two — e.g. predicting property from structure given a literature description). The model choice is largely determined by the modality. Get this right and the rest is bookkeeping.
+:::
+
+## 33. MatBERT and the Text Lane
+
+::: {.columns}
+::: {.column width="50%"}
+**MatBERT in one slide**
+
+- BERT pretrained on materials-science abstracts [@trewartha2022matbert].
+- Use cases:
+  - embed an abstract → retrieve similar papers,
+  - extract synthesis conditions from text,
+  - classify paper topic.
+:::
+::: {.column width="50%"}
+**Strengths and weaknesses**
+
+- *Strength:* taps implicit human knowledge in the literature.
+- *Weakness:* knows nothing about a structure file you didn't text-describe.
+- *Right downstream:* literature mining, not property regression.
+:::
+:::
+
+::: {.notes}
+**Why MatBERT is in this lecture at all.** Because text is genuinely a materials modality and the U12 active-discovery loop will eventually want to read papers, not just structures. A text encoder is the right tool for that lane.
+
+**The synthesis-recipe extraction use case is concretely useful.** Students writing literature reviews for their thesis can fine-tune MatBERT to extract reagents and conditions from a corpus of abstracts. This is real and works in 2026.
+
+**The lane separation, said aloud.** A student who tries to predict band gap from a MatBERT embedding of a paper abstract is fighting their tools. The right tool for band gap is a structure model, not a text model.
+:::
+
+## 34. ChemFormer, MoLFormer, and the SMILES Lane
+
+::: {.columns}
+::: {.column width="50%"}
+**Models**
+
+- *ChemFormer* [@irwin2022chemformer] — seq2seq on SMILES.
+- *MoLFormer* [@ross2022molformer] — masked-token on SMILES at scale.
+- Both pretrained on $10^7$–$10^9$ molecules.
+:::
+::: {.column width="50%"}
+**Use cases**
+
+- *Molecular* property prediction with frozen encoder + small head.
+- Reaction prediction (ChemFormer's seq2seq strength).
+- *Limitation*: SMILES poorly describes periodic solids; these do not transfer to crystals.
+:::
+:::
+
+::: {.notes}
+**The molecular-vs-crystal divide is sharp.** SMILES is fine for organic molecules — molecular property prediction is a billion-dollar industry built on it. SMILES for crystals is awkward at best, broken at worst. There exist crystal-string encodings (CIF, structure-aware SMILES variants) but these are less standardised and have less pretraining data.
+
+**Why this slide is in §E even though it doesn't help most MG students directly.** Because the materials genomics curriculum is broader than crystals, and a student going into battery electrolytes, polymers, or pharmaceutical formulations will want to know that the SMILES lane exists.
+
+**The handoff.** If a student in office hours says "I'm working on a molecular catalyst", they get pointed at MoLFormer. If they say "I'm working on a perovskite", they get pointed at MACE-MP. The lane structure governs the recommendation.
+:::
+
+## 35. M3GNet Embeddings
+
+::: {.columns}
+::: {.column width="50%"}
+**M3GNet** [@chen2022m3gnet]
+
+- Materials Graph Network with three-body interactions.
+- Trained on Materials Project relaxation trajectories.
+- Predicts energies, forces, stresses across the periodic table.
+- Frozen *node embeddings* → crystal representation.
+:::
+::: {.column width="50%"}
+**Strengths and weaknesses**
+
+- *Strength:* full periodic-table coverage at MP-DFT level.
+- *Weakness:* inherits MP's chemistry biases (oxide-heavy, organics-light).
+- *Right downstream:* structure–property regression on inorganic crystals.
+:::
+:::
+
+::: {.notes}
+**The "two products from one pretraining" point, restated.** M3GNet is shipped as a force field. Its embeddings are usable as a featurizer. Both come from the same pretraining run. This is unusually high ROI; most pretrained models have one product, not two.
+
+**The MP-bias caveat is real.** Materials Project skews heavily toward inorganic crystals, especially oxides and intermetallics. Anything pretrained on MP inherits that skew. If a student's downstream task is rare-earth borides, they should expect M3GNet to be weak there.
+
+**Practical workflow.** `m3gnet` and `matgl` are public PyPI packages. The students will install them in the afternoon exercise. This is not aspirational; it is plug-and-play.
+:::
+
+## 36. MACE-MP and the Universal-MLIP Family
+
+::: {.columns}
+::: {.column width="50%"}
+**MACE-MP-0** [@batatia2024macemp]
+
+- Higher-order equivariant message passing.
+- Pretrained on Materials Project relaxations.
+- Stronger OOD behaviour than M3GNet at comparable parameter count.
+:::
+::: {.column width="50%"}
+**The universal-MLIP era**
+
+- The closest analogue materials has to ImageNet-pretrained ResNets.
+- Used as: (i) MD potential, (ii) frozen featurizer, (iii) starting point for fine-tuning.
+- Successors: MACE-MP-1, MACE-OFF, NequIP-Pretrained.
+:::
+:::
+
+::: {.notes}
+**Why MACE-MP gets a dedicated slide.** Because in 2024–2026 it is the most-used universal MLIP in academia. The students will encounter it constantly, and they should know what it is, what it is good at, and how to load it.
+
+**The naming convention.** "MACE-MP-0" denotes the original Materials-Project-pretrained version. "MACE-OFF" is a separate variant for organic chemistry. "MACE-MP-1" and beyond are improvements. Knowing the naming convention helps students read papers.
+
+**The triple-use point.** MACE-MP can be used as (i) a force field for MD simulation, (ii) a frozen featurizer for property prediction, (iii) a fine-tuning starting point for a specialised model. Each of these is a credible workflow in 2026. Most papers use only one; sophisticated students should know all three exist.
+:::
+
+## 37. The 2024 OMat24 / Meta Release
+
+::: {.columns}
+::: {.column width="50%"}
+**OMat24** [@barrosoluque2024omat24]
+
+- Meta AI Research, October 2024.
+- ~118 million inorganic structures + DFT labels.
+- Equiformer-V2-class models trained on it.
+- Released as open weights and dataset.
+:::
+::: {.column width="50%"}
+**Why this matters**
+
+- ~100x larger pretraining substrate than MP-only.
+- Pretrained encoder available for downstream use.
+- The 2024–2026 frontier in scale; will be displaced by something larger by 2027–2028.
+:::
+:::
+
+::: {.notes}
+**Be honest about the timestamp.** "The frontier in 2024–2026" — by the time a student is writing their thesis in 2027, this slide will be partly obsolete. The names will change; the *pattern* (large open dataset → large open pretrained model → frozen embedding for everyone) will not.
+
+**The scale argument.** 118 M structures is two orders of magnitude beyond Materials Project. Whether that translates to two-orders-of-magnitude-better embeddings depends on the downstream task. The empirical signal so far: yes for in-distribution structure-property regression, modestly for OOD chemistry.
+
+**The compute-ethics aside.** Pretraining on 118 M structures is GPU-expensive. Meta did it once; everyone else loads the checkpoint. This is the foundation-model paradigm working as intended — but it concentrates capability among well-resourced labs. Worth flagging for context.
+:::
+
+## 38. GNoME and Large-Scale Discovery Models
+
+::: {.columns}
+::: {.column width="50%"}
+**GNoME** [@merchant2023gnome]
+
+- DeepMind's *Graph Networks for Materials Exploration*.
+- Large GNN pretrained on Materials Project + active learning.
+- Claimed ~2.2 M stable crystal candidates.
+:::
+::: {.column width="50%"}
+**The cautious read**
+
+- Whatever fraction of the 2.2 M is *experimentally* real, the *pretrained encoder* is usable.
+- The discovery claims are contested in 2024–2025 follow-up.
+- The methodology — active learning + pretrained encoder — is the durable contribution.
+:::
+:::
+
+::: {.notes}
+**The contested-claims context, said honestly.** Several 2024–2025 follow-up papers argued that a large fraction of the 2.2 M GNoME candidates were either duplicates of known structures or not actually thermodynamically stable. The original claim was over-strong. The pretrained encoder is still useful regardless.
+
+**The methodology is what students should learn.** Active learning (foreshadow U12) plus a pretrained encoder is the right loop for materials discovery. GNoME was an early high-profile example. The exact numerical claims will be relitigated; the loop architecture is durable.
+
+**Why this is in §E and not in §F.** Because GNoME is a pretrained encoder, and the encoder is what we are surveying here. The discovery-loop application is U12.
+:::
+
+## 39. Few-Shot Regression with a Frozen Foundation Embedding
+
+::: {.columns}
+::: {.column width="50%"}
+**The workflow**
+
+```python
+encoder = load("MACE-MP-0")
+encoder.eval()
+z_train = encoder(X_train).detach()   # 50–500 examples
+z_test  = encoder(X_test).detach()
+head = LinearRegression().fit(z_train, y_train)
+y_hat = head.predict(z_test)
+```
+:::
+::: {.column width="50%"}
+**Why this works at small N**
+
+- The embedding has *already* internalised chemistry and geometry.
+- The head only needs to learn the property-specific direction in $z$-space.
+- Few parameters in the head → low overfitting risk.
+- Robustly beats from-scratch training in the small-N regime.
+:::
+:::
+
+::: {.notes}
+**This is the killer app of the foundation-model paradigm in materials.** Most experimental property datasets in materials are small — tens to hundreds of measurements, not millions. Pretrained encoders convert that small-N regime from "untrainable" to "linear regression". That is a *qualitative* change in what a small lab can do.
+
+**The Gaussian-Process variant for §G.** When uncertainty is needed, replace `LinearRegression()` with a Gaussian Process on the frozen embedding. This combines the strengths of both worlds: foundation embedding for chemistry, GP for calibrated uncertainty. We will see this in U12.
+
+**Practical sanity-check.** If your few-shot regression is *worse* than a Magpie + RandomForest baseline at the same N, your encoder is failing. This is a real check, not a theoretical one. Run it; trust the result.
+:::
+
+## 40. Choosing a Foundation Model for a Downstream Task
+
+| Downstream task | First choice | Backup |
+|---|---|---|
+| Crystal structure → property (in-dist.) | M3GNet / MACE-MP frozen + linear probe | SOAP + GP |
+| Crystal structure → property (OOD chem.) | MACE-MP fine-tuned | SOAP + GP |
+| Molecular property (organic) | MoLFormer / ChemFormer | Morgan fingerprint + RF |
+| Literature mining / abstract classification | MatBERT | SciBERT |
+| Discovery candidate ranking | OMat24-class encoder + active learning | GNoME-style pipeline |
+
+::: {.fragment}
+> **No model dominates all rows.** The decision is task-driven, not hype-driven [@sandfeld_materials_data_science].
+:::
+
+::: {.notes}
+**The single most useful slide of §E.** Print it, put it on the lab wall.
+
+**Why I am calling out backups.** Because foundation models fail. They fail on out-of-distribution chemistry. They fail when fine-tuning data is scarce. They fail when calibrated uncertainty is needed. The backups are real workflows for those failure cases — not consolation prizes.
+
+**The "no model dominates" line is the punchline of §E.** Vision had ImageNet-pretrained ResNets and most of the field used them. Materials does not have a single dominant pretrained model in 2026. The right tool depends on the modality and the downstream task. Students should leave with the table memorised, not with a single name.
+
+**Forward link.** §G1 returns to this table and adds the orthogonal axis: "do I even need a foundation model, or does Magpie + tree win on cost?" That is the engineering decision.
+:::
+
+# §F · Diagnosing Learned Representations {.section}
+
+## 41. The Fundamental Diagnostic Question
+
+::: {.columns}
+::: {.column width="50%"}
+**The question that matters**
+
+> *Does this embedding contain information about the property I care about?*
+
+- Answered by **probes**, not by t-SNE.
+- A probe is a small predictor on top of the frozen embedding.
+- If the probe predicts the property, the information is there.
+:::
+::: {.column width="50%" .fragment}
+**The question that does NOT matter (alone)**
+
+> *Does this t-SNE plot look pretty?*
+
+- Pretty t-SNE is *necessary* (a hairball is bad news) but **not sufficient**.
+- See §F5 for the canonical failure mode.
+:::
+:::
+
+::: {.notes}
+**This slide is the conceptual centre of §F.** If students leave the unit with one diagnostic discipline, it should be: *probe before projecting*. Linear probe is the honest test. t-SNE is the marketing image.
+
+**Why the question is phrased that way.** "Information about the property" is the operational definition of a useful embedding. We do not care that the embedding is "smooth" or "low-dimensional" or "clusters by chemistry" in some absolute sense — we care that it contains information about *the thing we want to predict*. The probe answers that directly.
+
+**The connection back to MFML W9.** This is the same logic as the MFML W9 distinction between *representation quality* and *representation aesthetic*. We are now applying it to materials.
+:::
+
+## 42. Linear Probe Protocol
+
+::: {.columns}
+::: {.column width="50%"}
+**Protocol**
+
+1. Freeze encoder $\mathcal{E}$.
+2. Compute $z_i = \mathcal{E}(x_i)$ for the labelled set.
+3. Train a single linear layer $W$: $\hat{y}_i = W^\top z_i + b$.
+4. Report $R^2$, MAE on a *held-out chemistry*.
+:::
+::: {.column width="50%"}
+**The four comparisons that matter**
+
+| Probe input | What it tests |
+|---|---|
+| Pretrained $\mathcal{E}$ | The embedding |
+| **Random-init $\mathcal{E}$** | Did pretraining help? |
+| Magpie / matminer | Engineered baseline |
+| SOAP | Engineered structural baseline |
+:::
+:::
+
+::: {.fragment}
+> **Without the random-init comparison, you cannot tell what the pretraining contributed.** This is the most-omitted comparison in published work [@sandfeld_materials_data_science].
+:::
+
+::: {.notes}
+**The random-init comparison is the one that matters most and is most often skipped.** A randomly-initialised encoder has architectural inductive bias but no learned weights. If the linear probe on a random-init encoder gets close to the linear probe on the pretrained encoder, *the architecture is doing the work, not the pretraining*. This happens more often than the literature acknowledges.
+
+**Held-out chemistry is non-negotiable.** A linear probe on the same chemistry distribution as pretraining is a memorisation test, not a transfer test. Always evaluate on a held-out family — different transition metal, different anion, different prototype — to test that the embedding generalises.
+
+**The four-way comparison is the exercise.** This afternoon students will produce exactly this table on a real dataset. The pedagogical hope is that the table is *informative* — that they will see real differences across rows and have to interpret them.
+:::
+
+## 43. Nearest-Neighbour Retrieval Check
+
+::: {.columns}
+::: {.column width="50%"}
+**Protocol**
+
+1. Pick 20 query crystals across the periodic table.
+2. For each, retrieve the 10 nearest neighbours in embedding space.
+3. Inspect: same prototype? same chemistry family? property values clustered?
+4. Score qualitatively or with a retrieval metric (precision@k).
+:::
+::: {.column width="50%"}
+**Why retrieval beats t-SNE**
+
+- Operates in *full embedding dimension*.
+- Operates *per-query* — local quality.
+- *Generalises directly* to the U12 discovery loop.
+- *Manually inspectable* — a human scientist can look at 20×10 = 200 crystals.
+:::
+:::
+
+::: {.notes}
+**Retrieval is the diagnostic I trust most.** A 2D projection compresses too much; a probe gives a single number. Retrieval gives 200 inspectable examples. A materials scientist looking at retrieval results can immediately tell if the embedding has learned chemistry vs has learned dataset metadata.
+
+**Per-query is important.** The embedding might be excellent for transition-metal oxides and useless for rare-earth fluorides. A global metric averages this away. Per-query retrieval surfaces it. Students should pick query crystals deliberately to span the chemistry space they care about.
+
+**Forward link.** This is the seed for U12's active-discovery loop. The retrieval check we run as a *diagnostic* in U9 becomes the *operational primitive* in U12.
+:::
+
+## 44. Cluster-Structure Check
+
+::: {.columns}
+::: {.column width="50%"}
+**Protocol**
+
+- Run K-means or HDBSCAN on the embedding.
+- Choose $k$ via silhouette / BIC (MFML W5 / ML-PC W5).
+- Inspect cluster centroids: composition family? prototype?
+- Cross-tabulate clusters against known labels (where they exist).
+:::
+::: {.column width="50%"}
+**What "good" looks like**
+
+- Clusters correspond to *physically interpretable* groupings.
+- Clusters do not have to be perfect.
+- Clusters that align with *space group* or *prototype* without being told are a strong signal.
+- Forward link: **MG U10** (latent space) and **MG U11** (clustering for discovery).
+:::
+:::
+
+::: {.notes}
+**This is genuinely a U10/U11 preview.** The point of the diagnostic in U9 is not to discover anything new; it is to verify that the embedding has the right *structure* for U10/U11 to work on it. We are not hunting for clusters; we are checking that they exist.
+
+**Why use both K-means and HDBSCAN.** K-means imposes spherical clusters and a fixed $k$; HDBSCAN finds clusters of arbitrary shape and number. If the clustering structure is real, both should find it. If only K-means finds it, the structure may be an artefact of the spherical-cluster assumption.
+
+**The "cross-tabulate" step is where the work lives.** A confusion matrix between found clusters and known labels (space group, prototype) tells you immediately whether the clustering is recovering the chemistry or recovering noise.
+:::
+
+## 45. The "Pretty t-SNE, Dead Downstream" Failure Mode
+
+::: {.columns}
+::: {.column width="50%"}
+**The anti-pattern**
+
+- t-SNE plot: beautifully separated clusters.
+- Linear probe: $R^2 \approx 0$.
+- Nearest-neighbour retrieval: random-looking.
+- The embedding is broken; the t-SNE was lying.
+:::
+::: {.column width="50%" .fragment}
+**Diagnosis**
+
+- t-SNE often picks up *low-dimensional artefacts*: cell size, atom count, calculator-version metadata.
+- The artefact is real; it is also *physically irrelevant* to the property.
+- t-SNE shows whatever the largest variance direction is — which need not be the chemistry.
+:::
+:::
+
+::: {.notes}
+**This is the slide students will misremember.** They will remember "t-SNE is bad". That is wrong. *t-SNE is fine*; misinterpreting t-SNE is bad. A pretty t-SNE plot is informative — it tells you the embedding has *some* structure. Whether that structure is *chemistry* or *cell size* requires the probe to confirm.
+
+**Concrete cell-size example.** I have read a paper where the t-SNE perfectly clusters the dataset — and the clusters turn out to be by *number of atoms in the cell* (which is a quantisation artefact of how the dataset was filtered). The embedding had learned to count atoms. The downstream property predictor was at chance.
+
+**The diagnostic discipline.** Always pair a t-SNE plot with a probe number. Always. The two together tell a clean story; either alone is misleading.
+:::
+
+## 46. The "Good Downstream, Bad t-SNE" Success Mode
+
+::: {.columns}
+::: {.column width="50%"}
+**The symmetric pattern**
+
+- t-SNE plot: hairball, no obvious clusters.
+- Linear probe: high $R^2$.
+- Nearest-neighbour retrieval: physically reasonable.
+- The embedding is fine; the t-SNE was misleading.
+:::
+::: {.column width="50%" .fragment}
+**Diagnosis**
+
+- The property is a *smooth function* across embedding space without sharp cluster boundaries.
+- t-SNE punishes smooth structure (it likes sharp clusters).
+- This is what we *want* for regression: a continuous embedding manifold.
+:::
+:::
+
+::: {.notes}
+**The mirror image of the previous slide.** Reinforce the lesson: judge embeddings by probes and downstream tasks, not by 2D projections.
+
+**Why this is more common than students expect.** A regression-friendly embedding is *smooth*: similar materials have similar embeddings, neighbouring properties have neighbouring embeddings. Smoothness is the property we want for property prediction. t-SNE *minimises* smoothness — its job is to find clusters, even where the underlying manifold is continuous.
+
+**The pedagogical takeaway.** A good crystal embedding may not have a pretty t-SNE, and that is fine. The probe is the source of truth.
+:::
+
+# §G · Wrap-Up and Bridges {.section}
+
+## 47. When to Use a Learned Representation vs Magpie / SOAP
+
+::: {.columns}
+::: {.column width="50%"}
+**Foundation embedding wins when**
+
+- $N_\text{label} < 1000$, in-distribution chemistry.
+- Pretraining objective aligned with target.
+- You can verify with probes + retrieval.
+:::
+::: {.column width="50%"}
+**Engineered baseline wins when**
+
+- $N_\text{label} > 10\,000$, fast iteration desired.
+- Chemistry is wholly novel.
+- Calibrated uncertainty is required (SOAP + GP).
+- Cost matters (Magpie + tree is seconds; foundation embedding is GPU minutes).
+:::
+:::
+
+::: {.fragment}
+> **2026 honesty:** "always use the foundation model" is **wrong**. The right answer is task-driven [@sandfeld_materials_data_science; @neuer2024machine].
+:::
+
+::: {.notes}
+**The single most important slide of §G.** Memorise the four-on-four comparison. Students will use it for years.
+
+**The cost argument is real and underweighted.** Magpie + a gradient-boosted tree fits in seconds on a CPU. A foundation embedding requires loading a multi-gigabyte checkpoint, doing GPU inference, and managing the version of the encoder framework. For prototyping, the cost difference is enormous, and Magpie gets you to a baseline number while the foundation pipeline is still installing dependencies.
+
+**The novelty argument.** A foundation model is only as good as its pretraining distribution. If you are working on a novel chemistry — say, a new family of high-entropy alloys not present in Materials Project — the foundation embedding has *never seen this* and may be worse than SOAP, which is calculated from first principles per structure. SOAP doesn't know any chemistry, but it doesn't *misknow* any either.
+
+**The uncertainty argument.** Foundation embeddings + linear/MLP heads do not produce calibrated predictive uncertainty out of the box. SOAP + GP does, by construction. For active learning and discovery loops where uncertainty is the steering signal, this matters a lot. We will see this in U12.
+:::
+
+## 48. Bridge to Unit 10 — Interpreting the Latent Space
+
+::: {.columns}
+::: {.column width="50%"}
+**U9 → U10**
+
+- U9 produces an embedding.
+- U10 asks: *what does each axis mean physically?*
+- Tools: latent traversal, attribute regression, disentanglement metrics.
+- The U9 *output* is the U10 *input*.
+:::
+::: {.column width="50%"}
+**The handover, in one question**
+
+> *If the embedding's first principal axis correlates with mean atomic mass, what does the second axis correlate with?*
+
+- That question is the start of U10.
+- It cannot be answered without the embedding from U9.
+:::
+:::
+
+::: {.notes}
+**The handover is genuinely tight.** U9 hands off an encoder; U10 starts with that encoder and asks interpretation questions. If U9 produces a broken embedding, U10 has nothing to work with. This is one reason §F's diagnostic discipline is non-negotiable — U10 *needs* a known-good embedding to begin.
+
+**The "what does the second axis correlate with" question.** Worth previewing now so the students arrive in U10 already wondering about it. Latent-space interpretation is a richly empirical exercise — you compute correlations between latent dimensions and known descriptors (atomic mass, electronegativity, formation energy, etc.) and see which axes have which alignments.
+
+**Disentanglement, mentioned in passing.** A "disentangled" embedding has axes that align with independent physical factors of variation. Achieving this is hard and partly an open research problem. U10 covers this honestly — it is not a solved problem in 2026.
+:::
+
+## 49. Bridge to Unit 11 — Clustering for Discovery
+
+::: {.columns}
+::: {.column width="50%"}
+**U9 → U11**
+
+- U9's diagnostic cluster check (§F4) was a *sanity test*.
+- U11 turns the same machinery into a *discovery tool*.
+- *Which clusters correspond to known prototypes? Which clusters might be new?*
+- The new clusters are *candidates for novel material families*.
+:::
+::: {.column width="50%"}
+**The discovery loop, in one diagram**
+
+1. Embed.
+2. Cluster.
+3. Find clusters with no known label.
+4. Inspect representatives.
+5. Synthesise / DFT-validate the most promising.
+:::
+:::
+
+::: {.notes}
+**This is the operationalisation of "discovery" that the unit title promises.** "Materials Genomics" is supposed to be about discovery, not just description. U11 is where the discovery loop closes — and U9's embeddings are the substrate.
+
+**The "no known label" criterion.** A cluster of crystals that does not match any known prototype is a candidate for a new prototype family. This is how unsupervised discovery works in practice — not by direct property prediction, but by *recognising structure that does not fit existing taxonomy*.
+
+**The synthesis/validation step.** Important to flag that the discovery loop ends in physical reality. The model proposes; the experiment disposes. U12 will return to this as the active-learning closure of the loop.
+
+**Forward connection to U12.** U11 finds candidate new materials; U12 ranks them by predicted property *with calibrated uncertainty* and selects which to validate first. The whole second half of the semester is one connected discovery loop.
+:::
+
+## 50. Exam Checklist for Unit 9
+
+::: {.columns}
+::: {.column width="50%"}
+**You should be able to**
+
+- Name two ways a crystal embedding differs from an image embedding.
+- Describe two pretext tasks for SSL on crystal data.
+- State what counts (and what does not count) as a positive pair of crystals.
+:::
+::: {.column width="50%"}
+**You should also be able to**
+
+- Name two foundation-model families for materials and what each is good for.
+- Sketch the linear-probe protocol and explain *why* random-init is a required comparison.
+- State one regime where SOAP + GP beats every foundation embedding.
+:::
+:::
+
+::: {.notes}
+**Six questions, each maps to a learning outcome.** Use this slide to close the loop with slide 03.
+
+**The exam-honesty promise.** None of these are gotcha questions. Every one was explicitly stated and unpacked in the lecture. Students who paid attention can answer all six. Students who did not should reread the slides — these are the questions on the exam.
+
+**The most important question on the slide.** *"What counts as a positive pair, and what does not?"* — because it is the materials-physics decision dressed up as an ML decision, and getting it right is the deepest lesson of the unit.
+
+**Closing line.** "Next week we open the latent space and ask what the axes mean. The embedding you trust today is the embedding you interpret next week. See you in U10."
+:::
 
 ::: {#refs}
 :::
