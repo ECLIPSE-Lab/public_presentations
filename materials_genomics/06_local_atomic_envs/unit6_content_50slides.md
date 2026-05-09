@@ -1,7 +1,46 @@
 # Materials Genomics Unit 6 — Local Atomic Environments
 
 ## Core teaching claim
-Many structure-property relations in materials are controlled locally: by the atoms around a site, their distances, their angular arrangement, and their chemistry. A good local descriptor compresses this neighborhood into a machine-readable object without discarding the physics that makes the neighborhood meaningful.
+Many structure-property relations in materials are controlled locally: by the atoms around a site, their distances, their angular arrangement, and their chemistry. A good local descriptor compresses this neighborhood into a machine-readable object without discarding the physics that makes the neighborhood meaningful. Before going local, however, students need to know the strong baselines that are *not* local — composition-only and globally-pooled descriptors — both to appreciate when locality earns its keep and to avoid reaching for ACSF/SOAP when a Magpie vector would have done.
+
+## 0. Composition-only baselines (absorbed from old U4)
+
+### 0.1 Magpie elemental statistics
+The simplest "descriptor" of a material is its formula. Magpie-style features turn a formula into a fixed-length vector by computing element-wise statistics — mean, min, max, range, standard deviation — over per-element properties: atomic number, atomic mass, electronegativity, atomic radius, valence-electron count, group, period, ionic radius, melting point, and so on.
+
+For an A_x B_y oxide, the Magpie vector contains roughly forty to sixty numbers describing the *composition* of the material with no reference to its structure. It is cheap to compute, easy to interpret, and remarkably strong as a baseline.
+
+### 0.2 The matminer feature library
+matminer extends Magpie with families of feature generators: element-property statistics (Magpie itself), oxidation-state features, ion-property features, and structure-aware features (when a structure is available). Materials-genomics practitioners typically start with matminer as the baseline feature stack before reaching for learned representations.
+
+### 0.3 Why composition-only descriptors are stronger than they should be
+Across many bulk-property tasks (formation energy, band gap, bulk modulus), composition-only baselines reach surprisingly competitive accuracy. The reason is that property-determining chemistry is often dominated by element identity and stoichiometry — structure adds refinement, not first-order signal.
+
+The pedagogical lesson: every materials ML project should report the composition-only baseline first. If a structure-aware model cannot beat it, structure is not the bottleneck and the data, the target, or the split is doing the talking.
+
+### 0.4 Where composition-only descriptors fail
+Two materials with identical formulas but different polymorphs share a composition vector. A property that depends on which polymorph (e.g., band gap of a TiO₂ rutile vs anatase pair) cannot be predicted from composition alone. Likewise, ordered vs disordered alloys, doped vs pristine, defected vs perfect — all collapse to the same composition vector.
+
+When polymorph- or defect-sensitivity is the science of interest, composition alone is the wrong tool.
+
+### 0.5 Radial distribution functions
+The simplest *structural* descriptor is the radial distribution function g(r): the probability of finding an atom at distance r from another atom, averaged over the crystal. The partial RDF g_AB(r) restricts the pair to species A,B and recovers some chemistry that the Magpie vector loses.
+
+RDFs use atomic positions but pool over the entire structure. They preserve isotropic structural information (peak positions, peak widths, coordination shell structure) but discard angular and per-site information.
+
+### 0.6 Structure-aggregated coordination statistics
+A close cousin of the partial RDF is the *structure-aggregated* coordination summary: average coordination number per element, bond-length statistics per element pair, and angle-distribution moments. These are matminer-style structure features that average over all sites.
+
+They are richer than composition alone because they use positions, but poorer than the per-site descriptors of the rest of this unit because they average away the per-atom diversity that often carries the property signal.
+
+### 0.7 The descriptor ladder
+We can now place descriptors on a complexity ladder:
+- Composition only (Magpie / matminer composition features) — fastest, most interpretable, polymorph-blind.
+- Globally-pooled structural (RDF, partial RDF, aggregated coordination) — uses positions, polymorph-aware in principle, but motif-blind.
+- Atom-centered local (the rest of this unit) — preserves per-site motif identity.
+- Learned graph (Unit 5) — learns the aggregation that the previous tiers fix by hand.
+
+Each step up the ladder adds expressive power and computational cost. The right place on the ladder depends on the property, the dataset size, and the deployment constraint.
 
 ## 1. Why local environments exist as a representation layer
 

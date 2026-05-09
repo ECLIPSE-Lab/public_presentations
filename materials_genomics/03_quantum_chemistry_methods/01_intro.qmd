@@ -1,0 +1,851 @@
+---
+title: |
+  Materials Genomics<br>Unit 3: Quantum Chemistry Methods (HF, MP, CC, DFT)
+bibliography: ref.bib
+author:
+  - name: Prof. Dr. Philipp Pelz
+    affiliation:
+      - FAU Erlangen-Nürnberg
+execute:
+  eval: true
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+      - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    menu:
+      side: left
+      loadIcons: true
+    logo: "../../assets/eclipse_logo_small.png"
+    footer: "© Philipp Pelz - Materials Genomics"
+    incremental: true
+resources:
+  - "../../assets/logos/*"
+---
+
+# Where We Stand
+
+## Recap of Unit 2
+
+::: {.incremental}
+- **Slater determinants** ensure antisymmetry of $N$-electron wavefunctions
+- **Born-Oppenheimer**: nuclei fixed, electrons solved separately
+- **Electronic Hamiltonian** has the troublesome $1/|\mathbf{r}_i-\mathbf{r}_j|$ coupling
+- **LCAO** turns the molecular PDE into a generalised matrix eigenproblem $\mathbf{H}\mathbf{c}=E\mathbf{S}\mathbf{c}$
+- **Variational principle** $\langle\psi|\hat{H}|\psi\rangle\ge E_0$ — our optimisation criterion
+:::
+
+## What Unit 3 Adds
+
+::: {.incremental}
+- **Basis sets**: practical building blocks for LCAO (STO, GTO, plane waves)
+- **Hartree-Fock**: variational mean-field theory on a single Slater determinant
+- **Post-HF**: Møller-Plesset perturbation theory and coupled cluster
+- **Density Functional Theory**: shift the unknown from $\psi$ to the density $\rho(\mathbf{r})$
+- **Cost-vs-accuracy hierarchy** of electronic-structure methods — what to use when
+:::
+
+## Lecture Roadmap
+
+::: {.columns}
+::: {.column width="50%"}
+**Part I — Wavefunction methods**
+
+::: {.incremental}
+- Basis sets
+- Hartree-Fock
+- Møller-Plesset perturbation theory
+- Coupled cluster
+:::
+:::
+
+::: {.column width="50%"}
+**Part II — Density functional theory**
+
+::: {.incremental}
+- Hohenberg-Kohn theorems
+- Kohn-Sham equations
+- Exchange-correlation functionals
+- Pitfalls of DFT
+- Cost-accuracy comparison
+:::
+:::
+:::
+
+# The Many-Electron Problem
+
+## Why We Need Numerical Methods
+
+::: {.incremental}
+- Electronic Schrödinger equation: a PDE in $3N_e$ variables
+- $1/|\mathbf{r}_i-\mathbf{r}_j|$ couples *all* electrons — non-separable
+- Closed-form solutions exist only for hydrogen-like atoms
+- Direct grid solution is intractable beyond $\sim 2$ electrons
+- We must combine **basis-set expansion** + **clever ansatz** + **iterative solvers**
+:::
+
+## Two Asymptotic Constraints on the Wavefunction
+
+Near a nucleus, $V(r)\sim -Z/r$ is singular. The exact wavefunction has a **cusp**:
+
+$$\left.\frac{d\psi}{dr}\right|_{r=0} = -Z\,\psi(0)$$
+
+::: {.fragment}
+At large distance, every atom looks like a screened hydrogen-like ion. Bound states decay exponentially:
+
+$$\psi(r) \sim e^{-\kappa r}, \qquad \kappa \sim \sqrt{\frac{-2mE}{\hbar^2}}$$
+:::
+
+::: {.fragment}
+A good basis should reproduce **both** features: cusp at the nucleus, exponential tail far away.
+:::
+
+# Basis Sets
+
+## LCAO Recap and Choice of Basis
+
+LCAO ansatz from Unit 2:
+
+$$|\psi\rangle = \sum_{j=1}^{N_b} c_j\,|\chi_j\rangle$$
+
+::: {.incremental}
+- Quality of result is bounded by the flexibility of $\{\chi_j\}$
+- Basis families differ in: cusp behaviour, tail behaviour, integral evaluation cost, periodicity
+- Trade-off: **accuracy vs computational cost**
+:::
+
+## Slater-Type Orbitals (STOs)
+
+$$\chi(\mathbf{r}) \sim r^{n-1}\,e^{-\zeta r}\,Y_{\ell m}(\theta,\phi)$$
+
+::: {.incremental}
+- $\zeta$: orbital exponent
+- $Y_{\ell m}$: spherical harmonics, as for the hydrogen atom
+- **Physically correct**: cusp at nucleus, exponential decay at infinity
+- Few functions needed for high accuracy
+:::
+
+## STOs — The Catch
+
+::: {.incremental}
+- **Multicenter integrals** (two electrons on different atoms) cannot be done analytically in simple closed form
+- Numerical integration is expensive
+- Limits STOs to atoms and very small molecules
+- Used in specialised codes (ADF) but not the standard choice
+:::
+
+::: {.fragment}
+::: {.callout-note}
+STOs: physically right, computationally awkward. We trade physics for tractable integrals.
+:::
+:::
+
+## Gaussian-Type Orbitals (GTOs)
+
+Replace $e^{-\zeta r}$ by a Gaussian $e^{-\alpha r^2}$:
+
+$$\chi(\mathbf{r}) \sim x^a y^b z^c\,e^{-\alpha r^2}$$
+
+::: {.incremental}
+- Wrong cusp at the nucleus (smooth instead of pointed)
+- Decay too fast at large $r$
+- **But**: products of Gaussians on different centres are themselves Gaussians on a new centre
+- Multicenter integrals become **analytical** — orders of magnitude faster
+:::
+
+## Why GTOs Won
+
+::: {.incremental}
+- Standard choice of essentially all molecular quantum-chemistry codes
+- NWChem, PySCF, Gaussian, ORCA, Molpro — all GTO-based
+- Speed advantage outweighs the loss in physical fidelity
+- Cusp and tail errors are absorbed by using **more** Gaussians
+:::
+
+::: {.fragment}
+The price of GTO speed is paid in basis-set size, not in algorithmic complexity.
+:::
+
+## Contracted Gaussians
+
+A single GTO is a poor STO; a fixed *linear combination* is much better:
+
+$$\chi^{\rm CGTO}(\mathbf{r}) = \sum_{k=1}^{K} d_k\,g_k(\mathbf{r};\alpha_k)$$
+
+::: {.incremental}
+- $g_k$: **primitive** Gaussians with fixed exponents $\alpha_k$
+- $d_k$: **contraction coefficients**, fixed once and for all
+- One contracted GTO ≈ one STO, evaluated as a sum of cheap Gaussians
+- The SCF only varies the molecular-orbital coefficients $c_j$, not the $d_k$
+:::
+
+## Basis-Set Naming Conventions (I)
+
+::: {.incremental}
+- **STO-3G** (minimal): each STO approximated by 3 primitive Gaussians; one CGTO per occupied AO
+- **3-21G, 6-31G** (split valence): core 1 CGTO; valence split into inner+outer for flexibility
+- **6-31G(d)** = 6-31G* : add **d-type polarisation** functions on heavy atoms
+- **6-31G(d,p)** = 6-31G** : also add **p-polarisation** on hydrogen
+:::
+
+## Basis-Set Naming Conventions (II)
+
+**Correlation-consistent** Dunning sets cc-pVnZ:
+
+::: {.incremental}
+- $n=$ D, T, Q, 5, 6 — double, triple, quadruple, ... zeta
+- Designed for **systematic convergence** to the basis-set limit
+- "aug-" prefix adds diffuse functions (anions, weak interactions, excited states)
+- Allow **complete-basis-set extrapolation** $E(n) \to E(\infty)$
+:::
+
+::: {.fragment}
+Plane-wave codes (VASP, Quantum ESPRESSO) use a single **kinetic-energy cutoff** $E_{\rm cut}$ instead — different convention, same idea.
+:::
+
+## Other Basis Choices
+
+::: {.columns}
+::: {.column width="50%"}
+**Plane waves**
+
+$$\chi_{\mathbf{k}}(\mathbf{r}) = e^{i\mathbf{k}\cdot\mathbf{r}}$$
+
+::: {.incremental}
+- Delocalised; ideal for periodic crystals
+- Systematic via $E_{\rm cut}$
+- Need **pseudopotentials** or PAW for cores
+:::
+:::
+
+::: {.column width="50%"}
+**Wavelet & numerical bases**
+
+::: {.incremental}
+- Adaptive spatial resolution
+- Mathematically clean systematic improvement
+- Niche codes: BigDFT, ONETEP
+- Numerical AOs: integrate on grids
+:::
+:::
+:::
+
+## Basis-Set Quality and Completeness
+
+::: {.incremental}
+- Larger basis $\Rightarrow$ more variational freedom $\Rightarrow$ lower energy
+- Energy converges monotonically to the **HF limit** as basis grows (variational principle)
+- For HF: typically saturated with a few hundred basis functions per atom
+- For correlated methods (MP2, CC): convergence is much slower
+- Empirically: $E(n)\to E(\infty)$ as $\sim n^{-3}$ for cc-pVnZ — extrapolation possible
+:::
+
+## Basis-Set Superposition Error (BSSE)
+
+::: {.incremental}
+- When two molecules approach, each "borrows" basis functions from the other
+- Artificially **lowers** interaction energies — looks like extra binding
+- Worst for small basis sets, vanishes in the complete-basis limit
+- **Counterpoise correction** (Boys-Bernardi): compute monomers in the full dimer basis
+:::
+
+::: {.fragment}
+::: {.callout-note}
+Always check basis-set convergence and BSSE for **weak** interactions (van der Waals, hydrogen bonds).
+:::
+:::
+
+# Hartree-Fock
+
+## The Mean-Field Idea
+
+The hard part is electron-electron repulsion:
+
+$$\sum_{i=1}^{N_e}\sum_{j>i}\frac{1}{|\mathbf{r}_i-\mathbf{r}_j|}$$
+
+::: {.fragment}
+**Hartree-Fock approximation**: replace this by an *average* field. Each electron $j$ feels the smeared-out density of the others through the **Hartree potential**:
+
+$$V_{H,j}(\mathbf{r}) = \int\frac{\rho_{\ne j}(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|}\,d\mathbf{r}'$$
+:::
+
+::: {.fragment}
+The instantaneous correlation between electrons is lost — but the problem becomes **separable into one-electron equations**.
+:::
+
+## The Slater-Determinant Ansatz
+
+Hartree-Fock restricts the trial wavefunction to a **single Slater determinant** of one-electron spin-orbitals:
+
+$$|\psi_{\rm HF}\rangle = \frac{1}{\sqrt{N!}}\det\!\bigl[\phi_1\phi_2\cdots\phi_{N_e}\bigr]$$
+
+::: {.incremental}
+- Antisymmetric by construction $\Rightarrow$ obeys the exchange principle
+- Built from orbitals $\{\phi_i\}$ to be **determined variationally**
+- The Pauli exclusion principle is built in (two equal columns $\Rightarrow$ zero)
+:::
+
+## The Fock Operator
+
+Variational minimisation of $\langle\psi_{\rm HF}|\hat{H}|\psi_{\rm HF}\rangle$ produces an effective one-electron eigenvalue problem with the **Fock operator**:
+
+$$\hat{F} = -\frac{\hbar^2}{2m_e}\Delta - \frac{e^2}{4\pi\varepsilon_0}\sum_{k=1}^{N_{\rm at}}\frac{Z_k}{|\mathbf{r}-\mathbf{R}_k|} + \hat{V}_H + \hat{K}^{\rm exch}$$
+
+::: {.incremental}
+- Kinetic energy + nuclear attraction (one-electron core)
+- $\hat{V}_H$: classical Hartree (Coulomb) potential
+- $\hat{K}^{\rm exch}$: **exchange operator** — non-classical, arises purely from antisymmetrisation
+:::
+
+## Coulomb and Exchange — Schematic
+
+For two occupied orbitals $\phi_i,\phi_j$:
+
+$$J_{ij} = \iint \frac{|\phi_i(\mathbf{r}_1)|^2\,|\phi_j(\mathbf{r}_2)|^2}{|\mathbf{r}_1-\mathbf{r}_2|}\,d\mathbf{r}_1 d\mathbf{r}_2 \quad\text{(Coulomb)}$$
+
+::: {.fragment}
+$$K_{ij} = \iint \frac{\phi_i^*(\mathbf{r}_1)\phi_j^*(\mathbf{r}_2)\phi_j(\mathbf{r}_1)\phi_i(\mathbf{r}_2)}{|\mathbf{r}_1-\mathbf{r}_2|}\,d\mathbf{r}_1 d\mathbf{r}_2 \quad\text{(Exchange)}$$
+:::
+
+::: {.fragment}
+- $J$: classical electrostatic repulsion of two charge clouds
+- $K$: pure quantum-statistical effect — no classical analogue
+- Crucial: $K$ **cancels self-interaction** ($J_{ii} = K_{ii}$)
+:::
+
+## The Hartree-Fock Equations
+
+The HF eigenvalue problem reads
+
+$$\hat{F}\,\phi_i = \varepsilon_i\,\phi_i$$
+
+::: {.incremental}
+- $\phi_i$: molecular spin-orbital
+- $\varepsilon_i$: orbital energy (Lagrange multiplier from orthonormality constraints)
+- **Nonlinear**: $\hat{F}$ depends on the orbitals it tries to compute
+- $\Rightarrow$ must be solved **self-consistently**
+:::
+
+## The Roothaan-Hall Equations
+
+Insert LCAO $\phi_i = \sum_\mu C_{\mu i}\,\chi_\mu$ into the HF equations:
+
+$$\boxed{\;\mathbf{F}\,\mathbf{C} = \mathbf{S}\,\mathbf{C}\,\boldsymbol{\varepsilon}\;}$$
+
+::: {.incremental}
+- $F_{\mu\nu} = \langle\chi_\mu|\hat{F}|\chi_\nu\rangle$: Fock matrix
+- $S_{\mu\nu} = \langle\chi_\mu|\chi_\nu\rangle$: overlap matrix (basis non-orthogonal)
+- $\boldsymbol{\varepsilon}$: diagonal matrix of orbital energies
+- $\mathbf{C}$: MO coefficients in the AO basis
+:::
+
+::: {.fragment}
+A **generalised eigenvalue problem** of size $N_b$ — solvable by standard linear algebra.
+:::
+
+## The SCF Procedure
+
+::: {.incremental}
+1. Guess initial orbitals / density matrix $\mathbf{P}^{(0)}$
+2. Build $\mathbf{S}$, core Hamiltonian, and $\mathbf{F}^{(n)}$ from $\mathbf{P}^{(n)}$
+3. Solve $\mathbf{F}\mathbf{C} = \mathbf{S}\mathbf{C}\boldsymbol{\varepsilon}$
+4. Build new $\mathbf{P}^{(n+1)}$ from occupied orbitals
+5. Check convergence ($\Delta E$, $\Delta \mathbf{P}$); else go to 2
+:::
+
+::: {.fragment}
+Convergence is **not guaranteed** — DIIS, level shifting, fractional occupations are common numerical aids.
+:::
+
+## Cost of HF
+
+::: {.incremental}
+- Dominated by **two-electron integrals** $\propto N_b^4$
+- Storage and transformation of $(\mu\nu|\lambda\sigma)$ becomes the bottleneck
+- Modern integral screening + linear-scaling tricks for large systems
+- Each SCF cycle scales as $\mathcal{O}(N_b^3)$ (diagonalisation) or $\mathcal{O}(N_b^4)$ (Fock build)
+:::
+
+::: {.fragment}
+HF is the cheapest correlated-style ansatz — and the **starting point** for nearly every post-HF method.
+:::
+
+## RHF, ROHF, UHF
+
+::: {.incremental}
+- **RHF** (Restricted): $\alpha$ and $\beta$ share spatial orbitals; closed-shell systems
+- **ROHF** (Restricted Open-Shell): doubly occupied orbitals share space, singly occupied are different
+- **UHF** (Unrestricted): $\alpha$ and $\beta$ have **different** spatial orbitals
+- UHF: more flexibility, lower energy for radicals — but suffers from **spin contamination** ($\langle\hat{S}^2\rangle$ off)
+:::
+
+## What HF Misses: Correlation Energy
+
+By the variational principle and the single-determinant restriction:
+
+$$E_{\rm HF}^{\rm limit} \ge E_0$$
+
+::: {.fragment}
+The **correlation energy** is defined as the gap to the exact non-relativistic ground state:
+
+$$E_{\rm corr} = E_0 - E_{\rm HF}^{\rm limit} \;<\; 0$$
+:::
+
+::: {.incremental}
+- $|E_{\rm corr}|$ small in absolute terms but **chemically critical** (~1 eV per bond)
+- Captures the **instantaneous** electron-electron avoidance the mean field smears out
+- HF systematically **overestimates** bond lengths and underestimates binding energies
+- Post-HF methods are designed to recover (most of) $E_{\rm corr}$
+:::
+
+## A Famous HF Failure: Dispersion
+
+::: {.incremental}
+- HF places noble-gas dimers (He-He, Ar-Ar) **unbound** or barely bound
+- Real atoms are bound by **London dispersion** — a pure correlation effect
+- MP2 already gives qualitatively correct attractive wells
+- Lesson: correlation is **not optional** for non-covalent interactions
+:::
+
+# Møller-Plesset Perturbation Theory
+
+## MP — Setup
+
+Use HF as the unperturbed problem, treat the residual electron correlation as a perturbation:
+
+$$\hat{H} = \hat{H}_0 + \lambda\,\hat{V}_{\rm MP}, \qquad \hat{V}_{\rm MP} = \hat{H} - \hat{H}_0$$
+
+::: {.fragment}
+Expand the energy in powers of $\lambda$:
+
+$$E = E^{(0)} + \lambda E^{(1)} + \lambda^2 E^{(2)} + \cdots$$
+:::
+
+::: {.fragment}
+- $\hat{H}_0$: sum of one-electron Fock operators
+- $E^{(0)}$: sum of occupied orbital energies
+- $E^{(0)} + E^{(1)} = E_{\rm HF}$ — first order recovers HF, no improvement
+:::
+
+## MP2 — The Useful Order
+
+The second-order correction is the **first** to add new physics:
+
+$$E^{(2)} = \sum_{i<j}^{\rm occ}\sum_{a<b}^{\rm virt}\frac{|\langle ij\|ab\rangle|^2}{\varepsilon_i+\varepsilon_j-\varepsilon_a-\varepsilon_b}$$
+
+::: {.incremental}
+- Sum over occupied pairs $(i,j)$ and virtual pairs $(a,b)$
+- $\langle ij\|ab\rangle$: antisymmetrised two-electron integral
+- Captures the dominant **double-excitation** correlation
+- Cost scales as $\mathcal{O}(N_b^5)$
+:::
+
+## MP2 — Strengths and Limits
+
+::: {.incremental}
+- Fixes much of HF's failure for **weak interactions** (dispersion, hydrogen bonds)
+- Cheap relative to coupled cluster
+- Good for closed-shell, weakly-correlated systems near equilibrium
+- **Fails** for stretched bonds, transition metals, multi-reference systems
+:::
+
+::: {.fragment}
+::: {.callout-note}
+MP2 = "minimum viable correlated method" for many organic molecules.
+:::
+:::
+
+## Higher-Order MP and Convergence
+
+::: {.incremental}
+- MP3, MP4, MP5… exist but are rarely worth the cost
+- **No guarantee** of monotonic improvement — the MP series is often divergent or oscillatory
+- For challenging systems, MP4 can be **worse** than MP2
+- Coupled cluster reorganises the same diagrams non-perturbatively and converges much better
+:::
+
+# Coupled Cluster Theory
+
+## Cluster Operator and Exponential Ansatz
+
+Starting from $|\phi_{\rm HF}\rangle$, define excitation operators:
+
+$$\hat{T} = \hat{T}_1 + \hat{T}_2 + \hat{T}_3 + \cdots$$
+
+::: {.incremental}
+- $\hat{T}_1$: all single excitations (occ $\to$ virt)
+- $\hat{T}_2$: all double excitations (pairs)
+- $\hat{T}_n$: $n$-fold excitations
+:::
+
+::: {.fragment}
+The **coupled-cluster ansatz**:
+
+$$|\psi_{\rm CC}\rangle = e^{\hat{T}}\,|\phi_{\rm HF}\rangle$$
+:::
+
+## Why the Exponential?
+
+Expanding $e^{\hat{T}} = 1 + \hat{T} + \tfrac{1}{2}\hat{T}^2 + \cdots$:
+
+::: {.incremental}
+- Even truncated $\hat{T}$ generates **all higher-order excitations** through products
+- $\hat{T}_2^2$ produces "disconnected" quadruples — captured automatically
+- This **size-extensivity** is what perturbation theory and truncated CI lack
+- Full CC ($\hat{T}$ to all orders) reproduces full configuration interaction (FCI)
+:::
+
+## CCSD and CCSD(T)
+
+::: {.incremental}
+- **CCSD**: truncate $\hat{T} \approx \hat{T}_1 + \hat{T}_2$. Cost $\mathcal{O}(N_b^6)$
+- **CCSD(T)**: add triple excitations $\hat{T}_3$ **perturbatively**. Cost $\mathcal{O}(N_b^7)$
+- CCSD(T) achieves "**chemical accuracy**" (~1 kcal/mol) for most main-group molecules
+- Often called the **gold standard** of single-reference quantum chemistry
+:::
+
+## CC — Practical Notes
+
+::: {.incremental}
+- Implementations: PSI4, CFOUR, MOLPRO, NWChem
+- Iterative solution of nonlinear amplitude equations
+- Memory-hungry: storage of $T_2$ amplitudes is $\mathcal{O}(N_b^4)$
+- Routine for ~20 atoms; ~100 atoms with local CC variants (DLPNO-CCSD(T))
+- **Fails** for strong (multi-reference) correlation: bond breaking, biradicals, transition metal complexes
+:::
+
+# Density Functional Theory
+
+## Why DFT?
+
+::: {.incremental}
+- Wavefunction methods scale steeply: HF $\mathcal{O}(N^4)$, MP2 $\mathcal{O}(N^5)$, CCSD(T) $\mathcal{O}(N^7)$
+- Truly exact methods (FCI) scale **factorially**
+- DFT typically scales as $\mathcal{O}(N^3)$ to $\mathcal{O}(N^4)$ — affordable for $\sim 1000$ atoms
+- Workhorse of computational materials science: VASP, Quantum ESPRESSO, CP2K, ORCA, ABINIT
+- Generates the bulk of data fueling materials genomics
+:::
+
+## The Central Object: The Electron Density
+
+Instead of $\psi(\mathbf{r}_1,\ldots,\mathbf{r}_N)$ — a function of $3N$ variables — work with
+
+$$\rho(\mathbf{r}) = N_e\int|\psi(\mathbf{r},\mathbf{r}_2,\ldots,\mathbf{r}_N)|^2\,d\mathbf{r}_2\cdots d\mathbf{r}_N$$
+
+::: {.incremental}
+- Function of just **3 spatial variables**, regardless of $N_e$
+- Directly observable (X-ray scattering)
+- Integrates to the number of electrons: $\int\rho\,d\mathbf{r} = N_e$
+:::
+
+## First Hohenberg-Kohn Theorem (1964)
+
+**Theorem (HK1).** The ground-state density $\rho_0(\mathbf{r})$ uniquely determines the external potential $V_{\rm ext}(\mathbf{r})$ — and hence the entire Hamiltonian — up to a constant.
+
+::: {.fragment}
+Consequences:
+
+::: {.incremental}
+- All ground-state properties are functionals of $\rho_0$
+- Total energy: $E[\rho_0]$
+- Wavefunction: $\psi[\rho_0]$
+- **In principle**, knowing $\rho_0(\mathbf{r})$ tells you everything
+:::
+:::
+
+## Second Hohenberg-Kohn Theorem
+
+**Theorem (HK2).** There exists a universal energy functional $E[\rho]$ such that the exact ground-state density minimises it:
+
+$$E_0 = \min_{\rho}\,E[\rho], \qquad \int\rho\,d\mathbf{r} = N_e$$
+
+::: {.fragment}
+::: {.callout-note}
+A **variational principle in density space** — analogous to $\min_\psi\langle\psi|\hat{H}|\psi\rangle$, but over a much simpler object.
+:::
+:::
+
+::: {.fragment}
+The catch: HK1 + HK2 are **existence statements**. They do not tell us the form of $E[\rho]$.
+:::
+
+## Decomposing the Energy Functional
+
+Schematically:
+
+$$E[\rho] = T[\rho] + V_{\rm ne}[\rho] + J[\rho] + E_{\rm xc}[\rho]$$
+
+::: {.incremental}
+- $T[\rho]$: kinetic energy
+- $V_{\rm ne}[\rho]$: nucleus-electron attraction (known, classical)
+- $J[\rho]$: classical Coulomb repulsion of $\rho$ with itself (known)
+- $E_{\rm xc}[\rho]$: **exchange-correlation** — the unknown piece
+:::
+
+::: {.fragment}
+$T[\rho]$ as a pure density functional is also unknown — Thomas-Fermi attempts give terrible accuracy.
+:::
+
+## The Kohn-Sham Trick (1965)
+
+Reintroduce orbitals to get $T$ almost right. Define a **fictitious non-interacting** system with the **same** density $\rho$:
+
+$$\rho(\mathbf{r}) = \sum_{i=1}^{N_e}|\psi_i^{\rm KS}(\mathbf{r})|^2$$
+
+::: {.fragment}
+The KS kinetic energy
+
+$$T_s[\rho] = -\frac{\hbar^2}{2m_e}\sum_i\langle\psi_i^{\rm KS}|\Delta|\psi_i^{\rm KS}\rangle$$
+
+is known exactly from the orbitals — and accounts for >99% of the true $T[\rho]$.
+:::
+
+## The Kohn-Sham Equations
+
+The KS orbitals satisfy a set of one-electron equations:
+
+$$\left[-\frac{\hbar^2}{2m_e}\Delta + V_{\rm KS}[\rho](\mathbf{r})\right]\psi_i^{\rm KS} = \varepsilon_i\,\psi_i^{\rm KS}$$
+
+::: {.fragment}
+The KS potential bundles all interactions:
+
+$$V_{\rm KS}[\rho] = V_{\rm ext} + V_H[\rho] + V_{\rm xc}[\rho]$$
+
+with $V_{\rm xc} = \delta E_{\rm xc}/\delta\rho$ — the **exchange-correlation potential**.
+:::
+
+::: {.fragment}
+- Same SCF cycle structure as Hartree-Fock
+- Replaces non-local exchange operator by a **local** $V_{\rm xc}(\mathbf{r})$
+- The orbitals $\psi_i^{\rm KS}$ are mathematical auxiliaries — not the true wavefunction
+:::
+
+## Status of $E_{\rm xc}[\rho]$
+
+::: {.incremental}
+- Contains **everything** beyond classical Coulomb that a non-interacting reference cannot capture
+- Exact form is **unknown** and (provably) very complicated
+- Must be **approximated** — the entire art of practical DFT
+- "DFT" as used in practice = "DFT with approximate $E_{\rm xc}$"
+:::
+
+::: {.fragment}
+::: {.callout-note}
+HK theorems guarantee an exact $E[\rho]$ exists — they give us no way to construct it. DFT is exact in principle, approximate in practice.
+:::
+:::
+
+## LDA — Local Density Approximation
+
+Use the XC energy of the **uniform electron gas**, evaluated at the local density:
+
+$$E_{\rm xc}^{\rm LDA}[\rho] = \int \rho(\mathbf{r})\,\varepsilon_{\rm xc}\bigl(\rho(\mathbf{r})\bigr)\,d\mathbf{r}$$
+
+::: {.incremental}
+- Simplest and oldest functional
+- Surprisingly good geometries for solids (bulk metals, oxides)
+- **Overbinds**: bond lengths too short, atomisation energies too high
+- Inadequate for many molecular applications
+:::
+
+## GGA — Generalised Gradient Approximation
+
+Add dependence on the **density gradient** $\nabla\rho$:
+
+$$E_{\rm xc}^{\rm GGA}[\rho] = \int f\bigl(\rho,\nabla\rho\bigr)\,d\mathbf{r}$$
+
+::: {.incremental}
+- Distinguishes slowly- vs rapidly-varying densities
+- Examples: **PBE** (solids, materials community standard), **BLYP** (chemistry community)
+- Significant improvement over LDA for molecules
+- Still misses long-range correlation (van der Waals)
+:::
+
+## Hybrid Functionals
+
+Mix in a **fraction of exact (HF) exchange**:
+
+$$E_{\rm xc}^{\rm hyb} = a\,E_x^{\rm HF} + (1-a)\,E_x^{\rm GGA} + E_c^{\rm GGA}$$
+
+::: {.incremental}
+- **B3LYP** ($a\!\approx\!0.20$): chemistry workhorse for decades
+- **PBE0**, **HSE06** (range-separated hybrid for solids)
+- Better band gaps and barrier heights than pure GGA
+- Computationally more expensive: HF exchange brings back $\mathcal{O}(N^4)$
+:::
+
+## Jacob's Ladder of Functionals
+
+::: {.incremental}
+1. **LDA** — local density only
+2. **GGA** — density + gradient
+3. **meta-GGA** — also kinetic-energy density $\tau$ (e.g. SCAN)
+4. **Hybrid GGA** — fraction of HF exchange (B3LYP, PBE0)
+5. **Double hybrid** — also a fraction of MP2 correlation (B2PLYP)
+:::
+
+::: {.fragment}
+Higher rungs $\Rightarrow$ generally more accurate, more expensive, less robustly transferable.
+
+Climbing the ladder is **not monotonic** for every system.
+:::
+
+## Pseudopotentials
+
+For heavier atoms, replace the strong nuclear Coulomb + core electrons by a smooth effective potential:
+
+$$-\frac{Z}{r} \;\longrightarrow\; V_{\rm ps}(r)$$
+
+::: {.incremental}
+- Core electrons are chemically inert — wasteful to treat explicitly
+- Removes rapid oscillations near the nucleus $\Rightarrow$ smaller basis / lower $E_{\rm cut}$
+- Norm-conserving, ultrasoft, PAW (projector-augmented-wave) variants
+- Transferability between chemical environments must be tested
+:::
+
+## DFT Pitfall — Self-Interaction Error
+
+::: {.incremental}
+- In approximate DFT, $J[\rho]$ contains the interaction of an electron with **itself**
+- HF's exchange exactly cancels this; LDA/GGA only do so approximately
+- Drives delocalisation: electrons artificially smeared over many sites
+- Toy example: H$_2^+$ dissociation curve goes to a wrong limit with LDA/PBE/B3LYP
+- True dissociation: $E({\rm H}_2^+)\to E({\rm H})$. LDA/GGA produce extra spurious binding
+:::
+
+## DFT Pitfall — Van der Waals
+
+::: {.incremental}
+- Standard LDA/GGA functionals **lack** long-range dispersion (London forces)
+- Layered materials (graphite), molecular crystals, biological binding poorly described
+- **Remedies**: DFT-D (Grimme empirical correction), VV10/non-local correlation, vdW-DF
+- Standard reflex: always check whether dispersion is added when reading "DFT" results
+:::
+
+## DFT Pitfall — Band Gaps
+
+::: {.incremental}
+- KS gap $\ne$ true fundamental gap (derivative discontinuity of $E_{\rm xc}$)
+- LDA/GGA systematically **underestimate** gaps by 30-50%
+- Hybrids (HSE06) and meta-GGA (SCAN) close part of the gap
+- **GW** many-body perturbation theory is the principled fix — but expensive
+:::
+
+::: {.fragment}
+::: {.callout-note}
+For ML on materials data: bandgap labels from PBE may need a calibration to experiment.
+:::
+:::
+
+## DFT — Summary
+
+::: {.incremental}
+- DFT is **not systematically improvable** once a functional is chosen
+- Equivalence with the exact Schrödinger equation is lost the moment we approximate $E_{\rm xc}$
+- Quality depends on functional choice, basis, pseudopotential, dispersion correction
+- Despite caveats — **the** workhorse of materials simulation
+:::
+
+# Method Comparison
+
+## Cost-Accuracy Hierarchy — Wavefunction
+
+::: {.incremental}
+- **HF** $\mathcal{O}(N_b^4)$: mean field, no correlation — qualitative only
+- **MP2** $\mathcal{O}(N_b^5)$: dynamic correlation, weak interactions
+- **CCSD** $\mathcal{O}(N_b^6)$: single-reference correlation, near-quantitative
+- **CCSD(T)** $\mathcal{O}(N_b^7)$: gold standard, ~1 kcal/mol
+- **FCI**: exact in basis, factorial cost — feasible for $\sim 10$ electrons
+:::
+
+## Cost-Accuracy Hierarchy — DFT
+
+::: {.incremental}
+- **LDA** — solids ok, molecules too crude
+- **GGA** (PBE, BLYP) — material science workhorse
+- **meta-GGA** (SCAN) — improved geometries and gaps
+- **Hybrid** (B3LYP, PBE0, HSE06) — molecular standard
+- **Double hybrid** — approaches MP2/CCSD accuracy at higher cost
+:::
+
+::: {.fragment}
+DFT cost grows much more slowly than wavefunction cost — the price is uncontrolled error.
+:::
+
+## Method Comparison Table
+
+::: {.columns}
+::: {.column width="50%"}
+| Method | Scaling | Strengths |
+|--------|---------|-----------|
+| HF     | $\mathcal{O}(N_b^4)$ | reference for post-HF; closed shells |
+| DFT    | $\mathcal{O}(N_b^{3-4})$ | accuracy/cost; broad applicability |
+| MP2    | $\mathcal{O}(N_b^5)$ | weak correlation; relatively cheap |
+| CCSD(T) | $\mathcal{O}(N_b^7)$ | gold standard for small systems |
+:::
+
+::: {.column width="50%"}
+| Method | Weaknesses |
+|--------|------------|
+| HF     | no correlation; bad energetics |
+| DFT    | functional choice; no systematic limit |
+| MP2    | fails for strong correlation; may overcorrect |
+| CCSD(T) | expensive; multi-reference issues |
+:::
+:::
+
+## When to Use What
+
+::: {.incremental}
+- **Geometry, vibrations, periodic solids** → DFT (PBE, SCAN, HSE06)
+- **Reaction barriers, thermochemistry** → DFT hybrid or DLPNO-CCSD(T)
+- **Weak interactions / dispersion** → DFT-D3, MP2, DLPNO-CCSD(T)
+- **Benchmark for small molecules** → CCSD(T)/CBS
+- **Strongly correlated systems** → multireference methods (CASSCF, NEVPT2) — beyond this lecture
+:::
+
+## Practical Workflow Reminders
+
+::: {.incremental}
+- Always converge **basis set** (cc-pVnZ extrapolation; or $E_{\rm cut}$ for plane waves)
+- Always converge **k-point sampling** for periodic systems
+- Always check the **functional** is appropriate for the property of interest
+- Always state the method **completely** when reporting: e.g. PBE+D3(BJ)/PAW, $E_{\rm cut}=520$ eV, $4\times4\times4$ k-mesh
+- ML on DFT data inherits all of these settings as **hidden confounders**
+:::
+
+# Wrap-Up
+
+## Unit 3 — Key Takeaways
+
+::: {.incremental}
+- **Basis sets** turn LCAO into a finite matrix problem; GTOs dominate molecular codes, plane waves dominate solids
+- **Hartree-Fock**: variational mean-field theory on a single Slater determinant; misses correlation by definition
+- **MP2**: cheap perturbative correlation; first true post-HF method
+- **CCSD(T)**: gold standard for single-reference correlation
+- **DFT** (Kohn-Sham): variational principle in density space, with an unknown $E_{\rm xc}[\rho]$
+- **LDA → GGA → meta-GGA → hybrid → double hybrid**: Jacob's ladder of approximations
+- DFT pitfalls: self-interaction, dispersion, band gaps — relevant when **DFT data feed ML**
+- Cost hierarchy: HF $<$ MP2 $<$ CCSD $<$ CCSD(T); LDA $<$ GGA $<$ hybrid $<$ double hybrid
+:::
+
+## Outlook to Unit 4
+
+::: {.incremental}
+- We can now compute total energies $E(\{\mathbf{R}_i\})$ and forces on the PES
+- Unit 4 uses these to access **finite-temperature thermodynamics**
+- **Statistical mechanics**: from microstates to free energies
+- **Molecular dynamics**: classical evolution on the BO PES
+- **Monte Carlo**: sampling configuration space
+- The data products (energies, forces, ensembles) become the **ML training data** of materials genomics
+:::
+
+## References
+
+::: {#refs}
+:::

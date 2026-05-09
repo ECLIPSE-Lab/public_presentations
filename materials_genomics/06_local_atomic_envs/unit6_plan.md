@@ -1,26 +1,46 @@
 # Unit 6 Plan — Materials Genomics
 
+> **Realignment note (2026-05-09):** Following the MG SS26 realignment
+> (`../REALIGNMENT_2026-05-09.md`), this unit absorbs the classical
+> compositional and pair-distribution descriptors that were previously
+> sketched for old U4 (Magpie, matminer feature library, RDF / partial
+> RDF, structure-aggregated coordination statistics). They are inserted
+> at the front of the unit as the simplest descriptor family — one that
+> needs only a formula or a structure file, no neighborhood construction.
+> They motivate the rest of the unit: composition-only and globally-pooled
+> descriptors are surprisingly strong baselines, but they are blind to
+> the local motifs that control most structure-sensitive properties.
+> The triad context — MFML covers ML pipeline mechanics, ML-PC covers
+> experimental data quality — means MG U6 stays focused on
+> materials-specific representation choices.
+
 ## Unit title
 Local Atomic Environments
 
 ## Lecture arc
-- Why materials ML needs atom-centered structure information instead of only one global fingerprint.
+- Composition-only descriptors as the simplest baseline: Magpie elemental statistics, matminer feature library. Cheap, interpretable, formula-only — set the bar.
+- Globally-pooled structural descriptors: RDF / partial RDF, structure-averaged coordination statistics. Use positions but discard local identity.
+- Why these baselines fail for motif-sensitive properties — the motivation for going local.
 - What a valid local descriptor must preserve: translation, rotation, permutation, continuity, and chemical identity.
-- Simple environment summaries: coordination number, bond lengths, bond angles, and Voronoi coordination.
+- Simple local-geometric summaries: coordination number, bond lengths, bond angles, and Voronoi coordination.
 - Richer descriptors: ACSF and SOAP as systematic encodings of local neighborhoods.
 - Pooling local environments into material-level features for supervised learning.
 - Failure modes: cutoff sensitivity, periodic-image mistakes, polymorph aliasing, defects, and long-range physics.
 - Bridge to Unit 7: once a material is represented as a vector, regression quality depends on split design and generalization logic.
 
 ## Timing guide for 90 minutes
-- 0-10 min: motivation and recap from graph-based representations
-- 10-25 min: what counts as a local environment and why invariances matter
-- 25-45 min: geometric descriptors and Voronoi ideas
-- 45-65 min: ACSF and SOAP intuition
-- 65-80 min: pooling, transferability, and defect examples
-- 80-90 min: summary and handoff to regression/generalization
+- 0-8 min: motivation and recap from graph-based representations
+- 8-22 min: composition-only and globally-pooled descriptors (Magpie, matminer, RDF, coordination stats) as the baseline tier
+- 22-32 min: why baselines fail; what counts as a local environment; invariance discipline
+- 32-50 min: geometric local descriptors and Voronoi ideas
+- 50-68 min: ACSF and SOAP intuition
+- 68-82 min: pooling, transferability, and defect examples
+- 82-90 min: summary and handoff to regression/generalization
 
 ## Must-cover concepts
+- Composition-only descriptor families: Magpie elemental statistics, matminer feature library
+- Globally-pooled structural descriptors: RDF, partial RDF, structure-aggregated coordination
+- Why these baselines are surprisingly strong yet motif-blind
 - Local versus global structural representation
 - Neighbor construction under periodic boundary conditions
 - Descriptor invariances and continuity
