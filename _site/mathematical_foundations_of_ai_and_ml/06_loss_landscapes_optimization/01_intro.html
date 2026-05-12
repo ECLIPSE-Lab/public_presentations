@@ -778,13 +778,77 @@ H_{ij} = \frac{\partial^2 J}{\partial \theta_i \partial \theta_j}
 <li>In ill-conditioned subspace: ADAM compensates by scaling down steep directions and scaling up flat ones.</li>
 </ul>
 </section>
-<section id="adam-variants-adamw-amsgrad" class="slide level2">
-<h2>ADAM variants: AdamW, AMSGrad</h2>
+<section id="adamw-decoupled-weight-decay-the-production-default" class="slide level2">
+<h2>AdamW: decoupled weight decay (the production default)</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>Why plain Adam + L2 misbehaves</strong></p>
 <ul>
-<li><strong>AdamW</strong>: decouples weight decay from the adaptive gradient scaling — better regularization behavior.</li>
-<li><strong>AMSGrad</strong>: ensures the second moment estimate never decreases — addresses rare convergence failures.</li>
-<li>AdamW is now the recommended default in most deep learning frameworks.</li>
+<li class="fragment">Adding an L2 penalty <span class="math inline">\(\tfrac{\lambda}{2}\|\theta\|^2\)</span> injects <span class="math inline">\(\lambda\theta\)</span> into the gradient <span class="math inline">\(g_t\)</span>.</li>
+<li class="fragment">Adam then divides by <span class="math inline">\(\sqrt{\hat v_t} + \epsilon\)</span> — so the <em>effective</em> weight decay becomes <span class="math inline">\(\lambda\theta / (\sqrt{\hat v_t} + \epsilon)\)</span>.</li>
+<li class="fragment">Parameters with large second moment get <em>less</em> regularization; small-<span class="math inline">\(\hat v_t\)</span> parameters get <em>more</em>. Coupling is unintended.</li>
 </ul>
+</div><div class="column" style="width:50%;">
+<p><strong>AdamW’s fix</strong> <span class="citation" data-cites="loshchilov2019adamw">[@loshchilov2019adamw]</span></p>
+<ul>
+<li class="fragment">Decouple weight decay from the gradient: apply <span class="math inline">\(\theta \leftarrow \theta - \eta\lambda\theta\)</span> as a separate step, <em>outside</em> the adaptive scaling.</li>
+<li class="fragment">Update rule: <span class="math inline">\(\theta_{t+1} = \theta_t - \eta\bigl(\hat m_t / (\sqrt{\hat v_t} + \epsilon) + \lambda\theta_t\bigr)\)</span>.</li>
+<li class="fragment">Regularization strength is now uniform across parameters and independent of curvature estimates.</li>
+<li class="fragment"><strong>Production default in 2026.</strong> PyTorch, JAX/Optax, HuggingFace Trainer all ship AdamW as the recommended choice.</li>
+</ul>
+</div></div>
+<aside class="notes">
+<p>The L2-vs-decoupled distinction is the single most cited reason to prefer AdamW over Adam. Historically, AMSGrad (Reddi et al., 2018) was another Adam variant that patched a gap in the original convergence proof by taking a running max of the second-moment estimate; in practice it never displaced Adam/AdamW and is essentially absent from modern training stacks — students should recognize the name but not reach for it.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="modern-alternatives-to-adamw-20232024" class="slide level2">
+<h2>Modern alternatives to AdamW (2023–2024)</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>Why optimizer research is alive again</strong></p>
+<ul>
+<li class="fragment">AdamW has been the default since 2017–2018; recent work targets specific LLM-era pain points: optimizer-state memory, schedule tuning, and billion-parameter pretraining.</li>
+<li class="fragment">All three alternatives below are drop-in replacements for AdamW in PyTorch — a few lines of code to swap in.</li>
+</ul>
+</div><div class="column" style="width:50%;">
+<p><strong>Three post-AdamW optimizers</strong></p>
+<ul>
+<li class="fragment"><strong>Lion</strong> <span class="citation" data-cites="chen2023lion">[@chen2023lion]</span>: sign-of-gradient + momentum, no second moment. Roughly half the optimizer memory of Adam; matches or beats AdamW on LLM and ViT pretraining at scale. Discovered by Google via symbolic search over optimizer programs.</li>
+<li class="fragment"><strong>Sophia</strong> <span class="citation" data-cites="liu2023sophia">[@liu2023sophia]</span>: cheap stochastic 2nd-order method using a diagonal Gauss–Newton–Bartlett Hessian estimate. Reports ~2× wall-clock speedup over Adam on GPT-class language-model pretraining.</li>
+<li class="fragment"><strong>Schedule-Free AdamW</strong> <span class="citation" data-cites="defazio2024schedulefree">[@defazio2024schedulefree]</span>: eliminates the learning-rate schedule via Polyak-style parameter averaging built into the update. No warmup/cosine to tune; strong on LM and image benchmarks.</li>
+</ul>
+</div></div>
+<div class="fragment">
+<p>Default in 2026 is still AdamW for most work; reach for Lion (memory), Sophia (LLM pretraining speed), or Schedule-Free (no schedule tuning) when those specifics matter.</p>
+</div>
+<aside class="notes">
+<ul>
+<li>Why optimizer research stagnated then revived: ResNets trained fine with Adam, so for ~5 years there was little pressure to change. LLMs at billion-parameter scale exposed Adam’s memory footprint (two extra tensors per parameter) and its sensitivity to LR warmup/decay schedules.</li>
+<li>When to actually switch: mostly <em>don’t</em>. AdamW is fine for materials-scale models. Use Lion if optimizer-state memory is a real bottleneck; use Sophia if you’re pretraining a language model and wall-clock matters; use Schedule-Free if you can’t afford an LR sweep.</li>
+<li>Tie back to materials: for the kinds of CNNs/ViTs we train in materials (hundreds of millions of parameters at most), the optimizer choice is not the bottleneck — data and architecture dominate.</li>
+<li>One-line mention: Muon (Jordan, 2024) is a newer matrix-aware optimizer that operates on weight matrices rather than flat parameter vectors; less established but worth tracking.</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
 </section>
 <section id="optimizer-comparison-on-benchmark-surfaces" class="slide level2">
 <h2>Optimizer comparison on benchmark surfaces</h2>
@@ -1044,6 +1108,16 @@ H_{ij} = \frac{\partial^2 J}{\partial \theta_i \partial \theta_j}
 <li>Flat minima generalize better — and that’s the bridge to the bias-variance/regularization story next week.</li>
 <li>The same Hessian view explains why different <em>parts</em> of a network want different learning rates — the operating principle behind transfer-learning recipes.</li>
 </ul>
+<!-- BEGIN prev-next -->
+</section>
+<section id="continue" class="slide level2">
+<h2>Continue</h2>
+<ul>
+<li>← Previous: <a href="../05_clustering_and_autoencoders/01_intro.html">Unit 05 — Clustering &amp; Autoencoders</a></li>
+<li>→ Next: <a href="../07_generalization_bias_variance/01_intro.html">Unit 07 — Generalization, Bias-Variance, Regularization, Tree Ensembles</a></li>
+<li><a href="../../index.html">All courses</a></li>
+</ul>
+<!-- END prev-next -->
 </section>
 <section id="references-reading-assignment-for-next-unit" class="slide level2 smaller scrollable">
 <h2>References + reading assignment for next unit</h2>
@@ -1094,7 +1168,7 @@ H_{ij} = \frac{\partial^2 J}{\partial \theta_i \partial \theta_j}
       // Full list of configuration options available at:
       // https://revealjs.com/config/
       Reveal.initialize({
-'controlsAuto': true,
+'controlsAuto': false,
 'previewLinksAuto': false,
 'pdfSeparateFragments': false,
 'autoAnimateEasing': "ease",
@@ -1105,7 +1179,7 @@ H_{ij} = \frac{\partial^2 J}{\partial \theta_i \partial \theta_j}
 'smaller': false,
  
         // Display controls in the bottom right corner
-        controls: false,
+        controls: true,
 
         // Help the user learn the controls by providing hints, for example by
         // bouncing the down arrow when they first encounter a vertical slide
