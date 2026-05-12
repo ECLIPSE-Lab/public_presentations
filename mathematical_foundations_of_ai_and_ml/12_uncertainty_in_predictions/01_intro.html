@@ -833,6 +833,151 @@ p(\mathbf{y}|\mathbf{x}) = \sum_{k=1}^{K} \pi_k(\mathbf{x}) \, \mathcal{N}(\math
 </figure>
 </div>
 </div></div>
+<!-- ===== §10b. Conformal prediction: distribution-free UQ ===== -->
+</section>
+<section id="conformal-prediction-distribution-free-uncertainty-with-finite-sample-guarantee" class="slide level2">
+<h2>Conformal prediction: distribution-free uncertainty with finite-sample guarantee</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>What conformal prediction <em>is</em>.</strong></p>
+<ul>
+<li class="fragment">A <strong>wrapper</strong> that turns <em>any</em> point predictor into a set/interval predictor with a finite-sample coverage guarantee.</li>
+<li class="fragment"><strong>Promise</strong>: pick miscoverage <span class="math inline">\(\alpha = 0.1\)</span> — the prediction interval covers the true value at least <span class="math inline">\(1 - \alpha = 90\%\)</span> of the time, on average. <strong>No assumption on the data distribution; no assumption on the model.</strong></li>
+<li class="fragment">Only assumption: <strong>exchangeability</strong> of the calibration and test data (usually true if both are i.i.d. from the same source).</li>
+</ul>
+</div><div class="column" style="width:50%;">
+<p><strong>Why everyone uses it in 2026.</strong></p>
+<ul>
+<li class="fragment"><strong>Model-agnostic.</strong> Wraps NNs, GPs, GBMs, even hand-crafted models.</li>
+<li class="fragment"><strong>Finite-sample, not asymptotic.</strong> Coverage holds for <span class="math inline">\(n=50\)</span>, not just <span class="math inline">\(n \to \infty\)</span>.</li>
+<li class="fragment"><strong>Cheap.</strong> A calibration pass over <span class="math inline">\(\sim 1000\)</span> held-out points — no retraining.</li>
+<li class="fragment"><strong>Composable</strong> with all of §12 so far: take any MDN / MC-dropout / ensemble point estimate and <em>conformalize</em> it for rigorous coverage <span class="citation" data-cites="angelopoulos2021gentle">[@angelopoulos2021gentle]</span>.</li>
+</ul>
+</div></div>
+<div class="fragment">
+<blockquote>
+<p>The trade-off: guaranteed coverage is <em>marginal</em> — averaged over the test distribution. Conditional coverage (per input <span class="math inline">\(\mathbf{x}\)</span>) is harder; CQR is the standard fix.</p>
+</blockquote>
+</div>
+<aside class="notes">
+<ul>
+<li>The big shift from §12 so far. Bayesian/ensemble UQ gives credible / predictive intervals <strong>based on a model</strong>. If the model is mis-specified, the intervals are wrong. Conformal gives <strong>frequentist coverage</strong> regardless of model correctness.</li>
+<li>Most accessible reference: Angelopoulos &amp; Bates, “A Gentle Introduction to Conformal Prediction” — the de facto teaching reference for the field.</li>
+<li>Why this slide arrives <em>after</em> deep ensembles: ensembles produce a score (mean + variance); conformal turns that score into a <strong>valid</strong> interval. The two are complementary, not competitors.</li>
+<li>Material-science context: when you tell a metallurgist your hardness prediction is “120 <span class="math inline">\(\pm\)</span> 8 HV with 90% coverage”, and that 90% holds on a held-out lab batch <em>regardless of whether your NN is well-calibrated</em>, that lands. Bayesian “credible interval” is harder to defend in a regulated context.</li>
+<li>Historical pointer (one sentence): the framework goes back to Vovk, Gammerman, Shafer <span class="citation" data-cites="vovk2005algorithmic">[-@vovk2005algorithmic]</span>; the explosion of practical use is post-2019.</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="split-conformal-in-5-lines" class="slide level2">
+<h2>Split conformal in 5 lines</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>The algorithm.</strong> Given a trained predictor <span class="math inline">\(\hat f\)</span> and a separate <strong>calibration set</strong> <span class="math inline">\(\{(\mathbf{x}_i, y_i)\}_{i=1}^{n}\)</span>:</p>
+<ol type="1">
+<li class="fragment">Compute <strong>nonconformity scores</strong> <span class="math inline">\(s_i = |y_i - \hat f(\mathbf{x}_i)|\)</span> for <span class="math inline">\(i = 1, \dots, n\)</span>.</li>
+<li class="fragment">Compute the empirical quantile <span class="math display">\[ \hat q = \mathrm{Quantile}\!\left(\{s_i\};\; \tfrac{\lceil (n+1)(1-\alpha) \rceil}{n}\right). \]</span></li>
+<li class="fragment">For a new <span class="math inline">\(\mathbf{x}\)</span>, output the interval <span class="math display">\[ C(\mathbf{x}) = \big[\hat f(\mathbf{x}) - \hat q,\; \hat f(\mathbf{x}) + \hat q\big]. \]</span></li>
+</ol>
+<p>For any exchangeable new <span class="math inline">\((X, Y)\)</span>: <span class="math display">\[\Pr\!\left(Y \in C(X)\right) \geq 1 - \alpha.\]</span></p>
+</div><div class="column" style="width:50%;">
+<p><strong>The 5-line Python.</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a></a><span class="co"># Held-out calibration set (x_cal, y_cal);</span></span>
+<span id="cb2-2"><a></a><span class="co"># trained model `model`; alpha = 0.1</span></span>
+<span id="cb2-3"><a></a>scores <span class="op">=</span> np.<span class="bu">abs</span>(y_cal <span class="op">-</span> model.predict(x_cal))</span>
+<span id="cb2-4"><a></a>n <span class="op">=</span> <span class="bu">len</span>(scores)</span>
+<span id="cb2-5"><a></a>qhat <span class="op">=</span> np.quantile(</span>
+<span id="cb2-6"><a></a>    scores, np.ceil((n <span class="op">+</span> <span class="dv">1</span>) <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> alpha)) <span class="op">/</span> n)</span>
+<span id="cb2-7"><a></a></span>
+<span id="cb2-8"><a></a><span class="co"># At test time:</span></span>
+<span id="cb2-9"><a></a><span class="kw">def</span> conformal_interval(x):</span>
+<span id="cb2-10"><a></a>    yhat <span class="op">=</span> model.predict(x)</span>
+<span id="cb2-11"><a></a>    <span class="cf">return</span> yhat <span class="op">-</span> qhat, yhat <span class="op">+</span> qhat</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div></div>
+<div class="fragment">
+<blockquote>
+<p><span class="math inline">\(\hat q\)</span> is a single scalar. The interval width is the <strong>same for every test point</strong> in vanilla split CP — exactly the per-input coverage problem CQR fixes next.</p>
+</blockquote>
+</div>
+<aside class="notes">
+<ul>
+<li>Proof in one sentence: by exchangeability, the rank of the test-point score <span class="math inline">\(s_{n+1}\)</span> among <span class="math inline">\(\{s_1, \dots, s_n, s_{n+1}\}\)</span> is uniformly distributed on <span class="math inline">\(\{1, \dots, n+1\}\)</span>; thresholding at the <span class="math inline">\(\lceil (n+1)(1-\alpha) \rceil\)</span>-th score guarantees marginal coverage. Wave the hand on technicalities — this is a teaching deck, not a proof course.</li>
+<li>The split: <span class="math inline">\(n\)</span> should be at least a few hundred; smaller works but with chunkier quantiles. The original training set is <strong>separate</strong> from the calibration set — no leakage.</li>
+<li>Critical practical points to say aloud:
+<ul>
+<li>“Split conformal is <strong>trivially parallel</strong> with any model; you don’t retrain when you change <span class="math inline">\(\alpha\)</span>.”</li>
+<li>“It needs <strong>exchangeability</strong> — if there’s distribution shift between calibration and test, coverage fails. Workarounds: weighted conformal, distribution-free CP under covariate shift.”</li>
+</ul></li>
+<li>Jackknife+ <span class="citation" data-cites="barber2021jackknife">[@barber2021jackknife]</span> is the leave-one-out version — uses all data for both fitting and calibration, slightly more efficient with similar guarantees. Mention by name only.</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="conformalized-quantile-regression-cqr-adaptive-interval-widths" class="slide level2">
+<h2>Conformalized Quantile Regression (CQR) — adaptive interval widths</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>Why vanilla split CP is too coarse.</strong></p>
+<ul>
+<li class="fragment"><span class="math inline">\(\hat q\)</span> is the <strong>same constant</strong> for every <span class="math inline">\(\mathbf{x}\)</span>.</li>
+<li class="fragment">Easy inputs get unnecessarily wide intervals; hard inputs may still under-cover <em>conditionally</em>.</li>
+<li class="fragment">We <em>want</em> intervals that widen near hard regions of input space — like the heteroscedastic Gaussian head from Unit 8.</li>
+</ul>
+</div><div class="column" style="width:50%;">
+<p><strong>CQR fix</strong> <span class="citation" data-cites="romano2019cqr">[@romano2019cqr]</span>.</p>
+<ol type="1">
+<li class="fragment">Train a <strong>quantile-regression</strong> model predicting <span class="math inline">\(\hat q_{\alpha/2}(\mathbf{x})\)</span> and <span class="math inline">\(\hat q_{1-\alpha/2}(\mathbf{x})\)</span> — e.g., a NN with two heads using the pinball loss, or a quantile GBM.</li>
+<li class="fragment">Compute conformity scores <span class="math display">\[ s_i = \max\!\big(\hat q_{\alpha/2}(\mathbf{x}_i) - y_i,\; y_i - \hat q_{1-\alpha/2}(\mathbf{x}_i)\big). \]</span></li>
+<li class="fragment">Take <span class="math inline">\(\hat q = \mathrm{Quantile}\!\left(s_i;\; \tfrac{(n+1)(1-\alpha)}{n}\right)\)</span>, then output <span class="math display">\[ C(\mathbf{x}) = \big[\hat q_{\alpha/2}(\mathbf{x}) - \hat q,\; \hat q_{1-\alpha/2}(\mathbf{x}) + \hat q\big]. \]</span></li>
+</ol>
+<ul>
+<li class="fragment">Marginal coverage is <strong>preserved</strong>; intervals <strong>adapt</strong> to local input difficulty.</li>
+</ul>
+</div></div>
+<div class="fragment">
+<blockquote>
+<p>In 2026 practice, the default UQ stack for a regression NN is: <strong>quantile heads + CQR</strong>. Calibrate once, ship with finite-sample coverage.</p>
+</blockquote>
+</div>
+<aside class="notes">
+<ul>
+<li>Why CQR is the practical default: vanilla CP is too conservative in easy regions and over-confident in hard ones; CQR fixes both with one extra training step. Same marginal guarantee.</li>
+<li>Quantile heads can be added to any architecture: replace your single output with two outputs trained via the <strong>pinball</strong> (a.k.a. quantile) loss <span class="math inline">\(\ell_\tau(r) = \max(\tau r, (\tau - 1) r)\)</span> for <span class="math inline">\(\tau \in \{\alpha/2,\, 1 - \alpha/2\}\)</span>.</li>
+<li>This is exactly the SOTA reported in Romano et al.&nbsp;2019; the method has aged extremely well.</li>
+<li>For materials: any composition-property regression (the GP slide’s running example) — fit a quantile NN, apply CQR, ship. The result is a heteroscedastic interval with a <strong>frequentist</strong> coverage stamp.</li>
+<li>Forward link: §13 PINNs can supply a physics-informed mean prediction; CQR wraps it with coverage. The two compose.</li>
+<li>Brief mention of related: conformal classification (LAC, APS), conformal risk control. We don’t go there today.</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
 </section>
 <section id="stochastic-enrichment" class="slide level2">
 <h2>Stochastic enrichment</h2>
@@ -886,6 +1031,13 @@ p(\mathbf{y}|\mathbf{x}) = \sum_{k=1}^{K} \pi_k(\mathbf{x}) \, \mathcal{N}(\math
 <section id="comparison-of-uq-methods" class="slide level2">
 <h2>Comparison of UQ methods</h2>
 <table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 13%">
+<col style="width: 13%">
+<col style="width: 28%">
+<col style="width: 28%">
+</colgroup>
 <thead>
 <tr class="header">
 <th>Method</th>
@@ -924,8 +1076,18 @@ p(\mathbf{y}|\mathbf{x}) = \sum_{k=1}^{K} \pi_k(\mathbf{x}) \, \mathcal{N}(\math
 <td style="text-align: center;">Requires tuning</td>
 <td style="text-align: center;">Any</td>
 </tr>
+<tr class="odd">
+<td>Conformal / CQR</td>
+<td style="text-align: center;">Distribution-free wrapper</td>
+<td style="text-align: center;">1 calibration pass (<span class="math inline">\(\sim 10^3\)</span> pts)</td>
+<td style="text-align: center;"><strong>Guaranteed</strong> (finite-sample, marginal)</td>
+<td style="text-align: center;">Any (model-agnostic)</td>
+</tr>
 </tbody>
 </table>
+<ul>
+<li>Only Conformal / CQR is <strong>distribution-free</strong> <em>and</em> <strong>model-agnostic</strong> — it wraps any row above to inherit a coverage guarantee <span class="citation" data-cites="angelopoulos2021gentle">[@angelopoulos2021gentle]</span>.</li>
+</ul>
 </section>
 <section id="checkpoint-choosing-a-uq-method" class="slide level2">
 <h2>Checkpoint: choosing a UQ method</h2>
@@ -934,6 +1096,7 @@ p(\mathbf{y}|\mathbf{x}) = \sum_{k=1}^{K} \pi_k(\mathbf{x}) \, \mathcal{N}(\math
 <li><strong>Large dataset, budget for training</strong>: deep ensemble.</li>
 <li><strong>Large dataset, need cheap inference</strong>: MC Dropout.</li>
 <li><strong>Multi-modal outputs</strong>: Mixture-Density Network.</li>
+<li><strong>Need a coverage guarantee (regulated / safety-critical)</strong>: wrap your favourite predictor with Conformal Prediction (CQR for adaptive widths).</li>
 </ul>
 </section>
 <section id="materials-example-gp-for-composition-property-mapping" class="slide level2">

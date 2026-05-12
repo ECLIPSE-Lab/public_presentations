@@ -436,7 +436,7 @@
 <li class="fragment"><strong>Use</strong> a trained VAE: encode, sample latent, decode.</li>
 <li class="fragment"><strong>Describe</strong> the forward (noising) and reverse (denoising) processes of a diffusion model.</li>
 <li class="fragment"><strong>Apply</strong> classifier-free guidance for conditional generation.</li>
-<li class="fragment"><strong>Compare</strong> VAEs, diffusion, GANs, and normalizing flows on the trade-off axes.</li>
+<li class="fragment"><strong>Compare</strong> VAEs, diffusion, and normalizing flows on the trade-off axes.</li>
 </ul>
 <aside class="notes">
 <ul>
@@ -887,7 +887,7 @@ z = \mu_\phi(x) + \sigma_\phi(x) \odot \epsilon, \quad \epsilon \sim \mathcal{N}
 <aside class="notes">
 <ul>
 <li>VAE summary in five bullets — these are the must-knows for the VAE half of the unit.</li>
-<li>The blurriness is the historical motivation for GANs, then for diffusion.</li>
+<li>The blurriness was the historical motivation for diffusion (and earlier, for GANs — now legacy).</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1140,7 +1140,7 @@ p(x_{t-1} \mid x_t) = ?
 <aside class="notes">
 <ul>
 <li>The loss is shockingly simple — a key reason diffusion took off.</li>
-<li>Compare to GANs: no adversarial dynamics, no min-max optimization, just stable supervised learning.</li>
+<li>No adversarial dynamics, no min-max optimization — just stable supervised learning. (This is the headline reason diffusion eclipsed GANs after 2021.)</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1347,32 +1347,81 @@ p(x_{t-1} \mid x_t) = ?
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-<!-- ===== §10. Score matching ===== -->
+<!-- ===== §10. Flow matching & consistency models ===== -->
 </section>
-<section id="score-matching-one-slide-pointer" class="slide level2">
-<h2>Score matching — one-slide pointer</h2>
+<section id="flow-matching-ode-based-generation-the-modern-unifying-view" class="slide level2">
+<h2>Flow matching: ODE-based generation (the modern unifying view)</h2>
 <div class="columns">
 <div class="column" style="width:50%;">
+<p><strong>From SDE to ODE:</strong></p>
 <ul>
-<li class="fragment">The <strong>score</strong> of a distribution: <span class="math inline">\(s(x) = \nabla_x \log p(x)\)</span>.</li>
-<li class="fragment">Score matching: train a network to estimate the score directly.</li>
-<li class="fragment"><strong>Key result</strong> (Vincent 2011): denoising = score matching at small noise levels.</li>
-<li class="fragment">This is why predicting noise works: predicting noise is, up to a constant, predicting the score.</li>
-<li class="fragment">Diffusion models are formally <strong>score-based generative models</strong> <span class="citation" data-cites="song2021scoresde">(<a href="#/learning-outcomes-recap" role="doc-biblioref" onclick="">Song et al. 2021</a>)</span>.</li>
+<li class="fragment">DDPM samples by stepping a stochastic differential equation backward; reverses many small noise additions.</li>
+<li class="fragment">A deterministic ODE view: define a probability path <span class="math inline">\(p_t(x)\)</span> from data (<span class="math inline">\(t=0\)</span>) to Gaussian (<span class="math inline">\(t=1\)</span>), learn a vector field <span class="math inline">\(u_\theta(x, t)\)</span> that transports samples along it.</li>
+<li class="fragment">Sampling is then ODE integration of <span class="math inline">\(\dot x = u_\theta(x, t)\)</span> from noise to data — needs <em>far fewer steps</em> than the reverse SDE.</li>
 </ul>
 </div><div class="column" style="width:50%;">
-<div class="quarto-figure quarto-figure-center">
-<figure>
-<p><img data-src="images/score_sde_overview.png" style="width:100.0%"></p>
-<figcaption>Forward SDE (data <span class="math inline">\(\to\)</span> noise): <span class="math inline">\(d\mathbf{x} = \mathbf{f}(\mathbf{x},t)\,dt + g(t)\,d\mathbf{w}\)</span>. Reverse SDE (noise <span class="math inline">\(\to\)</span> data): replace <span class="math inline">\(\mathbf{f}\)</span> with <span class="math inline">\(\mathbf{f} - g^2\nabla_\mathbf{x}\log p_t(\mathbf{x})\)</span> and run backwards. The score <span class="math inline">\(\nabla_\mathbf{x}\log p_t(\mathbf{x})\)</span> is learned by the denoiser. Source: <span class="citation" data-cites="song2021scoresde">(<a href="#/learning-outcomes-recap" role="doc-biblioref" onclick="">Song et al. 2021</a>)</span> Fig. 1 (arXiv 2011.13456).</figcaption>
-</figure>
-</div>
+<p><strong>Three flavours, one idea:</strong></p>
+<ul>
+<li class="fragment"><strong>Flow Matching</strong> <span class="citation" data-cites="lipman2023flowmatching">(<a href="#/learning-outcomes-recap" role="doc-biblioref" onclick="">Lipman et al. 2023</a>)</span>: regress the vector field directly. Loss is MSE on <span class="math inline">\(u_\theta\)</span> vs the conditional-OT vector field — closed form for Gaussian paths.</li>
+<li class="fragment"><strong>Rectified Flow</strong> <span class="citation" data-cites="liu2023rectifiedflow">(<a href="#/learning-outcomes-recap" role="doc-biblioref" onclick="">Liu et al. 2023</a>)</span>: enforce the path to be a straight line in <span class="math inline">\((x_0, x_1)\)</span> space. Reflow trick: a few iterations make sampling ~1-step.</li>
+<li class="fragment"><strong>Stable Diffusion 3 (2024)</strong> uses rectified flow with a transformer backbone (MM-DiT). DDPM is now a special case.</li>
+</ul>
 </div></div>
+<div class="fragment">
+<blockquote>
+<p>“In 2026, training a new image generator from scratch: start with flow matching, not DDPM. Same neural network shape, simpler loss, faster inference.”</p>
+</blockquote>
+</div>
 <aside class="notes">
 <ul>
-<li>The score-matching connection unifies diffusion with stochastic differential equations (Song et al.&nbsp;2021).</li>
-<li>For students who go on to research: this is the deep theory; for everyone else, it is a pointer.</li>
-<li>The SDE overview figure shows the clean duality: forward = add noise via SDE; reverse = denoise using score.</li>
+<li>Math sketch: flow matching minimizes <span class="math inline">\(\mathbb{E}_{t, x_t} \|u_\theta(x_t, t) - u^*(x_t, t)\|^2\)</span> where <span class="math inline">\(u^*\)</span> is the conditional-OT velocity field for a Gaussian path; this admits a Tweedie-like closed form.</li>
+<li>Why FM is “unifying”: DDPM = flow matching with a specific (variance-preserving) noise schedule and a specific (linear Gaussian) path. Score matching = same trick for the score function instead of the velocity. Rectified flow = flow matching with a particular path choice (straight line).</li>
+<li>Operationally, code-wise the change vs DDPM is <strong>one line in the loss</strong> — replace noise-prediction with velocity-prediction. Network architecture identical.</li>
+<li>Why SD3 / Flux / SOTA models switched: straighter paths → fewer ODE-solver steps → cheaper sampling at fixed quality.</li>
+<li>Materials angle: same advantage for inverse design — fewer NFEs (number of function evaluations) means cheaper conditional sampling during a Bayesian-optimization loop.</li>
+<li>This slide subsumes the older score-matching pointer: the score <span class="math inline">\(\nabla_x \log p_t(x)\)</span> and the velocity <span class="math inline">\(u^*(x,t)\)</span> are linearly related for Gaussian paths, so score matching is a special case of flow matching <span class="citation" data-cites="song2021scoresde">(<a href="#/learning-outcomes-recap" role="doc-biblioref" onclick="">Song et al. 2021</a>)</span>.</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="consistency-models-one-step-generation" class="slide level2">
+<h2>Consistency models: one-step generation</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>The cost of diffusion is the step count:</strong></p>
+<ul>
+<li class="fragment">Even DDIM needs ~10–50 NFEs; that’s expensive in a property-prediction or design loop.</li>
+<li class="fragment"><strong>Consistency models</strong> <span class="citation" data-cites="song2023consistency">(<a href="#/learning-outcomes-recap" role="doc-biblioref" onclick="">Song et al. 2023</a>)</span>: train a network <span class="math inline">\(f_\theta(x_t, t) \to x_0\)</span> to map <em>any</em> point on a diffusion / flow trajectory directly to the clean endpoint. <strong>Self-consistency</strong> enforces <span class="math inline">\(f_\theta(x_t, t) = f_\theta(x_{t'}, t')\)</span> for two points on the same trajectory.</li>
+<li class="fragment">Once trained, sampling is <em>one</em> network call. Quality slightly below multi-step diffusion but usable as a fast first pass.</li>
+</ul>
+</div><div class="column" style="width:50%;">
+<p><strong>Two training routes:</strong></p>
+<ul>
+<li class="fragment"><strong>Consistency distillation</strong>: train consistency model from a <em>pretrained</em> diffusion/FM teacher.</li>
+<li class="fragment"><strong>Consistency training (CT)</strong>: train from scratch, no teacher needed.</li>
+<li class="fragment">Multi-step variant (“multistep consistency”, “latent consistency models” / LCM 2023): trade quality vs steps in 2–8 NFEs.</li>
+</ul>
+</div></div>
+<div class="fragment">
+<blockquote>
+<p>“Default in 2026 for real-time / interactive generation: a consistency-distilled student of a flow-matching teacher. The flow-matching teacher itself is the high-quality reference.”</p>
+</blockquote>
+</div>
+<aside class="notes">
+<ul>
+<li>The mental model: diffusion learns the <em>whole</em> trajectory; consistency learns the <em>direct mapping</em> to the endpoint. Same data, different parameterisation.</li>
+<li>Connection to flow matching: consistency models can be trained against any ODE trajectory, not just DDPM noise. Pairing flow-matching teacher + consistency-distilled student is the current speed-quality pareto front.</li>
+<li>For materials inverse design at deploy time, 1-step sampling can mean the difference between an interactive design loop and an overnight job.</li>
+<li>Latent Consistency Models (LCM, Luo et al.&nbsp;2023) is the practical workhorse — drop-in adapter on Stable Diffusion that yields 4-step generation.</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1386,32 +1435,6 @@ p(x_{t-1} \mid x_t) = ?
           display:block!important;
       }</style></aside>
 <!-- ===== §11. Alternatives ===== -->
-</section>
-<section id="gans" class="slide level2">
-<h2>GANs</h2>
-<ul>
-<li class="fragment">Generator <span class="math inline">\(G\)</span> produces fake samples. Discriminator <span class="math inline">\(D\)</span> distinguishes real from fake.</li>
-<li class="fragment">Two networks trained adversarially: <span class="math inline">\(G\)</span> minimizes, <span class="math inline">\(D\)</span> maximizes a min-max objective.</li>
-<li class="fragment"><strong>Strengths</strong>: very fast sampling (one network call), historically sharp samples.</li>
-<li class="fragment"><strong>Weaknesses</strong>: training instability, mode collapse, no likelihood, hard to evaluate.</li>
-<li class="fragment">Largely supplanted by diffusion since 2022, but still used (StyleGAN for fast image synthesis).</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>GANs (Goodfellow et al.&nbsp;2014) dominated 2015-2021.</li>
-<li>Their fundamental issue is the min-max optimization; diffusion has a clean MSE.</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
 </section>
 <section id="normalizing-flows" class="slide level2">
 <h2>Normalizing flows</h2>
@@ -1442,18 +1465,16 @@ p(x_{t-1} \mid x_t) = ?
 <h2>Choosing the right generative model</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 20%">
-<col style="width: 20%">
-<col style="width: 20%">
-<col style="width: 20%">
-<col style="width: 20%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
 </colgroup>
 <thead>
 <tr class="header">
 <th></th>
 <th>VAE</th>
 <th>Diffusion</th>
-<th>GAN</th>
 <th>Flow</th>
 </tr>
 </thead>
@@ -1461,28 +1482,24 @@ p(x_{t-1} \mid x_t) = ?
 <tr class="odd">
 <td>Sampling speed</td>
 <td>fast</td>
-<td>slow</td>
-<td>fast</td>
+<td>slow (fast w/ consistency)</td>
 <td>fast</td>
 </tr>
 <tr class="even">
 <td>Sample quality</td>
 <td>low (blurry)</td>
 <td>very high</td>
-<td>high</td>
 <td>medium</td>
 </tr>
 <tr class="odd">
 <td>Training stability</td>
 <td>good</td>
 <td>very good</td>
-<td>poor</td>
 <td>good</td>
 </tr>
 <tr class="even">
 <td>Exact likelihood</td>
 <td>no (lower bound)</td>
-<td>no</td>
 <td>no</td>
 <td>yes</td>
 </tr>
@@ -1490,15 +1507,16 @@ p(x_{t-1} \mid x_t) = ?
 <td>Best for</td>
 <td>fast prototyping, latent geometry</td>
 <td>high-quality generation, conditioning</td>
-<td>speed-critical</td>
 <td>exact likelihood</td>
 </tr>
 </tbody>
 </table>
+<p><em>Historical footnote</em>: GANs (Goodfellow et al.&nbsp;2014) dominated image generation 2015–2021 but have been superseded by diffusion and flow matching in 2026.</p>
 <aside class="notes">
 <ul>
 <li>This is the decision table students should remember.</li>
-<li>Default for serious generation in 2026: diffusion. For fast latent exploration: VAE. For exact likelihoods: flow.</li>
+<li>Default for serious generation in 2026: diffusion (or flow matching). For fast latent exploration: VAE. For exact likelihoods: flow.</li>
+<li>GANs are essentially legacy for image generation now — kept out of the table to avoid implying they’re a live option.</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1732,7 +1750,7 @@ p(x_{t-1} \mid x_t) = ?
 <li class="fragment"><strong>Use</strong> a trained VAE: encode, sample latent, decode.</li>
 <li class="fragment"><strong>Describe</strong> the forward and reverse processes of a diffusion model.</li>
 <li class="fragment"><strong>Apply</strong> classifier-free guidance for conditional generation.</li>
-<li class="fragment"><strong>Compare</strong> VAE, diffusion, GAN, and flow on the trade-off axes.</li>
+<li class="fragment"><strong>Compare</strong> VAE, diffusion, and flow on the trade-off axes.</li>
 </ul>
 <aside class="notes">
 <ul>
@@ -1760,6 +1778,12 @@ Doersch, Carl. 2016. <span>“Tutorial on Variational Autoencoders.”</span> <e
 <div id="ref-ho2020ddpm" class="csl-entry" role="listitem">
 Ho, Jonathan, Ajay Jain, and Pieter Abbeel. 2020. <span>“Denoising Diffusion Probabilistic Models.”</span> <em>Advances in Neural Information Processing Systems (NeurIPS)</em>. <a href="https://arxiv.org/abs/2006.11239">https://arxiv.org/abs/2006.11239</a>.
 </div>
+<div id="ref-lipman2023flowmatching" class="csl-entry" role="listitem">
+Lipman, Yaron, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. 2023. <span>“Flow Matching for Generative Modeling.”</span> <em>International Conference on Learning Representations (ICLR)</em>. <a href="https://arxiv.org/abs/2210.02747">https://arxiv.org/abs/2210.02747</a>.
+</div>
+<div id="ref-liu2023rectifiedflow" class="csl-entry" role="listitem">
+Liu, Xingchao, Chengyue Gong, and Qiang Liu. 2023. <span>“Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow.”</span> <em>International Conference on Learning Representations (ICLR)</em>. <a href="https://arxiv.org/abs/2209.03003">https://arxiv.org/abs/2209.03003</a>.
+</div>
 <div id="ref-murphy2012machine" class="csl-entry" role="listitem">
 Murphy, Kevin P. 2012. <em>Machine Learning: A Probabilistic Perspective</em>. MIT Press.
 </div>
@@ -1771,6 +1795,9 @@ Rombach, Robin, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Omm
 </div>
 <div id="ref-ronneberger2015unet" class="csl-entry" role="listitem">
 Ronneberger, Olaf, Philipp Fischer, and Thomas Brox. 2015. <span>“<span>U-Net</span>: Convolutional Networks for Biomedical Image Segmentation.”</span> <em>Medical Image Computing and Computer-Assisted Intervention (MICCAI)</em>. <a href="https://arxiv.org/abs/1505.04597">https://arxiv.org/abs/1505.04597</a>.
+</div>
+<div id="ref-song2023consistency" class="csl-entry" role="listitem">
+Song, Yang, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. 2023. <span>“Consistency Models.”</span> <em>International Conference on Machine Learning (ICML)</em>. <a href="https://arxiv.org/abs/2303.01469">https://arxiv.org/abs/2303.01469</a>.
 </div>
 <div id="ref-song2021scoresde" class="csl-entry" role="listitem">
 Song, Yang, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. 2021. <span>“Score-Based Generative Modeling Through Stochastic Differential Equations.”</span> <em>International Conference on Learning Representations (ICLR)</em>. <a href="https://arxiv.org/abs/2011.13456">https://arxiv.org/abs/2011.13456</a>.
