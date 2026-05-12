@@ -124,7 +124,7 @@ By the end of this unit, students can:
 - **Use** a trained VAE: encode, sample latent, decode.
 - **Describe** the forward (noising) and reverse (denoising) processes of a diffusion model.
 - **Apply** classifier-free guidance for conditional generation.
-- **Compare** VAEs, diffusion, GANs, and normalizing flows on the trade-off axes.
+- **Compare** VAEs, diffusion, and normalizing flows on the trade-off axes.
 ::::
 
 :::: {.notes}
@@ -434,7 +434,7 @@ For materials: interpolate between two micrographs to see how phases transition;
 
 :::: {.notes}
 - VAE summary in five bullets — these are the must-knows for the VAE half of the unit.
-- The blurriness is the historical motivation for GANs, then for diffusion.
+- The blurriness was the historical motivation for diffusion (and earlier, for GANs — now legacy).
 ::::
 
 <!-- ===== §5. VAE → diffusion bridge ===== -->
@@ -612,7 +612,7 @@ $$
 
 :::: {.notes}
 - The loss is shockingly simple — a key reason diffusion took off.
-- Compare to GANs: no adversarial dynamics, no min-max optimization, just stable supervised learning.
+- No adversarial dynamics, no min-max optimization — just stable supervised learning. (This is the headline reason diffusion eclipsed GANs after 2021.)
 ::::
 
 ## What is $\epsilon_\theta$?
@@ -742,47 +742,79 @@ $$
 - For materials: latent diffusion on a VAE of micrographs is a natural design.
 ::::
 
-<!-- ===== §10. Score matching ===== -->
+<!-- ===== §10. Flow matching & consistency models ===== -->
 
-## Score matching — one-slide pointer
+## Flow matching: ODE-based generation (the modern unifying view)
 
 :::: {.columns}
 :::: {.column width="50%"}
+**From SDE to ODE:**
+
 :::: {.incremental}
-- The **score** of a distribution: $s(x) = \nabla_x \log p(x)$.
-- Score matching: train a network to estimate the score directly.
-- **Key result** (Vincent 2011): denoising = score matching at small noise levels.
-- This is why predicting noise works: predicting noise is, up to a constant, predicting the score.
-- Diffusion models are formally **score-based generative models** [@song2021scoresde].
+- DDPM samples by stepping a stochastic differential equation backward; reverses many small noise additions.
+- A deterministic ODE view: define a probability path $p_t(x)$ from data ($t=0$) to Gaussian ($t=1$), learn a vector field $u_\theta(x, t)$ that transports samples along it.
+- Sampling is then ODE integration of $\dot x = u_\theta(x, t)$ from noise to data — needs *far fewer steps* than the reverse SDE.
 ::::
 ::::
 :::: {.column width="50%"}
-![Forward SDE (data $\to$ noise): $d\mathbf{x} = \mathbf{f}(\mathbf{x},t)\,dt + g(t)\,d\mathbf{w}$. Reverse SDE (noise $\to$ data): replace $\mathbf{f}$ with $\mathbf{f} - g^2\nabla_\mathbf{x}\log p_t(\mathbf{x})$ and run backwards. The score $\nabla_\mathbf{x}\log p_t(\mathbf{x})$ is learned by the denoiser. Source: [@song2021scoresde] Fig. 1 (arXiv 2011.13456).](images/score_sde_overview.png){width=100%}
+**Three flavours, one idea:**
+
+:::: {.incremental}
+- **Flow Matching** [@lipman2023flowmatching]: regress the vector field directly. Loss is MSE on $u_\theta$ vs the conditional-OT vector field — closed form for Gaussian paths.
+- **Rectified Flow** [@liu2023rectifiedflow]: enforce the path to be a straight line in $(x_0, x_1)$ space. Reflow trick: a few iterations make sampling ~1-step.
+- **Stable Diffusion 3 (2024)** uses rectified flow with a transformer backbone (MM-DiT). DDPM is now a special case.
+::::
 ::::
 ::::
 
+:::: {.fragment}
+> "In 2026, training a new image generator from scratch: start with flow matching, not DDPM. Same neural network shape, simpler loss, faster inference."
+::::
+
 :::: {.notes}
-- The score-matching connection unifies diffusion with stochastic differential equations (Song et al. 2021).
-- For students who go on to research: this is the deep theory; for everyone else, it is a pointer.
-- The SDE overview figure shows the clean duality: forward = add noise via SDE; reverse = denoise using score.
+- Math sketch: flow matching minimizes $\mathbb{E}_{t, x_t} \|u_\theta(x_t, t) - u^*(x_t, t)\|^2$ where $u^*$ is the conditional-OT velocity field for a Gaussian path; this admits a Tweedie-like closed form.
+- Why FM is "unifying": DDPM = flow matching with a specific (variance-preserving) noise schedule and a specific (linear Gaussian) path. Score matching = same trick for the score function instead of the velocity. Rectified flow = flow matching with a particular path choice (straight line).
+- Operationally, code-wise the change vs DDPM is **one line in the loss** — replace noise-prediction with velocity-prediction. Network architecture identical.
+- Why SD3 / Flux / SOTA models switched: straighter paths → fewer ODE-solver steps → cheaper sampling at fixed quality.
+- Materials angle: same advantage for inverse design — fewer NFEs (number of function evaluations) means cheaper conditional sampling during a Bayesian-optimization loop.
+- This slide subsumes the older score-matching pointer: the score $\nabla_x \log p_t(x)$ and the velocity $u^*(x,t)$ are linearly related for Gaussian paths, so score matching is a special case of flow matching [@song2021scoresde].
+::::
+
+## Consistency models: one-step generation
+
+:::: {.columns}
+:::: {.column width="50%"}
+**The cost of diffusion is the step count:**
+
+:::: {.incremental}
+- Even DDIM needs ~10–50 NFEs; that's expensive in a property-prediction or design loop.
+- **Consistency models** [@song2023consistency]: train a network $f_\theta(x_t, t) \to x_0$ to map *any* point on a diffusion / flow trajectory directly to the clean endpoint. **Self-consistency** enforces $f_\theta(x_t, t) = f_\theta(x_{t'}, t')$ for two points on the same trajectory.
+- Once trained, sampling is *one* network call. Quality slightly below multi-step diffusion but usable as a fast first pass.
+::::
+::::
+:::: {.column width="50%"}
+**Two training routes:**
+
+:::: {.incremental}
+- **Consistency distillation**: train consistency model from a *pretrained* diffusion/FM teacher.
+- **Consistency training (CT)**: train from scratch, no teacher needed.
+- Multi-step variant ("multistep consistency", "latent consistency models" / LCM 2023): trade quality vs steps in 2–8 NFEs.
+::::
+::::
+::::
+
+:::: {.fragment}
+> "Default in 2026 for real-time / interactive generation: a consistency-distilled student of a flow-matching teacher. The flow-matching teacher itself is the high-quality reference."
+::::
+
+:::: {.notes}
+- The mental model: diffusion learns the *whole* trajectory; consistency learns the *direct mapping* to the endpoint. Same data, different parameterisation.
+- Connection to flow matching: consistency models can be trained against any ODE trajectory, not just DDPM noise. Pairing flow-matching teacher + consistency-distilled student is the current speed-quality pareto front.
+- For materials inverse design at deploy time, 1-step sampling can mean the difference between an interactive design loop and an overnight job.
+- Latent Consistency Models (LCM, Luo et al. 2023) is the practical workhorse — drop-in adapter on Stable Diffusion that yields 4-step generation.
 ::::
 
 <!-- ===== §11. Alternatives ===== -->
-
-## GANs
-
-:::: {.incremental}
-- Generator $G$ produces fake samples. Discriminator $D$ distinguishes real from fake.
-- Two networks trained adversarially: $G$ minimizes, $D$ maximizes a min-max objective.
-- **Strengths**: very fast sampling (one network call), historically sharp samples.
-- **Weaknesses**: training instability, mode collapse, no likelihood, hard to evaluate.
-- Largely supplanted by diffusion since 2022, but still used (StyleGAN for fast image synthesis).
-::::
-
-:::: {.notes}
-- GANs (Goodfellow et al. 2014) dominated 2015-2021.
-- Their fundamental issue is the min-max optimization; diffusion has a clean MSE.
-::::
 
 ## Normalizing flows
 
@@ -800,17 +832,20 @@ $$
 
 ## Choosing the right generative model
 
-| | VAE | Diffusion | GAN | Flow |
-|---|---|---|---|---|
-| Sampling speed | fast | slow | fast | fast |
-| Sample quality | low (blurry) | very high | high | medium |
-| Training stability | good | very good | poor | good |
-| Exact likelihood | no (lower bound) | no | no | yes |
-| Best for | fast prototyping, latent geometry | high-quality generation, conditioning | speed-critical | exact likelihood |
+| | VAE | Diffusion | Flow |
+|---|---|---|---|
+| Sampling speed | fast | slow (fast w/ consistency) | fast |
+| Sample quality | low (blurry) | very high | medium |
+| Training stability | good | very good | good |
+| Exact likelihood | no (lower bound) | no | yes |
+| Best for | fast prototyping, latent geometry | high-quality generation, conditioning | exact likelihood |
+
+*Historical footnote*: GANs (Goodfellow et al. 2014) dominated image generation 2015–2021 but have been superseded by diffusion and flow matching in 2026.
 
 :::: {.notes}
 - This is the decision table students should remember.
-- Default for serious generation in 2026: diffusion. For fast latent exploration: VAE. For exact likelihoods: flow.
+- Default for serious generation in 2026: diffusion (or flow matching). For fast latent exploration: VAE. For exact likelihoods: flow.
+- GANs are essentially legacy for image generation now — kept out of the table to avoid implying they're a live option.
 ::::
 
 <!-- ===== §12. Materials applications ===== -->
@@ -948,7 +983,7 @@ By the end of this unit, students can:
 - **Use** a trained VAE: encode, sample latent, decode.
 - **Describe** the forward and reverse processes of a diffusion model.
 - **Apply** classifier-free guidance for conditional generation.
-- **Compare** VAE, diffusion, GAN, and flow on the trade-off axes.
+- **Compare** VAE, diffusion, and flow on the trade-off axes.
 ::::
 
 :::: {.notes}

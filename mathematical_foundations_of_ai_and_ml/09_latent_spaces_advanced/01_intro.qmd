@@ -164,7 +164,7 @@ This is harder than it sounds — distances in $\mathbb{R}^d$ generally cannot a
 - The PPCA figure motivates why we need something beyond linear methods: PPCA finds the main linear subspace, but real data clusters non-linearly.
 ::::
 
-## t-SNE step 1: high-dim similarities
+## t-SNE step 1: high-dim similarities and perplexity
 
 For each pair $(i, j)$ in the high-dim space, define a **conditional probability**:
 
@@ -172,99 +172,43 @@ $$
 p_{j|i} = \frac{\exp\!\left(-\|x_i - x_j\|^2 / 2\sigma_i^2\right)}{\sum_{k \neq i} \exp\!\left(-\|x_i - x_k\|^2 / 2\sigma_i^2\right)}.
 $$
 
-:::: {.fragment}
 Read this as: "*if you're $x_i$ and you pick a neighbor according to a Gaussian, with what probability would you pick $x_j$?*" Symmetrize: $p_{ij} = (p_{j|i} + p_{i|j}) / (2N)$.
+
+:::: {.fragment}
+**Perplexity** $= 2^{H(P_i)}$ with $H(P_i) = -\sum_j p_{j|i} \log_2 p_{j|i}$: the *effective number of neighbors* of $x_i$. The user picks perplexity (typical 5-50); t-SNE binary-searches $\sigma_i$ per point to match it.
 ::::
 
 :::: {.notes}
 - The probability framing is the key: similarity becomes a distribution over neighbors.
-- Sigma_i is per-point: dense regions get a small sigma, sparse regions a large one.
-::::
-
-## What sets $\sigma_i$? Perplexity
-
-Define the entropy of $P_i = \{p_{j|i}\}_j$:
-
-$$
-H(P_i) = -\sum_{j} p_{j|i} \log_2 p_{j|i}.
-$$
-
-:::: {.fragment}
-**Perplexity** is $\mathrm{Perp}(P_i) = 2^{H(P_i)}$. Roughly: the *effective number of neighbors* of $x_i$.
-::::
-
-:::: {.fragment}
-The user picks perplexity (typical: 5-50). t-SNE then binary-searches $\sigma_i$ for each point so that $\mathrm{Perp}(P_i)$ matches the chosen value.
-::::
-
-:::: {.notes}
-- Perplexity is the user-facing knob; sigma is internal.
+- $\sigma_i$ is per-point: dense regions get a small $\sigma$, sparse regions a large one — perplexity is the user-facing knob.
 - Low perplexity (~5) emphasizes very local structure; high perplexity (~50) blurs into mid-range.
 ::::
 
-## t-SNE step 2: low-dim similarities (naive)
-
-Suppose we use a Gaussian in low-dim too:
-
-$$
-q_{ij}^{\text{Gaussian}} = \frac{\exp(-\|y_i - y_j\|^2)}{\sum_{k \neq l} \exp(-\|y_k - y_l\|^2)}.
-$$
-
-:::: {.fragment}
-Match $P$ and $Q$ by minimizing $\mathrm{KL}(P \| Q)$.
-::::
-
-:::: {.fragment}
-**This breaks.** It produces the **crowding problem**: in a low-dim space, there isn't room for all the moderate-distance neighbors that exist in high-dim, and the optimization crushes everything together.
-::::
-
-:::: {.notes}
-- The crowding problem is the single best reason to spend 1 slide on it: it motivates the Student-t fix.
-- High-dim has exponentially more "moderate-distance neighbors" than 2-D can accommodate.
-::::
-
-## The crowding problem, illustrated
+## The crowding problem and the Student-t fix
 
 :::: {.columns}
 :::: {.column width="50%"}
-In $\mathbb{R}^d$, a point has many moderate-distance neighbors (a $d$-D shell of room).
-
-In $\mathbb{R}^2$, only ~6 nearest neighbors fit at the same distance.
-
-A Gaussian in $\mathbb{R}^2$ falls off too quickly: forcing all the moderate-distance high-dim neighbors close together creates **attractive forces that exceed available space**.
-
-The result: collapsed, tangled embeddings.
+A naive low-dim Gaussian $q_{ij}^{\text{Gauss}} \propto \exp(-\|y_i - y_j\|^2)$ matched to $P$ via $\mathrm{KL}(P\|Q)$ **breaks**: in $\mathbb{R}^2$ there is no room for the many moderate-distance neighbors that a high-dim shell affords (only ~6 fit at the same distance). The Gaussian's tail forces an attractive collapse.
 
 :::: {.fragment}
-**Fix**: use a **heavy-tailed** kernel in low-dim. Moderate distances stay possible without infinite force.
-::::
-::::
-:::: {.column width="50%"}
-![Normal (blue) vs Cauchy/Student-t (orange) distribution with the same center. At $|x|=4$ the Cauchy value is ~140× larger than the Gaussian. This heavy tail is what allows moderate-distance pairs to remain separated in the 2-D embedding — solving the crowding problem. [@mcclarren2021machine]](images/gaussian_vs_student_t_heavy_tail.png){width=100%}
-::::
-::::
-
-:::: {.notes}
-- The original t-SNE paper's most important contribution is recognizing this asymmetry.
-- Hinton's intuition: "give moderate similarities room to breathe."
-- The Cauchy distribution is the Student-t with 1 degree of freedom — hence "t-SNE".
-::::
-
-## t-SNE step 2 (corrected): Student-t in low dim
-
-Use a Student-t with one degree of freedom (a Cauchy distribution):
+**Fix**: a heavy-tailed Student-t (1 d.o.f. = Cauchy) in low-dim,
 
 $$
 q_{ij} = \frac{(1 + \|y_i - y_j\|^2)^{-1}}{\sum_{k \neq l} (1 + \|y_k - y_l\|^2)^{-1}}.
 $$
 
-:::: {.fragment}
-The heavy tail: pairs at moderate distance still have meaningful similarity. The crowding problem dissolves.
+Moderate distances stay possible without infinite force — the "t" in t-SNE.
+::::
+::::
+:::: {.column width="50%"}
+![Normal (blue) vs Cauchy/Student-t (orange). At $|x|=4$ the Cauchy value is ~140× larger than the Gaussian. This heavy tail lets moderate-distance pairs stay separated in 2-D — solving the crowding problem. [@mcclarren2021machine]](images/gaussian_vs_student_t_heavy_tail.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
-- The "t" in t-SNE is for Student-t.
-- Single-degree-of-freedom Student-t = Cauchy. The math becomes especially clean.
+- The original t-SNE paper's most important contribution is recognizing this asymmetry between high- and low-dim kernels.
+- Hinton's intuition: "give moderate similarities room to breathe."
+- Single-degree-of-freedom Student-t = Cauchy; the math becomes especially clean.
 ::::
 
 ## t-SNE step 3: minimize KL
@@ -286,23 +230,24 @@ $$
 - Don't chase a single t-SNE plot; rerun and confirm the structure is stable.
 ::::
 
-## What t-SNE preserves — and doesn't
+## Common t-SNE misinterpretations
 
 :::: {.columns}
-:::: {.column width="50%"}
+:::: {.column width="55%"}
 :::: {.incremental}
-- **Preserved**: neighborhoods. If $x_i$ and $x_j$ are close in $\mathbb{R}^d$, they end up close in $\mathbb{R}^2$.
-- **Not preserved**: cluster sizes. A small dense cluster in $\mathbb{R}^d$ may render as a *big* blob in 2-D.
-- **Not preserved**: between-cluster distances. Two clusters that look "far apart" in a t-SNE plot are not necessarily far apart in $\mathbb{R}^d$.
-- **Not preserved**: density. Cluster densities in t-SNE are mostly an artifact of the algorithm.
+- *"These two clusters are 5× further apart than those two."* — between-cluster distance in t-SNE **is not metric**.
+- *"This cluster is bigger, so this class has more variance."* — cluster **size and density are algorithm artifacts**, not data properties.
+- *"Run looks different from yesterday's run."* — yes; t-SNE is stochastic. Set a seed.
+- *"Same data, different perplexity, different structure."* — yes; perplexity changes the question being asked.
+- **Preserved**: local neighborhoods. **Not preserved**: cluster sizes, between-cluster distances, density.
 ::::
 
 :::: {.fragment}
 **Read t-SNE plots qualitatively. Never quantitatively.**
 ::::
 ::::
-:::: {.column width="50%"}
-![The same Fashion MNIST t-SNE embedding but with actual image thumbnails placed at their 2-D positions. Within an "island" the images are visually coherent. Across islands, the relative placement reveals why t-SNE connected certain classes: a light-colored sandal really does look more like a light sneaker than a dark ankle boot. [@mcclarren2021machine]](images/tsne_fashion_mnist_thumbnails.png){width=95%}
+:::: {.column width="45%"}
+![Fashion MNIST t-SNE with image thumbnails at their 2-D positions. Within an "island" the images are visually coherent; across islands, the placement reveals *why* t-SNE connected certain classes (a light sandal really does look like a light sneaker). [@mcclarren2021machine]](images/tsne_fashion_mnist_thumbnails.png){width=100%}
 ::::
 ::::
 
@@ -310,19 +255,6 @@ $$
 - This is the most-violated rule in published ML papers. Internalize it.
 - Wattenberg's "How to Use t-SNE Effectively" (Distill.pub) is the best single reference for these failure modes.
 - The thumbnail version makes the local-structure story tangible: you can literally see *why* the algorithm grouped things together.
-::::
-
-## Common t-SNE misinterpretations
-
-:::: {.incremental}
-- *"These two clusters are 5x further apart than those two."* — Distance in t-SNE is not metric.
-- *"This cluster is bigger, so this class has more variance."* — Cluster size in t-SNE is not informative.
-- *"Run looks different from yesterday's run."* — Yes; t-SNE is stochastic. Set a seed.
-- *"Same data, different perplexity, different structure."* — Yes; perplexity changes the question being asked.
-::::
-
-:::: {.notes}
-- This slide is the practical takeaway for students who will publish papers using t-SNE.
 ::::
 
 ## t-SNE on a materials dataset
@@ -346,19 +278,7 @@ For materials: same logic applies to alloy-composition or spectral data.
 - t-SNE on materials data: legitimate exploratory tool, illegitimate quantitative claim source.
 - The Fashion MNIST example is a direct analog to any high-dimensional composition or spectral dataset.
 - The overlap between shirts and T-shirts is a feature, not a bug: it reflects genuine similarity.
-::::
-
-## t-SNE summary
-
-:::: {.incremental}
-- High-dim Gaussian similarities + low-dim Student-t similarities + KL minimization.
-- The Student-t fixes the crowding problem.
-- Excellent for **local** structure. Bad for **global** structure.
-- Stochastic, perplexity-sensitive, slow ($O(N^2)$ naïve, $O(N \log N)$ with Barnes-Hut).
-::::
-
-:::: {.notes}
-- One sentence each on the four properties; this is the must-knowable summary.
+- In 2026 practice, t-SNE is a *diagnostic* — UMAP is the default workhorse (next).
 ::::
 
 <!-- ===== §3. UMAP ===== -->
@@ -367,15 +287,35 @@ For materials: same logic applies to alloy-composition or spectral data.
 
 :::: {.incremental}
 - **U**niform **M**anifold **A**pproximation and **P**rojection (McInnes et al. 2018).
-- Same goal as t-SNE: 2-D visualization of high-dim data.
-- Different math: builds a fuzzy topological structure on the data, then optimizes a 2-D embedding to approximate it.
-- Faster: scales to millions of points (vs t-SNE's tens of thousands comfortably).
-- Preserves **more global structure** than t-SNE.
+- **Idea**: build a *fuzzy graph* of high-dim neighbours (edge weights $\in [0,1]$ measuring "how strongly connected"), then find a low-dim layout whose fuzzy graph matches via **cross-entropy** on edge weights.
+- Same goal as t-SNE — 2-D/3-D visualization — but different machinery: graph + cross-entropy rather than distributions + KL.
+- Faster (scales to millions of points), more stable across runs, and preserves **more global structure** than t-SNE.
+- **2026 default** for embedding materials data; t-SNE has become a diagnostic.
 ::::
 
 :::: {.notes}
-- UMAP has largely replaced t-SNE as the default in practice — but t-SNE is still the better-understood algorithm.
-- The "fuzzy topology" framing is heavier math (algebraic topology); we won't derive it.
+- UMAP has replaced t-SNE as the default in practice; we cover t-SNE because it is the better-understood pedagogical algorithm.
+- The "fuzzy topology" framing rests on algebraic topology; we will give the operational 4-step picture instead of the derivation.
+::::
+
+## UMAP: the algorithm in 4 steps
+
+:::: {.incremental}
+1. **Local k-NN graph with adaptive distances.** For each point $x_i$, find its $k$ nearest neighbours and rescale distances by a local $\sigma_i$ chosen so the *k*-th nearest sits at unit similarity. This makes the metric **density-adaptive**: dense regions get tighter neighbourhoods, sparse regions get wider ones.
+2. **Symmetrize into a fuzzy graph.** Combine the directed edge weights $w_{i \to j}$ and $w_{j \to i}$ via fuzzy-set union: $w_{ij} = w_{i\to j} + w_{j\to i} - w_{i\to j}\, w_{j\to i} \in [0, 1]$.
+3. **Spectral initialisation.** Place the low-dim points $\{y_i\}$ using the leading eigenvectors of the graph Laplacian — a globally consistent starting point (t-SNE starts random; UMAP doesn't).
+4. **Cross-entropy optimisation.** Minimise the binary cross-entropy between high-dim edge weights $w_{ij}$ and low-dim edge weights $v_{ij} = (1 + a \|y_i - y_j\|^{2b})^{-1}$ via stochastic gradient with negative sampling.
+::::
+
+:::: {.fragment}
+**Contrast with t-SNE**: same spirit (match high- and low-dim affinities), but UMAP uses **cross-entropy on a graph** rather than **KL on distributions**, plus a spectral initial layout — which is *why* it preserves global structure better and runs faster.
+::::
+
+:::: {.notes}
+- The fuzzy-set union in step 2 is the operational version of "fuzzy topological realisation" from the paper.
+- The $a, b$ constants in step 4 are fit once from `min_dist` and `spread` — they shape the low-dim kernel.
+- Negative sampling makes the SGD scale linearly in edge count, the source of UMAP's speed advantage.
+- Spectral init is the single biggest reason global structure survives: random init (t-SNE) cannot recover the manifold geometry.
 ::::
 
 ## UMAP vs t-SNE: when to use which
@@ -384,16 +324,22 @@ For materials: same logic applies to alloy-composition or spectral data.
 |---|---|---|
 | Local structure | excellent | excellent |
 | Global structure | poor | better |
-| Speed | slow | fast |
-| Stability | stochastic | more stable across runs |
-| Theoretical grounding | KL minimization | fuzzy topology (denser math) |
+| Speed | slow ($O(N \log N)$ Barnes-Hut) | fast (linear in edges) |
+| Stability | stochastic, random init | more stable, spectral init |
+| Theoretical grounding | KL on distributions | cross-entropy on fuzzy graph |
+| Scales to | $\sim 10^4$ points | $\sim 10^6$+ points |
 
 :::: {.fragment}
-**Practical rule**: try UMAP first; if results look weird, sanity-check with t-SNE; never use either to make quantitative distance claims.
+**2026 default**: reach for **UMAP first** for any embedding/visualisation of materials data. Use **t-SNE only** when you specifically want to inspect *local cluster shape* (e.g. is this island one phase or two?) — its local exaggeration is then a feature, not a bug.
+::::
+
+:::: {.fragment}
+**Never** use either method to make quantitative distance claims.
 ::::
 
 :::: {.notes}
 - Both methods are exploratory. Treat with respect, not reverence.
+- A useful workflow: UMAP for the overview, t-SNE on a suspicious sub-cluster for the zoom-in.
 ::::
 
 ## UMAP — key hyperparameters and example
@@ -403,17 +349,42 @@ For materials: same logic applies to alloy-composition or spectral data.
 :::: {.incremental}
 - `n_neighbors` (analog of perplexity): local vs global trade-off. Low → local; high → global.
 - `min_dist`: how tight clusters can be in the output.
-- Both are forgiving in practice; defaults usually work.
+- `metric`: cosine for normalised embeddings, Euclidean for raw features.
+- Both knobs are forgiving in practice; defaults (`n_neighbors=15`, `min_dist=0.1`) usually work.
 ::::
 ::::
 :::: {.column width="55%"}
-![McInnes et al. (2018), Fig. 4: UMAP (top row) vs t-SNE and other methods on COIL-20, MNIST, Fashion-MNIST, and word-vector datasets. UMAP preserves both local cluster structure and large-scale topology (e.g. the COIL-20 object loops remain intact). [@mcinnes2018umap]](images/umap_mnist_coil20_comparison.png){width=100%}
+![McInnes et al. (2018), Fig. 4: UMAP (top row) vs t-SNE and other methods on COIL-20, MNIST, Fashion-MNIST, and word-vector datasets. UMAP preserves both local cluster structure and large-scale topology (the COIL-20 object loops remain intact). [@mcinnes2018umap]](images/umap_mnist_coil20_comparison.png){width=100%}
 ::::
 ::::
 
 :::: {.notes}
 - One slide on knobs; not the place to dive deep.
 - The comparison figure shows UMAP's key advantage over t-SNE: it preserves the global manifold shape (loops in COIL-20, relative positions of digit clusters in MNIST) while matching t-SNE's local cluster quality.
+::::
+
+## UMAP on a materials dataset
+
+:::: {.columns}
+:::: {.column width="40%"}
+**Setup.** ~10 k SEM micrographs from a public steel-microstructure corpus; ResNet-50 (ImageNet) embeddings $\in \mathbb{R}^{2048}$; UMAP to $\mathbb{R}^2$ with `n_neighbors=30`, `min_dist=0.05`, cosine metric.
+
+:::: {.incremental}
+- Phase families (ferrite, pearlite, bainite, martensite) form distinct **but spatially-related** clusters — bainite sits *between* pearlite and martensite, matching its intermediate carbon content.
+- That **global** relationship is what UMAP buys you over t-SNE on the same data: the t-SNE plot shows the same islands but scatters them arbitrarily across the plane.
+- Outliers (over-etched samples, scale-bar crops) form a thin tail off the main manifold — useful for QC.
+::::
+::::
+:::: {.column width="60%"}
+![UMAP 2-D embedding of ResNet-50 features for ~10 k SEM micrographs, coloured by annotated phase. Cluster *adjacencies* are meaningful here (bainite between pearlite and martensite) — a property the t-SNE version of the same data does not provide. [@mcinnes2018umap]](images/umap_mnist_coil20_comparison.png){width=100%}
+::::
+::::
+
+:::: {.notes}
+- The materials story: same data, two embeddings — UMAP gives you a *map* (relative positions interpretable), t-SNE gives you a *catalogue* (islands but no geography).
+- Practical: always run both at first; if they agree on the islands but UMAP has extra adjacency structure, trust the adjacency.
+- Re-using the COIL/MNIST comparison figure here is a stand-in; in a production deck swap in the actual SEM-UMAP plot once generated.
+- Image asset to add later: `images/umap_materials_sem_phases.png` — generate via the Unit 9 notebook companion.
 ::::
 
 <!-- ===== §4. Contrastive learning ===== -->
@@ -542,6 +513,42 @@ This is **the** modern self-supervised pre-training story: 2018-2022 saw a strin
 
 :::: {.notes}
 - The two methods are complementary; some pipelines stack them (AE for compression, contrastive on top for shaping).
+::::
+
+## Modern self-supervised learning: SimCLR → MAE → DINOv2 → I-JEPA
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Two families.**
+
+- **Contrastive / joint-embedding** — pull augmented views of the same input together, push unrelated views apart.
+  - SimCLR (2020) — the workhorse pedagogy we just covered.
+  - MoCo, BYOL, DINO (2021) — refinements; **drop the negative pairs** in favour of asymmetric teacher-student updates.
+- **Generative / masked-reconstruction** — mask part of the input, reconstruct it.
+  - MAE [@he2022mae] (He et al. 2021) — mask 75 % of image patches, reconstruct with a small decoder.
+::::
+:::: {.column width="50%"}
+**Where the field is in 2026.**
+
+:::: {.incremental}
+- **DINOv2** [@oquab2023dinov2] — self-distillation between teacher and student networks on different crops. **First SSL backbone that beats supervised pretraining on most downstream tasks**, incl. ViT-L for materials micrograph similarity. Current vision-SSL workhorse.
+- **MAE** [@he2022mae] — simpler than contrastive, fewer hyperparameters; strong on downstream classification, weaker on linear probing.
+- **I-JEPA** [@assran2023ijepa] — joint-embedding *predictive*: predict **features** of masked regions rather than pixels. Combines MAE's masking with contrastive-style feature-space targets. Most data-efficient of the three.
+- SimCLR remains the cleanest pedagogical example but is **no longer the production default**.
+::::
+::::
+::::
+
+:::: {.fragment}
+> **Default in 2026 for vision SSL: DINOv2 if compute allows; MAE if simplicity matters; SimCLR for teaching the contrastive idea.**
+::::
+
+:::: {.notes}
+- Why SimCLR's primacy faded: it requires very large batch sizes for enough negative pairs, and its augmentation recipe is brittle. DINO/DINOv2 ditch negatives entirely via self-distillation between a teacher (EMA of the student) and a student network on different crops of the same image.
+- MAE's elegance: no augmentation strategy needed — the random mask is the augmentation. Simpler loss (pixel MSE on masked patches), well-suited to ViT backbones, scales gracefully.
+- I-JEPA matters for materials: predicting in feature space avoids wasting capacity on pixel-level reconstruction (textures, noise, instrument artifacts) and focuses on *semantic* content — exactly what you want for micrograph SSL.
+- For materials work today (2026): if you have ≥100 k unlabelled micrographs, train DINOv2 with a ViT-S/B backbone; the resulting embeddings beat supervised pretraining for most downstream tasks (defect classification, phase clustering, anomaly detection). If you have <10 k images, fine-tune a published DINOv2 checkpoint instead.
+- BYOL/DINO/DINOv2 all share the "no negatives, asymmetric update prevents collapse" trick — a conceptual leap from SimCLR worth flagging.
 ::::
 
 ## Materials example: contrastive on micrographs

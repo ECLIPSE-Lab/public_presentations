@@ -504,11 +504,68 @@ $$
 - In well-conditioned subspace: ADAM behaves like momentum SGD.
 - In ill-conditioned subspace: ADAM compensates by scaling down steep directions and scaling up flat ones.
 
-## ADAM variants: AdamW, AMSGrad
+## AdamW: decoupled weight decay (the production default)
 
-- **AdamW**: decouples weight decay from the adaptive gradient scaling — better regularization behavior.
-- **AMSGrad**: ensures the second moment estimate never decreases — addresses rare convergence failures.
-- AdamW is now the recommended default in most deep learning frameworks.
+:::: {.columns}
+::: {.column width="50%"}
+**Why plain Adam + L2 misbehaves**
+
+:::: {.incremental}
+- Adding an L2 penalty $\tfrac{\lambda}{2}\|\theta\|^2$ injects $\lambda\theta$ into the gradient $g_t$.
+- Adam then divides by $\sqrt{\hat v_t} + \epsilon$ — so the *effective* weight decay becomes $\lambda\theta / (\sqrt{\hat v_t} + \epsilon)$.
+- Parameters with large second moment get *less* regularization; small-$\hat v_t$ parameters get *more*. Coupling is unintended.
+::::
+:::
+
+::: {.column width="50%"}
+**AdamW's fix** [@loshchilov2019adamw]
+
+:::: {.incremental}
+- Decouple weight decay from the gradient: apply $\theta \leftarrow \theta - \eta\lambda\theta$ as a separate step, *outside* the adaptive scaling.
+- Update rule: $\theta_{t+1} = \theta_t - \eta\bigl(\hat m_t / (\sqrt{\hat v_t} + \epsilon) + \lambda\theta_t\bigr)$.
+- Regularization strength is now uniform across parameters and independent of curvature estimates.
+- **Production default in 2026.** PyTorch, JAX/Optax, HuggingFace Trainer all ship AdamW as the recommended choice.
+::::
+:::
+::::
+
+::: {.notes}
+The L2-vs-decoupled distinction is the single most cited reason to prefer AdamW over Adam. Historically, AMSGrad (Reddi et al., 2018) was another Adam variant that patched a gap in the original convergence proof by taking a running max of the second-moment estimate; in practice it never displaced Adam/AdamW and is essentially absent from modern training stacks — students should recognize the name but not reach for it.
+:::
+
+## Modern alternatives to AdamW (2023–2024)
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Why optimizer research is alive again**
+
+:::: {.incremental}
+- AdamW has been the default since 2017–2018; recent work targets specific LLM-era pain points: optimizer-state memory, schedule tuning, and billion-parameter pretraining.
+- All three alternatives below are drop-in replacements for AdamW in PyTorch — a few lines of code to swap in.
+::::
+::::
+
+:::: {.column width="50%"}
+**Three post-AdamW optimizers**
+
+:::: {.incremental}
+- **Lion** [@chen2023lion]: sign-of-gradient + momentum, no second moment. Roughly half the optimizer memory of Adam; matches or beats AdamW on LLM and ViT pretraining at scale. Discovered by Google via symbolic search over optimizer programs.
+- **Sophia** [@liu2023sophia]: cheap stochastic 2nd-order method using a diagonal Gauss–Newton–Bartlett Hessian estimate. Reports ~2× wall-clock speedup over Adam on GPT-class language-model pretraining.
+- **Schedule-Free AdamW** [@defazio2024schedulefree]: eliminates the learning-rate schedule via Polyak-style parameter averaging built into the update. No warmup/cosine to tune; strong on LM and image benchmarks.
+::::
+::::
+::::
+
+:::: {.fragment}
+Default in 2026 is still AdamW for most work; reach for Lion (memory), Sophia (LLM pretraining speed), or Schedule-Free (no schedule tuning) when those specifics matter.
+::::
+
+:::: {.notes}
+- Why optimizer research stagnated then revived: ResNets trained fine with Adam, so for ~5 years there was little pressure to change. LLMs at billion-parameter scale exposed Adam's memory footprint (two extra tensors per parameter) and its sensitivity to LR warmup/decay schedules.
+- When to actually switch: mostly *don't*. AdamW is fine for materials-scale models. Use Lion if optimizer-state memory is a real bottleneck; use Sophia if you're pretraining a language model and wall-clock matters; use Schedule-Free if you can't afford an LR sweep.
+- Tie back to materials: for the kinds of CNNs/ViTs we train in materials (hundreds of millions of parameters at most), the optimizer choice is not the bottleneck — data and architecture dominate.
+- One-line mention: Muon (Jordan, 2024) is a newer matrix-aware optimizer that operates on weight matrices rather than flat parameter vectors; less established but worth tracking.
+::::
 
 ## Optimizer comparison on benchmark surfaces
 
