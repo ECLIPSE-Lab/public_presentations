@@ -326,6 +326,11 @@
 <li><strong>Explain</strong> the SINDy algorithm and its use for discovering governing equations from data</li>
 </ol>
 </div>
+<div class="fragment">
+<ol start="6" type="1">
+<li><strong>Sketch</strong> how flow matching and consistency models turn inverse design into a conditional generative-sampling problem</li>
+</ol>
+</div>
 </section>
 <section>
 <section id="section-1-forward-inverse-duality" class="title-slide slide level1 center" data-background-color="#1a1a2e">
@@ -1900,8 +1905,131 @@
 <p>Putting It All Together</p>
 </div>
 </section>
+<section id="flow-matching-for-microstructure-inverse-design" class="slide level2">
+<h2>43. Flow Matching for Microstructure Inverse Design</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="fragment">
+<p><strong>The principle.</strong> Train a network <span class="math inline">\(u_\theta(x_t, t)\)</span> to predict the <strong>velocity field</strong> of a Gaussian probability path from prior <span class="math inline">\(p_0 = \mathcal{N}(0, I)\)</span> to data distribution <span class="math inline">\(p_1\)</span> <span class="citation" data-cites="lipman_2023_flow_matching">(<a href="#/references" role="doc-biblioref" onclick="">Lipman et al. 2023</a>)</span>.</p>
+</div>
+<div class="fragment">
+<p>Linear interpolant: <span class="math inline">\(x_t = (1-t)\,x_0 + t\,x_1\)</span> with <span class="math inline">\(x_0 \sim p_0\)</span>, <span class="math inline">\(x_1 \sim p_1\)</span>.</p>
+</div>
+<div class="fragment">
+<p>Conditional flow-matching loss:</p>
+<p><span class="math display">\[\mathcal{L}_{\mathrm{CFM}} = \mathbb{E}_{t, x_0, x_1}\,\bigl\|u_\theta(x_t, t) - (x_1 - x_0)\bigr\|^2\]</span></p>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Simulation-free</strong> training — no SDE rollout, no score-network detour</li>
+<li><strong>ODE sampling</strong> at inference: 10 Heun steps and you have a microstructure</li>
+</ul>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="fragment">
+<p><strong>Why this beats score-matching / DDPM</strong> for materials inverse design:</p>
+<ul>
+<li>No SDE — deterministic ODE sampler</li>
+<li><strong>Closed-form regression target</strong> <span class="math inline">\((x_1 - x_0)\)</span>, not a learned score</li>
+<li>Numerically stable; works at low NFE</li>
+</ul>
+</div>
+<div class="fragment">
+<p><strong>Materials hook.</strong> Stable Diffusion 3 ships flow matching; the generative-models community is migrating away from DDPM. The same machinery applied to microstructure patches gives a generative prior over admissible structures.</p>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p><strong>Inverse design as conditional flow matching.</strong> Condition on target property <span class="math inline">\(y\)</span> and sample</p>
+<p><span class="math display">\[x \sim u_\theta(\cdot, t;\, y)\]</span></p>
+<p>— the trained velocity field becomes a property-conditioned microstructure generator.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p>30-second derivation: with the linear interpolant <span class="math inline">\(x_t = (1-t)x_0 + t x_1\)</span>, the conditional vector field along that path is exactly <span class="math inline">\(x_1 - x_0\)</span> — no derivation of a score function needed, it falls out by differentiating in <span class="math inline">\(t\)</span>. Conditioning: same trick as in diffusion — classifier-free guidance still applies, drop the condition with some probability during training and at sampling time blend the conditional and unconditional velocities. 1080Ti budget: small U-Net on a low-resolution microstructure grid is fine, the loss is just an MSE. Full SD3-scale (<span class="math inline">\(\sim\)</span> B params, latent space at <span class="math inline">\(1024^2\)</span>) is not what we are doing — we are using the same recipe on 64×64 or 128×128 phase-field patches.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="consistency-models-one-step-inverse-sampling" class="slide level2">
+<h2>44. Consistency Models — One-Step Inverse Sampling</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="fragment">
+<p><strong>Motivation.</strong> 10-step Heun is fast, but <strong>not real-time</strong>. Operator-in-the-loop process tuning wants sub-100 ms feedback.</p>
+</div>
+<div class="fragment">
+<p><strong>Consistency models</strong> <span class="citation" data-cites="song_2023_consistency">(<a href="#/references" role="doc-biblioref" onclick="">Song et al. 2023</a>)</span> distil a flow-matching (or diffusion) <strong>teacher</strong> into a <strong>one-step student</strong> <span class="math inline">\(f_\phi(x_t, t)\)</span> that maps <em>any point on the trajectory back to the data endpoint</em> <span class="math inline">\(x_1\)</span>.</p>
+</div>
+<div class="fragment">
+<p>Consistency loss enforces</p>
+<p><span class="math display">\[f_\phi(x_t, t) \approx f_\phi(x_{t'}, t')\]</span></p>
+<p>for any two points on the same trajectory — so the student learns a trajectory-consistent shortcut to <span class="math inline">\(x_1\)</span>.</p>
+</div>
+<div class="fragment">
+<ul>
+<li>Trajectory regularises the loss — easier than training a one-step generator from scratch</li>
+<li>Quality vs NFE trade-off is explicit</li>
+</ul>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="fragment">
+<p><strong>Materials use case: real-time process-parameter recommendation.</strong></p>
+<p>Operator twists a knob (laser power, scan speed); the consistency model immediately returns the predicted microstructure / property — no 10-step rollout in the inner loop.</p>
+</div>
+<div class="fragment">
+<p><strong>Where it scales.</strong> Latent Consistency Models (LCM, Luo et al.&nbsp;2023) lift the consistency idea into a learned latent space — fewer pixels, same trajectory consistency, deployable on a workstation GPU.</p>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p><strong>Practical recipe.</strong> Train a flow-matching teacher first (slide 43). Distil into a consistency student. Ship the student to the lab — keep the teacher around for re-distillation when the data distribution drifts.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p>The consistency loss as written here is the self-consistency form — in practice you train against a target network (EMA copy of <span class="math inline">\(f_\phi\)</span>) along adjacent points on the trajectory, which is what makes the loss well-conditioned. NFE = number of function evaluations: a flow-matching model takes 10–50 NFE for good samples, a consistency model takes 1–4. Why this is more practical than directly training a one-step generator: a raw one-step generator (GAN-style) has no trajectory to regularise the optimisation — the consistency loss inherits the implicit regularisation of the diffusion / flow-matching trajectory, which is why it trains stably where naïve one-step distillation does not. Real-time caveat: even 1-step inference at 128×128 on a 1080Ti is <span class="math inline">\(\sim\)</span> 30 ms — fast enough for interactive sliders, not fast enough for closed-loop laser control at kHz.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
 <section id="designing-experiments-for-inversion" class="slide level2">
-<h2>43. Designing Experiments for Inversion</h2>
+<h2>45. Designing Experiments for Inversion</h2>
 <h3 id="not-all-data-is-equally-informative">Not All Data Is Equally Informative</h3>
 <div class="fragment">
 <p><strong>Optimal experimental design (OED)</strong> for inverse problems: choose measurements that <strong>maximally constrain</strong> the unknown parameters.</p>
@@ -1929,7 +2057,7 @@
 </div>
 </section>
 <section id="limitations-of-ml-based-inversion" class="slide level2">
-<h2>44. Limitations of ML-Based Inversion</h2>
+<h2>46. Limitations of ML-Based Inversion</h2>
 <h3 id="knowing-what-can-go-wrong">Knowing What Can Go Wrong</h3>
 <div class="fragment">
 <p><strong>Data limitations:</strong></p>
@@ -1960,7 +2088,7 @@
 </div>
 </section>
 <section id="unit-summary-key-takeaways" class="slide level2">
-<h2>45. Unit Summary &amp; Key Takeaways</h2>
+<h2>47. Unit Summary &amp; Key Takeaways</h2>
 <div class="fragment">
 <h3 id="the-inverse-problem-landscape">The Inverse Problem Landscape</h3>
 <table class="caption-top">
@@ -2002,6 +2130,11 @@
 <td style="text-align: left;">Governing equations</td>
 <td style="text-align: left;">Interpretable dynamics models</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;"><strong>Flow matching / consistency models</strong></td>
+<td style="text-align: left;">Property-conditioned samples</td>
+<td style="text-align: left;">Generative inverse design, real-time recommendation</td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -2013,11 +2146,12 @@
 <li><strong>Process maps</strong> translate inverse problem solutions into engineering decisions</li>
 <li><strong>PINNs</strong> unify forward and inverse problems in a single optimization framework</li>
 <li><strong>SINDy</strong> discovers interpretable equations from data — Occam’s Razor as mathematics</li>
+<li><strong>Flow matching</strong> + <strong>consistency models</strong> reframe inverse design as conditional sampling — a generative prior over admissible microstructures, distilled to one-step for real-time use <span class="citation" data-cites="lipman_2023_flow_matching song_2023_consistency">(<a href="#/references" role="doc-biblioref" onclick="">Lipman et al. 2023</a>; <a href="#/references" role="doc-biblioref" onclick="">Song et al. 2023</a>)</span></li>
 </ol>
 </div>
 </section>
 <section id="looking-ahead-unit-10" class="slide level2">
-<h2>46. Looking Ahead: Unit 10</h2>
+<h2>48. Looking Ahead: Unit 10</h2>
 <div class="fragment">
 <p><strong>Next unit: Uncertainty Quantification and Bayesian Methods</strong></p>
 </div>
@@ -2049,7 +2183,7 @@
 <!-- END prev-next -->
 </section>
 <section id="references" class="slide level2 smaller scrollable">
-<h2>47. References</h2>
+<h2>49. References</h2>
 <div class="fragment">
 <p><strong>Textbooks:</strong></p>
 <ul>
@@ -2077,6 +2211,9 @@
 
 
 <div id="refs" class="references csl-bib-body hanging-indent" role="list">
+<div id="ref-lipman_2023_flow_matching" class="csl-entry" role="listitem">
+Lipman, Yaron, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew Le. 2023. <span>“Flow Matching for Generative Modeling.”</span> <em>International Conference on Learning Representations (ICLR)</em>.
+</div>
 <div id="ref-mcclarren2021machine" class="csl-entry" role="listitem">
 McClarren, Ryan G. 2021. <em>Machine Learning for Engineers: Using Data to Solve Problems for Physical Systems</em>. Springer.
 </div>
@@ -2085,6 +2222,9 @@ McClarren, Ryan G. 2021. <em>Machine Learning for Engineers: Using Data to Solve
 </div>
 <div id="ref-sandfeld_materials_data_science" class="csl-entry" role="listitem">
 <span class="nocase">Sandfeld, Stefan et al.</span> 2024. <em>Materials Data Science</em>. Springer.
+</div>
+<div id="ref-song_2023_consistency" class="csl-entry" role="listitem">
+Song, Yang, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. 2023. <span>“Consistency Models.”</span> <em>International Conference on Machine Learning (ICML)</em>.
 </div>
 </div>
 </section></section>

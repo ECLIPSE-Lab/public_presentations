@@ -340,6 +340,47 @@
 <li><strong>Bayesian Sensor Fusion</strong>: Weighting each sensor by its precision.</li>
 <li>A unified material state vector <span class="math inline">\(z = f(\text{Image}, \text{Spectrum}, \text{EBSD})\)</span>.</li>
 </ul>
+</section>
+<section id="umap-for-streaming-anomaly-triage" class="slide level2">
+<h2>UMAP for Streaming Anomaly Triage</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<div class="fragment">
+<p><strong>The recipe.</strong></p>
+<ol type="1">
+<li>Embed each incoming SEM / micrograph frame with the lab’s CNN or DINOv2 feature extractor.</li>
+<li>Maintain a <strong>frozen reference UMAP</strong> <span class="citation" data-cites="mcinnes_2018_umap">(<a href="#/references-further-reading" role="doc-biblioref" onclick="">McInnes et al. 2018</a>)</span> of the <strong>nominal manifold</strong>, built once on a QC-verified set of frames.</li>
+<li>Project new frames into that fixed UMAP via <code>umap-learn</code>’s <code>.transform()</code> — no retraining at deploy time.</li>
+<li><strong>Alarm</strong> on frames whose 2-D coordinates land <span class="math inline">\(&gt; \tau\)</span> standard deviations from the nominal centroid, where <span class="math inline">\(\tau\)</span> is set by held-out nominal validation.</li>
+<li>Operator dashboards display the live UMAP with a coloured trail — the eye picks up drift before the threshold does.</li>
+</ol>
+</div>
+</div><div class="column" style="width:45%;">
+<div class="fragment">
+<p><strong>Why UMAP and not t-SNE.</strong></p>
+<ul>
+<li>UMAP <strong>preserves global structure</strong> — clusters of different defect types stay separable across runs.</li>
+<li>UMAP is parametric enough to support <code>.transform()</code> on new points; <strong>t-SNE cannot</strong> project an unseen frame into a fixed embedding.</li>
+<li>Runs in <strong>seconds on a 1080Ti</strong> for <span class="math inline">\(\sim 10^4\)</span> frames — cheap enough to recompute the reference monthly.</li>
+</ul>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Trade-off vs the §5-style raw AE-residual anomaly score.</strong> UMAP catches <em>novel-cluster</em> anomalies — a new defect morphology that lands far from any nominal cluster. The autoencoder-residual score catches <em>novel-pixel</em> anomalies — local pixel-level departures. Use both: they cover different failure modes. A frame that scores nominal on AE residual but lands in a sparse UMAP region is exactly the case where a new failure mode is emerging.</p>
+<p><strong>MFML reference.</strong> The UMAP algorithm — fuzzy simplicial sets, cross-entropy on the graph — is in MFML W9. We <strong>use</strong> the result here.</p>
+<p><strong>Anti-pattern.</strong> Training the UMAP on the live deployment stream. The whole point is to have a <em>fixed</em> nominal manifold to compare against; refitting on streaming data lets the embedding silently track the drift, defeating the alarm.</p>
+<p><strong>Implementation note.</strong> Cache the fitted <code>UMAP()</code> object as a pickle alongside the CNN / DINOv2 weights. Version-pin both. A “tool drift after chamber vent” investigation needs the exact UMAP and feature extractor that were live at the time.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
 </section></section>
 <section>
 <section id="case-study-industrial-glass-cooling" class="title-slide slide level1 center">
@@ -383,12 +424,62 @@
 <li><strong>Challenges</strong>: Software APIs, data standards, and trust.</li>
 </ul>
 </section>
+<section id="conformal-classification-emit-prediction-sets-not-single-labels" class="slide level2">
+<h2>Conformal Classification — Emit Prediction Sets, Not Single Labels</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<div class="fragment">
+<p><strong>The recipe (classification variant).</strong></p>
+<ul>
+<li>Train any classifier <span class="math inline">\(\hat f\)</span> that emits softmax probabilities.</li>
+<li>On a held-out <strong>calibration set</strong>, compute non-conformity scores</li>
+</ul>
+<p><span class="math display">\[s_i = 1 - \hat f_{y_i}(x_i)\]</span></p>
+<p>— one minus the predicted probability of the <em>true</em> class.</p>
+<ul>
+<li>Take <span class="math inline">\(\hat q = \text{Quantile}_{(1-\alpha)}(s)\)</span>.</li>
+<li>At test time, emit the <strong>prediction set</strong></li>
+</ul>
+<p><span class="math display">\[C(x) = \{\, y : 1 - \hat f_y(x) \le \hat q \,\}.\]</span></p>
+<ul>
+<li><strong>Guaranteed coverage</strong>: the true class lies in <span class="math inline">\(C(x)\)</span> on at least <span class="math inline">\(1 - \alpha\)</span> of test inputs <span class="citation" data-cites="angelopoulos_2023_conformal">(<a href="#/references-further-reading" role="doc-biblioref" onclick="">Angelopoulos and Bates 2023</a>)</span>.</li>
+</ul>
+</div>
+</div><div class="column" style="width:45%;">
+<div class="fragment">
+<p><strong>Why this matters for automated defect detection.</strong></p>
+<ul>
+<li>Instead of <code>class = scratch</code>, the system emits <code>class ∈ {scratch, stain} → send to operator</code>.</li>
+<li>The <strong>set size</strong> <em>is</em> a calibrated uncertainty signal — singleton sets mean the model is sure, multi-class sets mean it is not.</li>
+<li>Plays cleanly with the §3-style closed-loop triage: <strong>singleton set → automate</strong>, <strong>multi-class set → escalate</strong>.</li>
+</ul>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Connection to the U12 split-conformal slide.</strong> Unit 12 introduces split conformal for <em>regression</em> (intervals around a point estimate). This slide is the <em>classification</em> variant — same exchangeability argument, score is one-minus-softmax-of-the-true-class, output is a set instead of an interval.</p>
+<p><strong>Empty-set degenerate case.</strong> If <span class="math inline">\(1 - \hat f_y(x) &gt; \hat q\)</span> for <strong>every</strong> class, the prediction set is empty. Rare on calibrated models, but it happens — and it means the input is extreme OOD. Flag and route to human; do not auto-decide.</p>
+<p><strong>MFML reference.</strong> The exchangeability proof and the finite-sample coverage bound are in MFML W12.</p>
+<p><strong>Anti-pattern.</strong> Using prediction-set size as the <em>only</em> uncertainty signal. The marginal coverage guarantee is unconditional on the input — a model can satisfy <span class="math inline">\(\geq 1 - \alpha\)</span> on average while being wildly miscalibrated on individual subgroups (a particular defect class, a particular operator). Always pair with a per-class reliability diagram on a held-out lab-realistic set.</p>
+<p><strong>Practical width.</strong> On a typical 4-class SEM defect classifier with <span class="math inline">\(\alpha = 0.1\)</span> and a calibration set of <span class="math inline">\(\sim 500\)</span> frames, ~70% of test frames get singleton prediction sets (auto), ~25% get 2-class sets (operator-review), ~5% get 3+ class sets (definitely operator). Tune <span class="math inline">\(\alpha\)</span> to the cost ratio: cheaper operator time → lower <span class="math inline">\(\alpha\)</span>, larger sets, more automation safety.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
 <section id="recap-unit-11" class="slide level2">
 <h2>Recap: Unit 11</h2>
 <ul>
 <li>RL is the engine of automation.</li>
 <li><strong>Policy Gradients</strong> bridge control and deep learning.</li>
 <li><strong>Reward design</strong> is the most critical human task.</li>
+<li><strong>UMAP</strong> on a frozen nominal manifold gives streaming anomaly triage; <strong>conformal prediction sets</strong> turn classifiers into calibrated automate/escalate decisions.</li>
 <li>Next: Handling the “unknown” (Uncertainty and Gaussian Processes).</li>
 </ul>
 <!-- BEGIN prev-next -->
@@ -396,7 +487,7 @@
 <section id="continue" class="slide level2">
 <h2>Continue</h2>
 <ul>
-<li>← Previous: <a href="../unit10_characterization_signals/10_characterization_signals.html">Unit 10 — ML for characterization signals</a></li>
+<li>← Previous: <a href="../unit10_transformers_for_materials/transformers_for_materials.html">Unit 10b — Transformers for materials (ViT, Flash Attention, Mamba)</a></li>
 <li>→ Next: <a href="../unit12_uncertainty_gp/12_uncertainty_gp.html">Unit 12 — Uncertainty-aware regression &amp; Gaussian Processes</a></li>
 <li><a href="../../index.html">All courses</a></li>
 </ul>
@@ -408,9 +499,16 @@
 <li><strong>McClarren (2021)</strong>: Ch. 9 (Reinforcement Learning)</li>
 <li><strong>Murphy (2012)</strong>: Ch. 11 (Data Fusion)</li>
 <li><strong>Neuer (2024)</strong>: Ch. 7.3 (Automation &amp; Causality)</li>
+<li><strong>McInnes, Healy &amp; Melville (2018)</strong> — UMAP for streaming anomaly triage <span class="citation" data-cites="mcinnes_2018_umap">(<a href="#/references-further-reading" role="doc-biblioref" onclick="">McInnes et al. 2018</a>)</span>.</li>
+<li><strong>Angelopoulos &amp; Bates (2023)</strong> — conformal prediction sets for automated defect classification <span class="citation" data-cites="angelopoulos_2023_conformal">(<a href="#/references-further-reading" role="doc-biblioref" onclick="">Angelopoulos and Bates 2023</a>)</span>.</li>
 </ul>
-<div id="refs" role="list">
-
+<div id="refs" class="references csl-bib-body hanging-indent" role="list">
+<div id="ref-angelopoulos_2023_conformal" class="csl-entry" role="listitem">
+Angelopoulos, Anastasios N., and Stephen Bates. 2023. <span>“A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification.”</span> <em>Foundations and Trends in Machine Learning</em> 16 (4): 494–591. <a href="https://doi.org/10.1561/2200000101">https://doi.org/10.1561/2200000101</a>.
+</div>
+<div id="ref-mcinnes_2018_umap" class="csl-entry" role="listitem">
+McInnes, Leland, John Healy, and James Melville. 2018. <span>“UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction.”</span> <em>arXiv Preprint arXiv:1802.03426</em>.
+</div>
 </div>
 </section>
 <section id="example-notebook" class="slide level2">
