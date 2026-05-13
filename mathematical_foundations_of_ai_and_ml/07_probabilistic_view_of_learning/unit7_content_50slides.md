@@ -1,4 +1,4 @@
-# MFML Unit 8 — 50-Slide Content Pack (English)
+# MFML Unit 7 — 50-Slide Content Pack (English)
 
 ## Unit theme
 **The probabilistic view of learning: uncertainty, likelihood, and Bayesian inference**
@@ -13,11 +13,11 @@
 ## Slide-by-slide content (target: 50)
 
 ### Block A — Motivation and uncertainty taxonomy (Slides 1-10)
-1. **Title + Unit 8 positioning**
+1. **Title + Unit 7 positioning**
    - From optimization (Units 5-6) and generalization (Unit 7) to probabilistic foundations.
 2. **Recap: what risk minimization assumes**
    - Unit 1: minimize expected loss. But expected over what? Over a probability distribution of data.
-3. **Learning outcomes for Unit 8**
+3. **Learning outcomes for Unit 7**
    - Aleatory vs epistemic uncertainty, Gaussian distribution, MLE, Bayesian inference, engineering applications.
 4. **Why probability is the language of learning**
    - Data is inherently noisy. Models are uncertain. Probability quantifies both rigorously.
@@ -149,7 +149,7 @@
 - **Lecture**: uncertainty taxonomy, Gaussian properties, MLE derivation, Bayesian framework, MAP-regularization connection, engineering examples.
 - **Exercise**: noise injection and Nyquist demo, MLE implementation, MLE-MSE equivalence proof, Bayesian update computation, calibration plots.
 
-## Reading assignment after Unit 8
+## Reading assignment after Unit 7
 - Neuer Ch. 2.2–2.3
 - Murphy Ch. 2 (probability review)
 - Bishop Ch. 2.1–2.3 (skim)

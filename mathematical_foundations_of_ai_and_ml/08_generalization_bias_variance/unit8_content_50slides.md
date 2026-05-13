@@ -1,4 +1,4 @@
-# MFML Unit 7 — 50-Slide Content Pack (English)
+# MFML Unit 8 — 50-Slide Content Pack (English)
 
 ## Unit theme
 **Generalization, Bias-Variance, and Regularization**
@@ -15,8 +15,8 @@
 
 ### Block A — Motivation and generalization (Slides 1-10)
 1. **Title + unit positioning**
-   - Unit 7 in the MFML arc: from fitting to generalization.
-2. **Learning outcomes for Unit 7**
+   - Unit 8 in the MFML arc: from fitting to generalization.
+2. **Learning outcomes for Unit 8**
    - Bias-variance decomposition, regularization, cross-validation, model selection.
 3. **Recall: ERM from Unit 1**
    - We minimize empirical risk, but care about population risk.
@@ -157,7 +157,7 @@
 - **Lecture**: bias-variance derivation, regularization formulation, geometric interpretation, CV design, model selection principles.
 - **Exercise**: polynomial overfitting demo, lambda sweeps, Ridge vs Lasso comparison, CV implementation, materials feature selection.
 
-## Reading assignment after Unit 7
+## Reading assignment after Unit 8
 - Neuer Ch. 4.5.9
 - McClarren Ch. 2.4
 - Murphy Ch. 6.4.4 + 6.5.3 (skim)

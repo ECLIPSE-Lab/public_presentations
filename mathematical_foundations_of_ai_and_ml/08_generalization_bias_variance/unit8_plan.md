@@ -1,4 +1,4 @@
-# Unit 7 Plan — Mathematical Foundations of AI & ML
+# Unit 8 Plan — Mathematical Foundations of AI & ML
 
 ## Audience + constraints
 - BSc AI-Material Technology, 5th semester
@@ -7,7 +7,7 @@
 - Lecture: 90 minutes + 90-minute exercise
 - Language: English (German translation later)
 
-## Learning objectives (Unit 7)
+## Learning objectives (Unit 8)
 By the end of the unit, students can:
 1. Derive and interpret the bias-variance decomposition of expected prediction error.
 2. Diagnose overfitting vs underfitting from training/validation loss curves.

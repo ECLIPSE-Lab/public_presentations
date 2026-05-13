@@ -1,13 +1,13 @@
-# Unit 8 Plan — Mathematical Foundations of AI & ML
+# Unit 7 Plan — Mathematical Foundations of AI & ML
 
 ## Audience + constraints
 - BSc AI-Material Technology, 5th semester
-- Prior knowledge: 2 semesters math, 1 physics, some chemistry; Units 1-7 of MFML completed
+- Prior knowledge: 2 semesters math, 1 physics, some chemistry; Units 1-6 of MFML completed
 - Assumed: probability basics from high school, calculus (integration, differentiation), linear algebra (SVD, eigenvalues), basic Python/NumPy
 - Lecture: 90 minutes + 90-minute exercise
 - Language: English (German translation later)
 
-## Learning objectives (Unit 8)
+## Learning objectives (Unit 7)
 By the end of the unit, students can:
 1. Classify sources of uncertainty as aleatory or epistemic and explain why this distinction matters for model design and data collection strategy.
 2. Write the Gaussian distribution in 1D and multivariate form, interpret its moments, and explain why it is the maximum-entropy distribution for given mean and variance.
