@@ -1,0 +1,1574 @@
+---
+title: 'Materials Genomics<br>Unit 13: Uncertainty-Aware Discovery and Gaussian Processes'
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
+execute:
+  eval: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: © Philipp Pelz - Materials Genomics
+---
+# §0 · Frame {.section}
+
+## 01. Today's Question
+
+::: {.columns}
+::: {.column width="50%"}
+**What do you actually do with a materials database?**
+
+- 150,000 entries in Materials Project. Roughly 1M in OQMD. Several million in AFLOW.
+- You cannot synthesise them all. You cannot even *read* them all.
+- You have a budget. You need a *decision rule* — which candidate next?
+:::
+::: {.column width="50%" .fragment}
+**Today's answer in one line.**
+
+- Treat materials discovery as a **sequential decision under uncertainty**.
+- Use a **probabilistic surrogate** (Gaussian Process) plus an **acquisition function** to pick the next candidate.
+- Anchor everything in a concrete target: **energy-above-hull**.
+:::
+:::
+
+::: {.notes}
+**Open with a number, not a definition.** Materials Project alone has ~150k entries. If a synthesis takes a week and a PhD lasts four years, the student can run ~200 syntheses before submitting. That is a 750-fold compression problem. Today is about *how* to do that compression.
+
+**Stake the lecture.** Seven sections, one through-line: the discovery loop. Database → surrogate → acquisition → synthesis → measurement → refit. Today's job is to fill in the surrogate and the acquisition steps. Database front-end is the first ~10 slides; surrogate is GP land; acquisition is BO land.
+
+**Pre-empt the obvious objection.** "Why not just train a big regressor on all of Materials Project and predict the best candidate?" Answer: because the regressor's best candidate is wrong, and you have no way of knowing it is wrong without uncertainty. Today's argument is that point predictions are insufficient *for screening*, even when they are perfectly good *for regression*.
+
+**Triad reminder.** MFML W12 already taught you the GP machinery; ML-PC W8 already taught you calibration. Today is the *materials* deployment. We will not re-derive the kernel-conditioning identity. We *will* spend serious time on what those tools mean inside the discovery loop.
+
+**Pacing for 90 minutes.** 18 min on §A (database front-end, formation energy, hull); 10 min on §B (why point predictions break); 18 min on §C (GP recap and intuition); 18 min on §D (acquisition and BO); 10 min on §E (alternatives, ensembles, conformal); 10 min on §F (case studies); 6 min on §G (wrap and bridge to U14).
+:::
+
+## 02. Where We Are
+
+::: {.columns}
+::: {.column width="50%"}
+**Recap — what you already have**
+
+- **MG U7:** local atomic environments and structure descriptors.
+- **MG U10:** learned representations and graph neural networks.
+- **MFML W12:** GP theory, uncertainty decomposition, marginal likelihood — full derivations.
+- **ML-PC W7/W8:** calibration, reliability diagrams, probabilistic forecasting.
+:::
+::: {.column width="50%"}
+**Today — Unit 13 in one line**
+
+- *Reuse* MFML W12 GP theory; *reuse* ML-PC W8 calibration; deploy both inside a materials-discovery loop with public databases as candidate sources.
+- New today: **convex hull**, **E-hull as objective**, **acquisition over composition**, **closed-loop case studies**.
+:::
+:::
+
+::: {.notes}
+**Position the unit relative to the triad.** MG U13 is a *deployment* unit, not a *theory* unit. The probability theory was MFML's job in W12; the calibration diagnostics were ML-PC's job in W8. What is genuinely new today is the *materials* layer — the database front end, the convex hull, the discovery loop — and the *operational* layer — what an acquisition function actually does on a real candidate set.
+
+**Anchor to MFML W12, said aloud.** "If GP marginal likelihood is fuzzy, revisit MFML W12 Slides 14–22 tonight. Today we use the formulas as black boxes — `gp.fit(X, y); gp.predict(X_test, return_std=True)` — and reason about *what* the posterior variance tells us, not *how* it is computed."
+
+**Anchor to ML-PC W8, said aloud.** "Same for calibration. We will draw a reliability diagram once today (slide 41) and trust ML-PC W8 for the underlying theory."
+
+**Forward link.** "Unit 14 takes today's calibrated surrogate and asks how to *constrain* and *trust* it. So today is the second-to-last unit; everything we build today gets handed straight to U14 next week."
+:::
+
+## 03. Learning Outcomes
+
+By the end of 90 minutes, you can:
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+1. **Use** Materials Project / OQMD / AFLOW / NOMAD as candidate sources and explain when each is appropriate.
+2. **Construct** a convex hull from formation energies and read $E_{\text{hull}}$ as a discoverability signal.
+3. **Distinguish** aleatoric from epistemic uncertainty in a screening setting and explain why point predictions are insufficient.
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+4. **Read** a GP posterior (mean, variance) and choose a kernel for a materials descriptor.
+5. **Apply** EI, UCB, and Thompson sampling, including a *hull-aware* variant, on a candidate set.
+6. **Evaluate** alternatives (deep ensembles, MC-dropout, conformal) and pick the right tool for the data regime.
+:::
+:::
+:::
+
+::: {.notes}
+**Frame the exam contract.** Outcomes 1, 2, 3, 5 are exam-weight (definitions, concepts, when-to-use). Outcomes 4 and 6 are exercise-weight (you implement them, you justify your choices in the report).
+
+**Five "must-know" statements that come up in the exam.**
+
+1. Energy-above-hull is the discoverability signal; raw formation energy is not — it can be very negative for elements, which are useless for discovery.
+2. A point predictor is insufficient for ranking under finite budget; an acquisition function needs $\sigma$ as well as $\mu$.
+3. A GP gives epistemic uncertainty for free via posterior variance; aleatoric noise is encoded separately in the likelihood.
+4. EI is the default acquisition; UCB is more aggressive on exploration; Thompson sampling is the easiest way to batch.
+5. Calibration on held-out data is non-negotiable; GPs are well-calibrated in-distribution and miscalibrated under shift.
+
+**Tell them where outcome 6 lives.** Outcome 6 is a "when *not* to use a GP" outcome. The pedagogical anti-hype frame: GPs are not magic; they are a small-data tool with $O(n^3)$ scaling. We will name three regimes where they are the wrong tool.
+:::
+
+# §A · Materials Databases and Discovery Targets {.section}
+
+## 04. The Four Databases You Will Touch
+
+::: {.columns}
+::: {.column width="50%"}
+**Materials Project (MP)** [@jain2013materialsproject]
+
+- ~150k DFT-computed inorganic crystals (PBE / PBE+U).
+- Properties: $E_f$, $E_{\text{hull}}$, band gap, elastic moduli, magnetic moment.
+- API: `mp-api`, `pymatgen`. *De-facto* starting point.
+
+**OQMD** [@saal2013materials]
+
+- ~1M entries; Northwestern.
+- Heavier on intermetallics and prototype enumeration.
+- Useful as a cross-check against MP.
+:::
+::: {.column width="50%"}
+**AFLOW** [@curtarolo2012aflow]
+
+- ~3.5M entries; Duke.
+- Strong on prototype enumeration and high-throughput hulls.
+- Good for systematic alloy-composition sweeps.
+
+**NOMAD** [@draxl2018nomad]
+
+- EU archive; aggregates raw DFT from many groups, many codes (VASP, QE, FHI-aims).
+- Heterogeneous — strong long-tail source, requires more provenance care.
+:::
+:::
+
+::: {.fragment}
+> **Pedagogical message:** *no single database is canonical*. They disagree because they use different functionals, different convergence criteria, different relaxation protocols. **Cross-database disagreement is itself useful information.**
+:::
+
+::: {.notes}
+**War story.** A second-year PhD student in our group needed to identify candidate Li-conducting oxides. They started in MP, found 40 candidates with $E_{\text{hull}} < 25$ meV/atom, and proceeded to synthesis. Three months in, an OQMD comparison revealed that 12 of those 40 candidates were marked *unstable* in OQMD because OQMD had a different competing phase in its dataset that MP did not. Two of the 12 had already been synthesised and characterised — and behaved as predicted by OQMD, not MP. Lesson: cross-check across databases *before* synthesis, not after.
+
+**Why so many databases.** Different groups, different funding, different histories. MP is Berkeley + LBNL; OQMD is Northwestern; AFLOW is Duke; NOMAD is EU. They settled on different functionals, different conventions, and to some degree compete for users.
+
+**API one-liner to mention.** `from mp_api.client import MPRester; MPRester(api_key).materials.summary.search(chemsys="Li-Co-O")` — that one call returns the entire Li-Co-O subset with $E_f$ and $E_{\text{hull}}$ ready to go. The exercise this afternoon starts there.
+
+**What we explicitly do not teach.** CIF and POSCAR file syntax. The relevant abstraction today is "structure entry with energy and metadata"; the file format is a `pymatgen` one-liner away (`Structure.from_file(...)`). If the exam asks about file syntax, that is an MG-old-U3 exam question and we are no longer teaching it.
+
+**Forward-link slide 13.** The discovery-loop diagram on slide 13 will use these four databases as the *candidate-pool source*; everything else hangs off them.
+:::
+
+## 05. What Is Stored (and What Is Not)
+
+::: {.columns}
+::: {.column width="50%"}
+**What every entry carries**
+
+- Structure: lattice vectors, species, fractional sites.
+- Total energy and formation energy.
+- Energy-above-hull at the entry's composition.
+- Often: band gap, magnetic moment, elastic moduli.
+- Always: computational provenance (functional, k-points, cutoffs).
+:::
+::: {.column width="50%"}
+**What is *not* there**
+
+- Synthesis route or precursor list.
+- Phase-diagram temperature dependence (entries are 0 K).
+- Defect chemistry beyond a few common point defects.
+- Kinetics, transport, catalytic activity.
+- Anything measured in a lab.
+:::
+:::
+
+::: {.fragment}
+> **First reflex on every "predicted-stable" claim:** *predicted stable at 0 K, in vacuum, in an idealised periodic crystal, with one functional.*
+:::
+
+::: {.notes}
+**The 0 K assumption is everywhere.** A new student will see "Materials Project says this is stable" and synthesise it. The MP entry is a 0 K DFT prediction. Real lab synthesis is at 1500 K, with entropic effects, kinetic trapping, atmosphere, and oxygen chemical potential. The mapping from "MP-stable" to "synthesisable" is loose — the famous rule of thumb is that $E_{\text{hull}} \lesssim 25\text{–}50$ meV/atom is roughly synthesisable; harder thresholds disagree across material classes.
+
+**Why the missing pieces matter for screening.** If your target is synthesis-success rate, MP cannot give you the labels — they don't exist. You need an experimental-database overlay (or your own past synthesis logs) to learn synthesisability. We touch this in U14 next week.
+
+**Functional drift as a recurring theme.** PBE underestimates band gaps by ~30%. PBE+U with the wrong $U$ shifts magnetic-oxide energetics. SCAN and r²SCAN improve some classes, ruin others. Modern MP is mostly PBE / PBE+U with selected SCAN entries; if you mix functionals in a screening run, you have a comparison-of-apples-and-oranges problem.
+
+**Anti-pattern.** Concatenating MP entries with OQMD entries with AFLOW entries into one training set without re-anchoring to a common reference state. The formation-energy zero is *not* the same across the three; you will inject 10–50 meV/atom of structured noise. Either pick one database, or re-anchor before training.
+:::
+
+## 06. Formation Energy — Definition
+
+::: {.columns}
+::: {.column width="50%"}
+**Definition**
+
+$$E_f(C) = E(C) - \sum_i n_i \, \mu_i^{\text{ref}}$$
+
+- $E(C)$: total DFT energy of compound $C$.
+- $n_i$: stoichiometric coefficient of element $i$ in $C$.
+- $\mu_i^{\text{ref}}$: chemical potential of element $i$ in its reference state (lowest-energy elemental phase).
+:::
+::: {.column width="50%"}
+**Reads as**
+
+- Energy *released* by forming $C$ from its elements.
+- Negative $E_f$: thermodynamically favoured against decomposition into elements.
+- *Not yet* sufficient to declare stability — need the convex hull.
+:::
+:::
+
+::: {.fragment}
+> **Reference-state choice is not innocent.** Allotropes (C, P, S) and magnetic ground states (Mn, Fe) shift $E_f$ by tens of meV/atom across databases.
+:::
+
+::: {.notes}
+**Sign convention, said once and never forgotten.** *Negative* formation energy = stable against the elements; *positive* = unstable. Some papers (and a few legacy databases) flip the sign. Read the convention before plotting anything.
+
+**Reference state in detail.** For oxygen, MP uses a fitted-correction reference because DFT systematically over-binds O₂. For sulphur, the reference is α-S₈, not the standard textbook reference. For magnetic elements (Fe, Co, Ni), the ferromagnetic ground state is used — which is itself functional-dependent. These choices are documented; cross-database disagreement on $E_f$ for an oxide is often traceable to oxygen-correction differences.
+
+**The naive failure mode.** A student computes a candidate's DFT energy in their own VASP setup and compares it directly to an MP $E_f$. The MP $E_f$ uses MP's references; the student's DFT energy used some random pseudopotential. The "comparison" is meaningless. Either re-do the entire chemical system in your own setup, or use MP's API to get every reference and recompute consistently.
+
+**Forward link to slide 7.** Once we have $E_f$ for every phase in a chemical system, we plot the *lower convex hull* of those formation energies in composition space — that is what slide 7 builds.
+:::
+
+## 07. The Convex Hull
+
+::: {.columns}
+::: {.column width="50%"}
+**Construction**
+
+- Plot $E_f$ for every known phase in a chemical system vs composition.
+- The **lower convex hull** is the geometric envelope.
+- Phases *on* the hull: thermodynamically stable.
+- Phases *above* the hull: decompose into a linear combination of hull phases.
+:::
+::: {.column width="50%"}
+**In Li–Co–O (ternary)**
+
+- Hull is a triangulated 2D surface in formation-energy space over the (Li, Co, O) simplex.
+- Vertices: elements (Li, Co, O₂).
+- Stable phases (Li₂O, CoO, Co₃O₄, LiCoO₂, …): on the surface.
+- Metastable / unstable phases: above.
+:::
+:::
+
+::: {.fragment}
+> **The convex-hull construction is composition-space generalisation of *"is this lower than the line connecting its neighbours?"*** In $n$-component systems, the hull is an $(n-1)$-dimensional polytope. The geometric core is unchanged.
+:::
+
+::: {.notes}
+**Whiteboard sketch.** Draw a binary system: Li–O on the x-axis (mole fraction Li from 0 to 1), $E_f$ on the y-axis. Plot Li₂O at x=2/3, $E_f \approx -2.0$ eV/atom. Plot Li₂O₂ at x=1/2, $E_f \approx -1.7$ eV/atom. Plot LiO₂ at x=1/3, $E_f \approx -1.0$ eV/atom. The convex hull connects (Li, $E_f=0$), (Li₂O, $E_f=-2.0$), (O₂, $E_f=0$). Li₂O₂ and LiO₂ sit *above* the hull — they decompose into Li₂O and O₂ at 0 K.
+
+**The "decompose into a linear combination" intuition.** A phase $C$ at composition $x$ above the hull has, by construction, two (or more) hull phases $A$, $B$ at compositions $x_A < x < x_B$ such that $C \to \alpha A + (1-\alpha) B$ is *exothermic*. The energy released is exactly $E_{\text{hull}}(C)$.
+
+**Subtlety: open vs closed systems.** The convex hull above is in *closed-system* composition space — the chemical potential of every element is fixed by the elemental reference. In *open* systems (e.g. fixed oxygen chemical potential, controlled atmosphere), the relevant construction is a Pourbaix-style or grand-potential hull. We mention this; we do not derive it.
+
+**Common student question.** "What if a phase is stable at finite T but not at 0 K?" Yes — the hull as drawn is at 0 K. Vibrational entropy, configurational entropy, and electronic entropy can all flip stability at high temperature. The 25–50 meV/atom soft threshold on $E_{\text{hull}}$ is partly an empirical accommodation for these effects.
+:::
+
+## 08. Energy-Above-Hull as a Discoverability Signal
+
+::: {.columns}
+::: {.column width="50%"}
+**Definition**
+
+$$E_{\text{hull}}(C) = E_f(C) - E_{\text{hull-line}}(x)$$
+
+- Vertical distance from candidate $C$ to the hull at its composition $x$.
+- $E_{\text{hull}} = 0$: on the hull, stable.
+- $E_{\text{hull}} > 0$: above the hull, metastable or unstable.
+- Always $\geq 0$ by construction.
+:::
+::: {.column width="50%"}
+**The 25–50 meV/atom rule of thumb**
+
+- $E_{\text{hull}} < 25$ meV/atom: routinely synthesisable.
+- 25–50: often kinetically accessible, polymorph-dependent.
+- 50–100: sometimes synthesisable under metastable routes.
+- $> 100$: rarely synthesisable.
+- *Soft* ranking signal, **not** a hard yes/no filter.
+:::
+:::
+
+::: {.fragment}
+> **Why it is not zero.** Kinetic stabilisation, finite-temperature entropy, and DFT error all contribute. A 25 meV/atom phase at 0 K may be the global free-energy minimum at 1500 K.
+:::
+
+::: {.notes}
+**$E_{\text{hull}}$ is the most important quantity in §A.** Most discovery campaigns optimise *against* low $E_{\text{hull}}$ (find stable candidates) or *toward* low $E_{\text{hull}}$ *plus* a functional target (find stable AND high-band-gap, AND high-bulk-modulus, AND ...). The acquisition functions in §D will literally take $E_{\text{hull}}$ as their objective.
+
+**Anti-pattern, called out aloud.** Using formation energy directly as the BO objective. Why it fails: elements have $E_f = 0$ by definition, so naive BO will propose pure-element "candidates" with very low $E_f$ (oh wait — no, $E_f = 0$ is not negative; let me restate). The actual failure: BO over $E_f$ rewards energetically-deep wells, which are typically known stable compounds; you re-discover what's already in the database. BO over $E_{\text{hull}}$ rewards lowering the hull at *unexplored* compositions, which is the actual discovery objective. We come back to this on slide 32.
+
+**The 25 meV/atom number, in context.** $kT$ at room temperature is ~25 meV. At 1500 K (typical synthesis), $kT \approx 130$ meV. So a 25 meV/atom barrier is "thermal" at room temperature, "trivial" at synthesis temperature. This is why the rule-of-thumb is what it is.
+
+**Database disagreement on $E_{\text{hull}}$.** If MP says $E_{\text{hull}} = 30$ meV/atom and OQMD says 80, the cause is almost always (i) different competing phases in the convex-hull construction, or (ii) different functional. *Always* check the competing phases before trusting $E_{\text{hull}}$.
+:::
+
+## 09. Data Quality and Provenance
+
+::: {.columns}
+::: {.column width="50%"}
+**Three failure modes**
+
+- **Functional drift.** PBE underestimates band gaps; PBE+U mis-shifts magnetic oxides; SCAN improves some classes, ruins others.
+- **Relaxation status.** Some entries are fully relaxed; some are static single-points. 10 meV-scale noise.
+- **Duplication.** Multiple polymorphs of the same composition, sometimes with convergence-failure copies. **De-duplicate before training.**
+:::
+::: {.column width="50%"}
+**Standard hygiene checklist**
+
+- Filter by `nelements`, `nsites`, `nelements_max`.
+- Filter by `e_above_hull < threshold` for stable subset.
+- Filter by `is_stable` for hull entries only.
+- Inspect distinct prototypes per composition before training.
+- Document the database snapshot date — entries change over time.
+:::
+:::
+
+::: {.notes}
+**Functional drift, in detail.** Materials Project today is a hybrid: most entries are PBE / PBE+U, but a growing number are SCAN or r²SCAN. The MP API exposes the functional in the `run_type` field. *Filter on this before training a regressor*, otherwise you are mixing two different reference scales.
+
+**Relaxation status — common bug.** Some MP entries are tagged "static" (single-point energy at a fixed structure). These are typically auxiliary calculations and have ~10 meV/atom higher energies than the relaxed counterpart. Mixing them into training data injects structured noise that the model learns as a feature. Filter on `is_relaxed` or use the `task_type` field.
+
+**Duplication — concrete example.** A query for Li₂O can return 3–4 entries: the conventional anti-fluorite ground state, a higher-energy hypothetical polymorph, and one or two failed-convergence siblings. The Materials Project does merge most duplicates, but the merge is imperfect for less-studied chemistries. A naive training set with all 4 entries gives the model 4 different $E_f$ values for "Li₂O" — confusion guaranteed.
+
+**Snapshot date matters.** Materials Project re-runs major recalculations roughly every 12–18 months. Entries can change. A paper from 2019 quoting MP $E_{\text{hull}}$ values will not exactly match today's. Always document the snapshot date *and* the API version. This is a reproducibility hygiene point that will recur in U14.
+:::
+
+## 10. The Discovery Loop
+
+::: {.columns}
+::: {.column width="55%"}
+**The loop the rest of the unit serves**
+
+```
+┌─ database ─→ predict ─→ screen ─→ synthesise ─→ measure ─┐
+│                                                          │
+└────────────────────── refine ◄────────────────────────────┘
+```
+
+- **Database** (§A): defines candidate pool and target ($E_{\text{hull}}$).
+- **Predict** (§C): probabilistic surrogate.
+- **Screen** (§D): acquisition function.
+- **Synthesise / measure** (§F): the lab.
+- **Refine**: re-fit surrogate; re-rank; iterate.
+:::
+::: {.column width="45%" .fragment}
+**Why the loop motivates uncertainty**
+
+- The loop is *sequential*: each iteration's data informs the next.
+- The budget is *finite*: ~10–100 syntheses per campaign.
+- The right next candidate depends on what's *already known* AND what's *unknown*.
+- That is exactly what a posterior over predictions captures.
+:::
+:::
+
+::: {.notes}
+**This slide is the unit's spine.** Everything before it (§A) feeds the database node. Everything after it (§C–§F) implements the predict / screen / refine arrows. Print this diagram on every student's exercise sheet.
+
+**Sequential decision under uncertainty — the formal frame.** This is exactly the setup of Bayesian optimisation, multi-armed bandits, and active learning. Students who have seen reinforcement learning will recognise the structure; those who haven't can think of it as *adaptive grid search* where the grid is informed by uncertainty.
+
+**The "refine" arrow is what makes the budget efficient.** A non-adaptive screening (top-k by predicted mean, synthesise all, done) would give you a one-shot ranking. The adaptive version — where each measurement updates the surrogate before picking the next — is provably more sample-efficient under reasonable assumptions. We will see regret curves on slide 47 that demonstrate this.
+
+**Forward link.** "From slide 14 onward we are inside the loop. Section §C is *predict*; §D is *screen*; §F shows the full loop in action."
+:::
+
+## 11. Closing §A: What We Have, What's Next
+
+::: {.columns}
+::: {.column width="50%"}
+**What §A gave us**
+
+- Four databases as candidate sources.
+- Formation energy and convex hull as the thermodynamic frame.
+- Energy-above-hull as the discoverability signal.
+- The discovery loop as the unit's organising frame.
+:::
+::: {.column width="50%"}
+**What §B asks**
+
+- Inside the loop, why is a *point predictor* not enough?
+- What does "uncertainty" buy us in screening?
+- What is the right kind of uncertainty to optimise?
+:::
+:::
+
+::: {.notes}
+**Recap aloud, 60 seconds.** "We just built the candidate pool, the target, and the loop. The candidates come from MP / OQMD / AFLOW / NOMAD. The target is low $E_{\text{hull}}$. The loop is sequential and budget-bound. Now we ask: what does the *predict* step look like?"
+
+**Pacing check.** If you are at 18 minutes elapsed, you are on schedule. If you are at 25, you spent too long on the convex hull — collapse slide 7's whiteboard sketch in future runs.
+
+**Forward setup.** Section §B is short — six slides — and tightly focused on motivating uncertainty. The students who already grok aleatoric vs epistemic from MFML W12 will find it review; the students who don't will find it a useful re-anchoring before §C.
+:::
+
+# §B · Why Point Predictions Are Insufficient {.section}
+
+## 12. Two Candidates, Same Mean, Different $\sigma$
+
+::: {.columns}
+::: {.column width="50%"}
+**Two candidates from the surrogate**
+
+- Candidate A: predicted $E_{\text{hull}} = 40 \pm 5$ meV/atom.
+- Candidate B: predicted $E_{\text{hull}} = 40 \pm 80$ meV/atom.
+
+Same mean. *Not* the same candidate.
+:::
+::: {.column width="50%"}
+**Read the difference**
+
+- A is a confident "mediocre but well-known" prediction. Limited upside, limited downside.
+- B is a *guess*. Could be a hit ($E_{\text{hull}} = 0$), could be a fiasco ($E_{\text{hull}} = 200$).
+- Which to synthesise depends on your *budget* and your *risk appetite*.
+:::
+:::
+
+::: {.fragment}
+> **A point predictor returns only the mean.** The information that decides the prioritisation is thrown away.
+:::
+
+::: {.notes}
+**Concrete numbers help.** Use the 40 ± 5 vs 40 ± 80 contrast on the whiteboard. Ask the room: "Which would you synthesise if you have one shot? Which if you have ten shots?" The answer flips: with one shot, you take the safe bet (A) — variance is risk. With ten shots, you take the risky bet (B) at least once — variance is information.
+
+**This is the entire argument for §B.** The next four slides ground that intuition in formal language: ranking under uncertainty, screening economics, aleatoric vs epistemic. But the 40 ± 5 vs 40 ± 80 example is the one-sentence summary.
+
+**Forward link to acquisition functions.** EI, UCB, and Thompson sampling all encode different answers to the question "given $\mu$ and $\sigma$, which is better?" That is §D's full content. Today's slide just shows that the *question is well-posed*.
+:::
+
+## 13. Ranking Under Uncertainty
+
+::: {.columns}
+::: {.column width="50%"}
+**The wrong objective**
+
+$$\text{minimise} \quad \mathbb{E}[(\hat{y} - y)^2]$$
+
+- A regression score, averaged over all candidates.
+- Optimises the *mean* prediction quality.
+- Says nothing about *which candidates* to synthesise.
+:::
+::: {.column width="50%"}
+**The right objective**
+
+$$\text{maximise} \quad \mathbb{E}\bigl[\text{payoff}(\text{top-}k)\bigr]$$
+
+- Expected payoff of the $k$ candidates selected for synthesis.
+- Depends on the *joint* distribution $(\mu_i, \sigma_i)$.
+- Reduces to a regression score *only* if all $\sigma_i$ are equal.
+:::
+:::
+
+::: {.notes}
+**Practical consequence.** A model with slightly worse mean accuracy but well-calibrated uncertainty can outperform a more accurate but overconfident model in a discovery setting. This is non-obvious to students who come from a "minimise validation MAE" mindset.
+
+**This is also why classical ML metrics underestimate the value of GPs.** A random forest or gradient-boosted tree may have lower validation MAE than a GP on the same dataset; in a discovery loop, the GP often wins because its uncertainty is honest.
+
+**War story.** A 2021 paper compared a CGCNN (high accuracy, no uncertainty) vs a GP with composition kernel (lower accuracy, calibrated uncertainty) on a battery-cathode discovery task with 50-acquisition budget. The GP found the optimum in ~25 acquisitions; the CGCNN-with-naive-top-k did not find it in 50. The CGCNN was *better at regression* and *worse at discovery*. The lesson is the lesson of this slide.
+
+**Reduces-to clause.** "Reduces to a regression score only if all $\sigma_i$ are equal" is the formal statement. In a real surrogate, $\sigma_i$ varies wildly across the candidate set — the corners and out-of-distribution points have huge $\sigma$ — so the reduction never holds.
+:::
+
+## 14. Screening-Decision Economics
+
+::: {.columns}
+::: {.column width="50%"}
+**Costs**
+
+- $c_{\text{syn}}$: cost of one synthesis (EUR, hours, kWh).
+- $c_{\text{miss}}$: opportunity cost of a missed hit.
+- Ratio $c_{\text{miss}} / c_{\text{syn}}$ sets the threshold.
+
+**Decision**
+
+Synthesise iff $\Pr(\text{success} \mid \mathbf{x}) \cdot c_{\text{miss}} > c_{\text{syn}}$.
+:::
+::: {.column width="50%"}
+**Why uncertainty is required**
+
+- $\Pr(\text{success} \mid \mathbf{x})$ is a *calibrated probability*.
+- A point predictor cannot produce one — at best, it produces an indicator $\hat{y} > \tau$.
+- Uncalibrated $\sigma$ produces wrong probabilities — and therefore wrong threshold decisions.
+:::
+:::
+
+::: {.notes}
+**The decision-theoretic frame.** This is Bayesian decision theory in one line: maximise expected utility, where utility is payoff minus cost. The probability $\Pr(\text{success})$ has to come from *somewhere* — and "somewhere" is the surrogate's posterior.
+
+**$c_{\text{miss}}$ is hard to estimate honestly.** Real-world miss costs include reputational cost (your competitor finds the material first), strategic cost (your roadmap stalls), and replacement cost (the next-best alternative). In an academic setting, $c_{\text{miss}}$ is dominated by paper opportunity cost; in industry, it can be 10⁶–10⁷ EUR per missed lead.
+
+**Calibration is the link to ML-PC W8.** A *calibrated* probability is one that, integrated over many predictions, matches empirical frequency: of the candidates predicted with 80% success probability, 80% should actually succeed. ML-PC W8 covers reliability diagrams; we'll draw one on slide 41.
+
+**Anti-pattern.** Treating the regression mean as a probability via a sigmoid. This produces probabilities that are confidently wrong, and they pass naive sanity checks. The regression mean is *not* a probability; it is a point estimate of a continuous target. Conflating the two is one of the most common mistakes in materials-screening papers.
+:::
+
+## 15. Aleatoric vs Epistemic — Recap from MFML W12
+
+::: {.columns}
+::: {.column width="50%"}
+**Aleatoric (data noise)**
+
+- Inherent in the data — measurement noise, intrinsic disorder.
+- Same input, different outputs across repeats.
+- *Cannot* be reduced by more data.
+- *Can* be reduced by better instruments / cleaner protocol.
+:::
+::: {.column width="50%"}
+**Epistemic (model ignorance)**
+
+- Reflects sparsely sampled regions of input space.
+- Model says "I have not seen anything like this."
+- *Can* be reduced by more (well-chosen) data.
+- Reducing it is **exactly what an acquisition function does.**
+:::
+:::
+
+::: {.fragment}
+> **Discovery acquisition targets epistemic uncertainty.** It picks the next candidate where the model is *uncertain* AND the expected payoff is *high*.
+:::
+
+::: {.notes}
+**Tight recap, said aloud.** "Aleatoric is irreducible noise; epistemic is reducible ignorance. MFML W12 covered the decomposition formally — $\sigma^2_{\text{total}} = \sigma^2_{\text{aleatoric}} + \sigma^2_{\text{epistemic}}$ under the right modelling assumptions. Today we use the language."
+
+**Concrete materials examples.**
+- *Aleatoric*: measurement noise on a hardness test ($\pm 5\%$ across repeats on the same sample). Cannot be reduced by more samples; can be reduced by a better indenter.
+- *Epistemic*: model uncertainty on a quaternary alloy that is far from any training composition. Reduced by training on more quaternary alloys.
+
+**The reducible/irreducible distinction matters for the loop.** An acquisition function that targets aleatoric uncertainty is wasting queries — those queries cannot reduce the noise. An acquisition function that targets epistemic uncertainty is doing real work — those queries reduce model ignorance.
+
+**Practical caveat.** Decomposing $\sigma^2$ cleanly into aleatoric and epistemic requires modelling assumptions that are often violated. A GP with fixed homoscedastic noise lumps everything else into epistemic. A heteroscedastic GP or a Bayesian NN can separate them, with caveats. For the exercise, assume homoscedastic noise; for the exam, know that the decomposition is an *idealisation*.
+:::
+
+## 16. Closing §B: Uncertainty Is Not Optional
+
+::: {.columns}
+::: {.column width="50%"}
+**Recap of §B**
+
+- Two candidates with the same mean can be very different bets.
+- Ranking-under-uncertainty is a different objective from regression accuracy.
+- Screening economics require *calibrated probabilities*, not point predictions.
+- Epistemic uncertainty is what acquisition reduces.
+:::
+::: {.column width="50%"}
+**§C question**
+
+- Now: what is a probabilistic surrogate that gives us $\mu$ and $\sigma$?
+- Today's answer: Gaussian Process.
+- Tight recap from MFML W12 — five slides, no kernel algebra.
+:::
+:::
+
+::: {.notes}
+**Pacing check.** If you are at 28 minutes, you are on schedule. §C is the longest section (10 slides, ~18 minutes). After §C you should be at ~46 minutes, ready for the acquisition functions in §D.
+
+**Bridge sentence aloud.** "We've established what we need from a surrogate: $\mu$, $\sigma$, calibrated. The Gaussian Process is the canonical small-data answer. MFML W12 derived the marginal likelihood, the predictive distribution, the kernel hyperparameter optimisation. Today we treat all of those as black boxes and reason about *what they do* inside the discovery loop."
+
+**Anti-hype frame.** "GPs are not magic. They are one tool. By the end of §E you will know three honest 'don't use a GP' regimes. Today's GP is your default, not your only choice."
+:::
+
+# §C · Gaussian Processes for Materials Discovery {.section}
+
+## 17. GP — Intuition
+
+::: {.columns}
+::: {.column width="50%"}
+**A distribution over functions**
+
+$$f(\mathbf{x}) \sim \mathcal{GP}(m(\mathbf{x}), k(\mathbf{x}, \mathbf{x}'))$$
+
+- $m(\mathbf{x})$: prior mean (often zero after centring).
+- $k(\mathbf{x}, \mathbf{x}')$: kernel — covariance between function values.
+- For any finite set $\{\mathbf{x}_1, \dots, \mathbf{x}_n\}$, the values $f(\mathbf{x}_i)$ are jointly Gaussian.
+:::
+::: {.column width="50%"}
+**Two slogans**
+
+- *The kernel is the model.* Kernel choice encodes "similar inputs produce similar outputs."
+- *The posterior variance is the uncertainty for free.* No ensembling, no dropout, no separate variance head.
+:::
+:::
+
+::: {.notes}
+**The "distribution over functions" framing is the whole pedagogical leverage.** Most regressors return *one* function (one set of fitted weights). A GP returns a *distribution* — equivalently, a posterior over an entire space of plausible functions. Sampling from that posterior gives different curves; they all interpolate the training data; they disagree most where there is no training data. That disagreement *is* the epistemic uncertainty.
+
+**Whiteboard sketch worth doing.** Plot 5 training points. Draw 5 GP-posterior sample functions through them — they coincide near the points and fan out between. Shade the 95% confidence band. That single picture is the entire intuition.
+
+**MFML W12 cross-reference.** "Slides 14–22 of MFML W12 derived the posterior mean and covariance formulas. We will not redo them. We will use them as black boxes — `gp.fit(X, y); mu, sigma = gp.predict(X_test, return_std=True)` — and reason about what to *do* with the output."
+
+**The kernel-is-the-model slogan deserves emphasis.** The choice of kernel encodes the prior assumption about the response surface: smooth (RBF), rough (Matérn-1/2), periodic (periodic kernel), invariant under permutations (sum kernel over neighbour features). Bad kernel = bad GP, even on the right data. Slide 19 picks kernels; slide 20 reads the posterior.
+:::
+
+## 18. GP Posterior — Mean and Variance
+
+::: {.columns}
+::: {.column width="50%"}
+**At a test point $\mathbf{x}_*$**
+
+- Posterior mean $\mu(\mathbf{x}_*)$: best point prediction.
+- Posterior variance $\sigma^2(\mathbf{x}_*)$: epistemic uncertainty.
+- Aleatoric noise enters through the likelihood (a separate $\sigma^2_n$ added to the diagonal of the kernel matrix).
+:::
+::: {.column width="50%"}
+**Shape of $\sigma$ across the candidate set**
+
+- *Small* near training data — high confidence in interpolation.
+- *Growing* outside the data envelope — honest about extrapolation.
+- *Bounded* by the prior variance far from data — does not blow up to infinity.
+:::
+:::
+
+::: {.fragment}
+> **What the acquisition function consumes:** the *shape* of $\sigma$, not just its values. The contrast between low-$\sigma$ regions (exploitable) and high-$\sigma$ regions (explorable) drives the next-candidate decision.
+:::
+
+::: {.notes}
+**The bounded-by-prior-variance property is important.** A GP with a stationary kernel has $\sigma^2 \to k(\mathbf{x}, \mathbf{x}) - 0 = \sigma_{\text{prior}}^2$ as the test point moves far from any training data. It does *not* go to infinity. This is unlike a Bayesian NN with diffuse priors, where the variance can be arbitrarily large.
+
+**Sanity check, on the whiteboard.** Plot 5 training points along an x-axis. Sketch the posterior mean as an interpolating curve. Sketch $\sigma(x)$ as a curve that dips at each training point and rises between. The shape is the deliverable.
+
+**Common student question.** "Is the posterior variance the same as the *predictive* variance?" No: the *predictive* variance is the posterior variance plus aleatoric noise: $\sigma^2_{\text{pred}}(\mathbf{x}_*) = \sigma^2_{\text{posterior}}(\mathbf{x}_*) + \sigma^2_n$. The predictive variance is what calibration cares about; the posterior variance is what acquisition cares about. Different quantities, related by an additive constant.
+
+**Anti-pattern, called out aloud.** "Treating the predictive variance as if it equals the posterior variance." If aleatoric noise is large (e.g. measurement noise dominates), the predictive variance can be nearly constant across the candidate set — and then UCB / EI degrade because there is no $\sigma$-contrast to exploit.
+:::
+
+## 19. Kernel Choice for Materials Descriptors
+
+::: {.columns}
+::: {.column width="50%"}
+**Workhorse kernels**
+
+- **RBF (squared-exp):** smooth, infinitely differentiable. Good default for low-noise targets.
+- **Matérn-5/2:** smoother than 3/2, less smooth than RBF. *The materials-ML default.*
+- **Tanimoto / fingerprint kernels:** for discrete fingerprints (molecules, MOFs).
+- **SOAP / smooth-overlap kernels:** for structural descriptors directly.
+:::
+::: {.column width="50%"}
+**Hyperparameters**
+
+- Length scale $\ell$: how far in descriptor space until correlation decays.
+- Signal variance $\sigma_f^2$: amplitude of variation.
+- Noise variance $\sigma_n^2$: aleatoric noise.
+- Optimised by maximising the marginal likelihood — robust on small data.
+:::
+:::
+
+::: {.fragment}
+> **Length scale = materials-similarity assumption.** Short $\ell$: nearby compositions can have very different properties (rough surface). Long $\ell$: smooth landscape, neighbours are informative.
+:::
+
+::: {.notes}
+**Why Matérn-5/2 is the default.** RBF is *too smooth* for most materials targets — it implies infinite differentiability, which is unphysical for properties that have phase-transition-like jumps. Matérn-5/2 has 2 derivatives, which matches typical materials-property smoothness assumptions. Matérn-3/2 is rougher still, and is preferred when the response surface has known discontinuities.
+
+**Tanimoto kernel — when it shines.** Molecular fingerprints (Morgan, ECFP) are bit vectors. Euclidean distance between them is meaningless; Tanimoto similarity (intersection-over-union) is the canonical metric. The Tanimoto kernel turns this into a positive-definite kernel for GPs over molecules.
+
+**SOAP kernel — when it shines.** SOAP descriptors (MG U7) are inherently kernel-based: the SOAP similarity between two environments *is* a kernel. Using SOAP directly as a GP kernel skips the descriptor-vector step and is one of the workhorses of materials-ML practice [@bishop2006pattern is the relevant kernel-methods background].
+
+**Anti-pattern.** Picking a kernel without thinking about the descriptor. RBF on a one-hot composition vector is a classic mistake — Hamming-style distance on one-hot is binary, so RBF degenerates. Use a kernel matched to your descriptor's geometry.
+
+**Length-scale interpretation, said aloud.** "Optimising the marginal likelihood gives you a single $\ell$. That $\ell$ tells you how far in descriptor space the property 'travels' before becoming uncorrelated. Look at it after fitting — is it small (rough surface, lots of acquisition needed) or large (smooth, fewer acquisitions)? That single number tells you a lot about your problem."
+:::
+
+## 20. The Small-Data Sweet Spot
+
+::: {.columns}
+::: {.column width="50%"}
+**Why GPs shine at small $n$**
+
+- Well-behaved uncertainty without large ensembles.
+- No held-out validation set required for calibration.
+- Hyperparameter optimisation by marginal likelihood is robust on small data; cross-validation is not.
+- Handles 50–500 training points gracefully.
+:::
+::: {.column width="50%"}
+**Why this matches materials reality**
+
+- An active experimental campaign starts with 10–100 measurements.
+- Each new measurement costs days–weeks.
+- The surrogate must be re-fit after every batch.
+- Small-$n$ + cheap re-fit + honest uncertainty = GP.
+:::
+:::
+
+::: {.notes}
+**This is the slide that justifies why GPs anchor most active-learning-for-materials papers.** The regime they shine in — 50 to 500 points, uncertainty mandatory, fast re-fit — is the regime of real lab data. Deep ensembles need 10⁴+ points and minutes-to-hours to retrain; a GP fits in seconds.
+
+**Marginal-likelihood vs cross-validation.** With 50 training points, leave-one-out CV gives 50 noisy estimates of generalisation. The marginal likelihood is a closed-form Bayesian alternative that integrates over the posterior — it is much smoother in hyperparameter space and gives more reliable hyperparameter choices on small data.
+
+**Forward link.** "When data grows beyond ~5000 points, exact GPs hit the $O(n^3)$ wall. Slide 22 covers escape routes. By data $\gtrsim 10^4$, the calculus flips: ensembles become competitive, and slide 24 will tell you when to switch."
+
+**War story.** "A self-driving lab campaign for thin-film deposition I worked on used a GP throughout — never more than 200 measurements at any point. The GP refit after every 4-sample batch in under a second. The team tried switching to a small NN ensemble at one point; calibration collapsed at $n = 80$. They switched back to the GP."
+:::
+
+## 21. Reading a GP Posterior — Worked Example
+
+::: {.columns}
+::: {.column width="50%"}
+**Setting**
+
+- Target: $E_{\text{hull}}$ for ternary Li–Co–O candidates.
+- Descriptor: composition vector $(x_{\text{Li}}, x_{\text{Co}}, x_{\text{O}})$.
+- Training: 30 known phases from MP.
+- Test: 200 hypothetical compositions on a fine grid.
+:::
+::: {.column width="50%"}
+**Posterior reads**
+
+- Near training compositions: $\sigma \approx 5$ meV/atom (interpolation).
+- At unexplored corners: $\sigma \approx 60$ meV/atom (extrapolation).
+- Posterior mean $\mu$ peaks where the hull dips; minima at known stable phases.
+- *Both* $\mu$ and $\sigma$ are needed to rank candidates.
+:::
+:::
+
+::: {.notes}
+**The numbers (5 vs 60 meV/atom) are illustrative but realistic.** A well-fit GP on a small ternary subset typically gives $\sigma \sim 5$ meV/atom near training data and $\sigma \sim 50$–$100$ meV/atom on poorly-explored corners.
+
+**This is what students will reproduce in the exercise.** Pull a Li–Co–O subset from MP (or a similar ternary), train a GP, plot $\mu$ and $\sigma$ as ternary heatmaps. The visual contrast between the two heatmaps drives home the §B argument better than any equation.
+
+**Anti-pattern, called out aloud.** "Plotting only the posterior mean as a heatmap." Without $\sigma$, the heatmap looks like a deterministic prediction map and students will read it that way. Always plot both.
+
+**Computational note.** A 30-point GP fits and predicts on 200 grid points in well under a second. The exercise should not need GPU. If a student is waiting longer than 10 seconds, they have a kernel-evaluation bug (often: forgot to convert `pandas` to `numpy`).
+:::
+
+## 22. Scaling Limits and Sparse GPs
+
+::: {.columns}
+::: {.column width="50%"}
+**Exact GP cost**
+
+- Time: $O(n^3)$ — kernel-matrix Cholesky.
+- Memory: $O(n^2)$ — kernel matrix.
+- $n \sim 5{,}000$: painful on a laptop.
+- $n \sim 50{,}000$: infeasible without approximations.
+:::
+::: {.column width="50%"}
+**Conceptual escape routes**
+
+- **Inducing points** (FITC, VFE, SVGP): summarise data with $m \ll n$ pseudo-points; cost $O(nm^2)$.
+- **Local GPs:** one GP per region of input space.
+- **Kernel approximations:** random Fourier features and friends.
+:::
+:::
+
+::: {.fragment}
+> **For typical campaigns of $10^2$–$10^3$ measurements, exact GPs are fine.** Scaling matters when bolting GPs onto massive precomputed databases as a screening surrogate.
+:::
+
+::: {.notes}
+**The $O(n^3)$ wall in numbers.** At $n=1000$: ~1 GFlop, fits in seconds. At $n=10{,}000$: ~1 TFlop, minutes. At $n=100{,}000$: ~1 PFlop, hours-days on a single GPU. The scaling is steep enough that you cannot brute-force your way past it; you have to switch methods.
+
+**Inducing points — intuition.** Pick $m \ll n$ "pseudo-data points" $\{\mathbf{u}_j\}$ that summarise the dataset. Compute the GP using only the kernel matrix between inducing points and training points, plus inducing-to-inducing. Cost drops from $O(n^3)$ to $O(nm^2)$. The inducing locations can be optimised jointly with hyperparameters. Variational inducing-point methods (Titsias 2009; SVGP from Hensman et al.) are the modern standard.
+
+**Local GPs — when they make sense.** If your input space has a natural partition (e.g. by chemistry family, by structure prototype), train one GP per region. Predictions in each region are exact. Cross-region predictions are problematic and require some glue. Used in some materials applications when the chemical-system structure is strong.
+
+**For today's discovery campaigns.** Most published materials BO campaigns sit at $n < 500$ throughout. The scaling concern is *not* the bottleneck. The pedagogical message: know that the wall exists, know the names of the escape routes, and don't worry about it for typical work.
+
+**Forward link.** Slide 24 covers when to *not* use a GP at all and switch to a deep ensemble. The $n > 10{,}000$ regime is one of those cases.
+:::
+
+## 23. Closing §C: GPs as Tool, Not Gospel
+
+::: {.columns}
+::: {.column width="50%"}
+**§C summary**
+
+- GP = distribution over functions, defined by a kernel.
+- Posterior gives $\mu$ and $\sigma$ everywhere — calibrated by construction in-distribution.
+- Kernel choice encodes the materials-similarity assumption.
+- $O(n^3)$ scaling; $n \lesssim 5000$ is the comfortable regime.
+:::
+::: {.column width="50%"}
+**§D question**
+
+- Now we have $\mu$ and $\sigma$ at every candidate. *Which one do we synthesise next?*
+- The acquisition function is the answer.
+- Three workhorses: EI, UCB, Thompson.
+:::
+:::
+
+::: {.notes}
+**Recap aloud, 60 seconds.** "We've taken MFML W12's GP machinery and translated it into a materials-discovery tool. The posterior is the deliverable; $\mu$ and $\sigma$ are what acquisition will consume. Kernel choice is your scientific lever. Now: how does acquisition convert $(\mu, \sigma)$ into a next-candidate decision?"
+
+**Pacing check.** ~46 minutes elapsed. §D is 18 minutes; that lands at 64 minutes. Then §E (10 min) lands at 74; §F (10 min) at 84; §G (6 min) closes at 90. On schedule.
+
+**Bridge sentence.** "Acquisition functions are not deep — most are one-line formulas in $\mu$ and $\sigma$. What's interesting is *which one* and *what objective* you plug in."
+:::
+
+# §D · Acquisition Functions and Bayesian Optimisation {.section}
+
+## 24. Exploration vs Exploitation
+
+::: {.columns}
+::: {.column width="50%"}
+**Exploitation**
+
+- Pick the candidate with the best predicted mean.
+- Greedy: trust what the model says.
+- Risk: get stuck in a local optimum.
+:::
+::: {.column width="50%"}
+**Exploration**
+
+- Pick the candidate with the highest uncertainty.
+- Maximally informative: reduce model ignorance.
+- Risk: waste budget on candidates with no chance of being good.
+:::
+:::
+
+::: {.fragment}
+> **Acquisition functions trade off the two.** A scalar score $\alpha(\mathbf{x})$ over the candidate set; we maximise it to pick the next point.
+:::
+
+::: {.notes}
+**The trade-off is the entire content of BO.** Pure exploitation = greedy. Pure exploration = random sampling weighted by $\sigma$. The acquisition function defines the *exchange rate* between $\mu$ and $\sigma$. EI, UCB, and Thompson sampling are three different exchange rates; we pick between them based on the campaign's risk profile.
+
+**Multi-armed-bandit analogy.** This is the classical bandit setup. Each candidate is an arm; the reward is the (negative) $E_{\text{hull}}$; the exploration-exploitation trade-off is the bandit problem. Modern BO is a continuous-action, GP-modelled version of multi-armed bandits.
+
+**War story to inject.** A 2019 BO campaign for organic-photovoltaic compositions started with EI and got stuck after ~10 acquisitions on a local optimum (a doped variant of a known compound). Switching to UCB with high $\beta$ for the next 5 acquisitions broke the campaign out and found a structurally novel candidate. Lesson: the acquisition function is not set-and-forget; the campaign manager monitors it and intervenes.
+
+**Forward setup.** Slides 25–27 are EI, UCB, Thompson respectively — the three workhorses. Slides 28–32 are materials-specific extensions: hull-aware, cost-aware, multi-fidelity, batch.
+:::
+
+## 25. Expected Improvement (EI)
+
+::: {.columns}
+::: {.column width="50%"}
+**Definition**
+
+$$\alpha_{\text{EI}}(\mathbf{x}) = \mathbb{E}\bigl[\max(f^* - f(\mathbf{x}), 0)\bigr]$$
+
+- $f^*$: current best observed value.
+- Closed form for Gaussian posteriors:
+  $\alpha_{\text{EI}} = \sigma\bigl[z\,\Phi(z) + \phi(z)\bigr]$
+  with $z = (f^* - \mu)/\sigma$.
+:::
+::: {.column width="50%"}
+**Reads as**
+
+- "How much better than today's best do I expect to do?"
+- Zero when $\mu \gg f^*$ (worse than best, deterministically).
+- Large when $\mu < f^*$ (likely better) *or* $\sigma$ large (could be much better).
+- The default choice in 90% of BO campaigns.
+:::
+:::
+
+::: {.notes}
+**EI is the workhorse for a reason.** It self-balances exploration and exploitation: the formula naturally weights $\sigma$ for unknown regions and $\mu$ for known-promising regions. There are no hyperparameters (unlike UCB's $\beta$). It is the safe default.
+
+**Closed-form derivation, 30 seconds aloud.** "Given Gaussian posterior $f(\mathbf{x}) \sim \mathcal{N}(\mu, \sigma^2)$ and current best $f^*$, the expectation $\mathbb{E}[\max(f^* - f, 0)]$ is an integral of a truncated normal, and integrates to the closed form on the slide. $\Phi$ is the standard-normal CDF, $\phi$ the PDF." This is in Bishop §1.6 background material.
+
+**Sign convention.** EI as written is for *minimisation* (we want $f$ low; $f^*$ is the current minimum). For maximisation, flip the sign of $z$. Most libraries (`scikit-optimize`, `BoTorch`, `GPyOpt`) handle this internally with a `maximize=True` flag.
+
+**The "exploration-by-variance" property is automatic.** When $\sigma$ is large, the closed-form has a large $\sigma \phi(z)$ term that dominates regardless of $\mu$. So EI naturally explores in high-$\sigma$ regions. This is why it self-balances and why it is the default.
+
+**Anti-pattern.** Adding an "exploration weight" knob to EI by hand. The whole point of EI is that the trade-off is automatic. If you want a knob, use UCB.
+:::
+
+## 26. Upper Confidence Bound (UCB)
+
+::: {.columns}
+::: {.column width="50%"}
+**Definition**
+
+$$\alpha_{\text{UCB}}(\mathbf{x}) = \mu(\mathbf{x}) + \beta \, \sigma(\mathbf{x})$$
+
+- $\beta$: aggressiveness.
+- $\beta \to 0$: pure exploitation.
+- $\beta \to \infty$: pure exploration.
+- Typical: $\beta \in [1, 3]$, sometimes annealed over iterations.
+:::
+::: {.column width="50%"}
+**Reads as**
+
+- "Optimistic estimate of $f$."
+- Pick the candidate that *could* be best in a $\beta$-sigma sense.
+- Strong theoretical guarantees [@srinivas2010gpucb].
+- Choose UCB when EI gets stuck; use high $\beta$ to force exploration.
+:::
+:::
+
+::: {.notes}
+**The $\beta$ knob is both a feature and a hazard.** Feature: you have a knob to tune aggressiveness. Hazard: you have a knob, and tuning it requires judgement.
+
+**Theoretical $\beta$ schedule.** The GP-UCB result of [@srinivas2010gpucb] gives $\beta_t = O(\sqrt{\log t})$ for sub-linear regret. In practice, $\beta = 2$ (constant) works well for $\sim 100$-iteration campaigns. For longer campaigns, anneal $\beta$ from 3 to 1.
+
+**Sign convention again.** For minimisation of $E_{\text{hull}}$, the relevant acquisition is $\mu - \beta \sigma$ (lower confidence bound, LCB), and we *minimise* it to pick the next point. Equivalently, take the negative and maximise. Library conventions vary.
+
+**When to use UCB over EI.**
+- Campaign has plateaued (EI stuck on a local optimum).
+- You have prior knowledge that the response surface is multi-modal.
+- You want explicit control over exploration.
+
+**War story.** Same 2019 OPV campaign: switching from EI to UCB ($\beta = 3$) for 5 iterations broke the plateau. Then switched back to EI for finer exploitation. The 'EI-then-UCB-then-EI' pattern is a useful hand-tuned recipe.
+:::
+
+## 27. Thompson Sampling
+
+::: {.columns}
+::: {.column width="50%"}
+**Procedure**
+
+1. Sample one function $\tilde{f}$ from the GP posterior.
+2. Optimise: $\mathbf{x}^* = \arg\min_\mathbf{x} \tilde{f}(\mathbf{x})$.
+3. Query $\mathbf{x}^*$.
+
+That's it.
+:::
+::: {.column width="50%"}
+**Why it is useful**
+
+- Naturally batches: draw $b$ samples, get $b$ candidates.
+- Diversity in the batch is automatic (different posterior samples disagree most where $\sigma$ is large).
+- No closed form needed; works with approximate GPs.
+- Bayesian-optimal under certain assumptions.
+:::
+:::
+
+::: {.notes}
+**Thompson sampling is the easiest way to get diverse batches.** EI and UCB are *deterministic* given $(\mu, \sigma)$: their top-$b$ are usually clustered (similar $\mathbf{x}$ values). Thompson is *stochastic*: each sample's optimum is a different $\mathbf{x}$. This is what you want when you can run $b > 1$ syntheses in parallel.
+
+**Implementation, 30 seconds aloud.** "For a GP at $n$ test points, sampling $\tilde{f}$ is one Cholesky and one $n$-vector multiplication — a few milliseconds. Optimising over the candidate set is just an argmin. Easier than EI." (For continuous input spaces, you sample $\tilde{f}$ on a fine grid or use spectral approximations; out of scope.)
+
+**Bayesian-optimal claim.** Thompson sampling has theoretical regret bounds matching UCB [@russo2016information] and is provably "matched" to the posterior in a Bayesian-decision-theoretic sense. For the lecture, the main selling point is *batches*.
+
+**Anti-pattern.** Drawing $b$ Thompson samples and picking each one's argmin can occasionally produce duplicates if the surrogate is very confident in one region. Real implementations enforce de-duplication (e.g. by removing already-picked candidates from the candidate set before re-sampling).
+
+**When to use Thompson.** Parallel-synthesis labs (multiple wet-chem stations, multiple deposition chambers running concurrently). One acquisition step gives you $b$ diverse picks.
+:::
+
+## 28. Acquisition Over What?
+
+::: {.columns}
+::: {.column width="50%"}
+**Composition space**
+
+- Candidates: discrete formulas $A_x B_y C_z$, or continuous fractions on a simplex.
+- Smaller candidate sets, faster argmax.
+- Most published BO-for-materials work lives here.
+:::
+::: {.column width="50%"}
+**Structure space**
+
+- Candidates: polymorphs / prototypes at fixed composition.
+- Larger, more discrete; symmetry constraints.
+- Active research; harder to define a kernel.
+:::
+:::
+
+::: {.fragment}
+> **Default choice:** start in composition space. Only graduate to structure space when the chemistry is fixed and polymorph selection is the bottleneck.
+:::
+
+::: {.notes}
+**Why composition first, almost always.** A formula gives you stoichiometry; stoichiometry gives you a finite, discrete candidate set; the GP-BO machinery is well-defined and fast. Adding structure variation explodes the candidate space and complicates the kernel — you need a structure-aware kernel like SOAP or a graph kernel, and the BO loop becomes substantially harder to monitor.
+
+**Structure-space search examples.** Crystal-structure prediction (USPEX, CALYPSO with BO outer loops), zeolite synthesis selection (specific framework topology), MOF selection (specific net + linker combination). All of these are active research, and most use specialised kernels.
+
+**Hybrid strategy.** Many real campaigns first do BO over composition (~30 acquisitions), pick the top 5 compositions, *then* run a structure search on each. This factors the problem and matches lab capacity (synthesis is by composition; characterisation determines structure).
+
+**For the exercise.** We stay in composition space. The BO loop is over a 2D (binary) or 3D (ternary) composition simplex with discrete grid resolution. No structure variation.
+:::
+
+## 29. Convex-Hull-Aware Acquisition
+
+::: {.columns}
+::: {.column width="50%"}
+**The naïve trap**
+
+- Optimise raw $E_f$ as the BO objective.
+- Result: BO proposes elemental references (huge $|E_f|$ for ground states), or known stable compounds.
+- You re-discover what's already in the database.
+:::
+::: {.column width="50%"}
+**The fix: hull-aware EI**
+
+$$\alpha_{\text{hull-EI}}(\mathbf{x}) = \mathbb{E}\bigl[\max(0, E_{\text{hull, current}} - E_{\text{hull}}(\mathbf{x}))\bigr]$$
+
+- Reward candidates that *lower* the hull at their composition.
+- Aligns acquisition with the actual discovery objective.
+- Standard practice in modern materials BO.
+:::
+:::
+
+::: {.notes}
+**This slide is the materials-specific punchline of §D.** Generic BO theory does not tell you to use $E_{\text{hull}}$ as your objective — that is materials-domain knowledge. The hull-aware reformulation is what turns generic BO into materials-discovery BO.
+
+**Why raw $E_f$ fails — concrete example.** Suppose you BO over Li–Co–O compositions with raw $E_f$ as the target. The most-negative-$E_f$ candidates are pure-Li elemental phase, pure-Co elemental phase, etc. (well, actually $E_f = 0$ for elements by construction; the most-negative are deep-well oxides like Li₂O at $E_f \sim -2$ eV/atom). BO will propose Li₂O — already known, already in the database. No discovery happens.
+
+**Hull-aware EI in practice.** The objective is "expected reduction in the convex-hull envelope at the candidate's composition." For most candidates, $E_{\text{hull}} > 0$ and lowering it is impossible (would require $E_f$ below the hull line); so $\alpha_{\text{hull-EI}}$ is zero almost everywhere. *That sparsity is informative*: it focuses BO on the few candidates that genuinely could push the hull down.
+
+**Operational subtlety.** Computing $E_{\text{hull-line}}(\mathbf{x})$ requires running a convex-hull algorithm on the current set of known phases. `pymatgen.analysis.phase_diagram.PhaseDiagram` does this in one call. Inside a BO loop, the hull is recomputed after each acquisition. Negligible cost for $n < 1000$.
+
+**Forward link.** This is exactly what students will implement in the exercise. The contrast between raw-$E_f$ BO (re-discovers known compounds) and hull-aware BO (proposes genuinely novel candidates) is the most pedagogically useful experiment in the unit.
+:::
+
+## 30. Cost-Aware Acquisition
+
+::: {.columns}
+::: {.column width="50%"}
+**Definition**
+
+$$\alpha_{\text{cost}}(\mathbf{x}) = \frac{\alpha(\mathbf{x})}{c(\mathbf{x})}$$
+
+- $c(\mathbf{x})$: synthesis difficulty (precursor cost, furnace time, atmospheric control).
+- Cheap candidates with moderate acquisition score beat expensive candidates with marginally better score.
+:::
+::: {.column width="50%"}
+**When it matters**
+
+- Heterogeneous synthesis costs: solid-state vs sol-gel vs single-crystal growth.
+- Toxic / radioactive precursors.
+- Limited reagent stocks.
+- Real labs *always* have cost asymmetry.
+:::
+:::
+
+::: {.notes}
+**Rarely textbook material; always real-lab material.** Pure BO theory pretends every acquisition has the same cost. Real labs do not. A campaign that ignores cost will propose expensive candidates with marginally better $\alpha$ over cheap candidates with slightly worse $\alpha$ — and run out of budget before finding anything.
+
+**Estimating $c(\mathbf{x})$.** Crude proxies that work in practice:
+- Number of distinct elements (more elements = harder to phase-pure synthesis).
+- Presence of volatile elements (need sealed tube — expensive).
+- Presence of toxic elements (Pb, Cd, Cr⁶⁺ — often disallowed or cost-heavy).
+- Required atmosphere (inert, reducing, vacuum — add multipliers).
+
+Several published cost-aware BO papers use a learned cost model trained on past lab logs. Fancy but rarely justified for lecture-level work.
+
+**Practical lab heuristic.** Multiply $\alpha$ by an "ease score" with values $\{1, 0.5, 0.1\}$ for easy / moderate / hard. Crude but vastly better than ignoring cost.
+
+**War story.** A 2020 campaign for SOFC cathodes found a "BO optimal" composition that required vacuum-arc-melted single-crystal precursors at 2300 K. The cost per attempt was 50× the average. The team retroactively re-ran with cost-weighting and the BO recommendation flipped to a much cheaper polycrystalline candidate with marginally worse $E_{\text{hull}}$. That candidate became the published result.
+:::
+
+## 31. Multi-Fidelity Hooks
+
+::: {.columns}
+::: {.column width="50%"}
+**The setup**
+
+- Cheap, biased fidelity: DFT prediction.
+- Expensive, unbiased fidelity: lab measurement.
+- Multi-fidelity GP models both, with a learned correlation between them.
+:::
+::: {.column width="50%"}
+**The acquisition picks twice**
+
+- Which candidate?
+- Which fidelity (DFT? lab?)?
+- Optimal split: cheap fidelity to localise; expensive fidelity to confirm.
+- Active research; mention as a hook, do not derive.
+:::
+:::
+
+::: {.notes}
+**This slide is a forward-pointer, not a deep dive.** Multi-fidelity GPs are an active research area; the literature is large; deriving the multi-fidelity kernel here would consume 4 slides we do not have. Students should know the *concept exists* and the *vocabulary*.
+
+**The cheap-fidelity-to-localise pattern.** Most published multi-fidelity workflows use the cheap fidelity (DFT) to do bulk exploration over a large composition space, then trigger expensive fidelity (synthesis) only on the top candidates from the cheap fidelity's posterior. This factors the budget asymmetrically and is the highest-leverage use of multi-fidelity in materials.
+
+**Where it breaks.** When the cheap fidelity is *systematically biased* — e.g. PBE underestimates band gaps by 30% in a class-dependent way — naive multi-fidelity treats the bias as random noise and underestimates the true uncertainty. Bias-aware multi-fidelity GPs exist [@kennedy2001bayesian] but require care.
+
+**For the lecture: students should leave this slide knowing that multi-fidelity is the answer when DFT and experiment are *both* available, and the question is which to trigger when.**
+:::
+
+## 32. Batch Acquisition
+
+::: {.columns}
+::: {.column width="50%"}
+**The problem**
+
+- Lab runs $b > 1$ syntheses in parallel.
+- Top-$b$ by single-point acquisition gives near-duplicate batches.
+- All clustered in one high-acquisition region.
+:::
+::: {.column width="50%"}
+**Diversity strategies**
+
+- **Kriging believer:** pick top-1, hallucinate $\mu$ as the observed value, repeat.
+- **Local penalisation:** subtract a penalty for proximity to already-picked candidates.
+- **Batch-EI / qEI:** joint optimisation over $b$ candidates.
+- **Thompson sampling:** $b$ posterior samples → $b$ argmins. Easiest.
+:::
+:::
+
+::: {.notes}
+**Thompson sampling is the easiest of the four.** No penalty function, no hallucinated observations, no joint optimisation. Just sample $b$ functions, optimise each. Used in many real autonomous-lab platforms because it is robust and parallelisable.
+
+**Kriging believer — when it shines.** When $b$ is small (2–4) and the surrogate is well-calibrated, Kriging believer gives near-optimal batches with simple code. The hallucinated $\mu$ updates the GP's effective uncertainty in the picked region; the next pick naturally avoids it.
+
+**Local penalisation — variants.** The penalty function is typically $1 - \exp(-\|x - x_{\text{picked}}\|^2 / \rho^2)$ with $\rho$ matching the GP length scale. Tunable, sensitive to $\rho$.
+
+**Batch-EI / qEI — the principled but expensive choice.** Optimises $\mathbb{E}[\max(f^* - \min_i f(\mathbf{x}_i), 0)]$ jointly over $b$ candidates. Requires Monte-Carlo evaluation of the expectation; available in BoTorch. For $b \leq 5$ and $n_{\text{candidates}} \lesssim 1000$, runs in seconds.
+
+**For the exercise.** Stick to top-1 single-point acquisition. Mention batch as homework reading. Implementing Kriging believer is a good "reach" task for advanced students.
+:::
+
+## 33. Closing §D: Acquisition Is the Decision Layer
+
+::: {.columns}
+::: {.column width="50%"}
+**§D summary**
+
+- Acquisition functions convert $(\mu, \sigma)$ into a next-pick decision.
+- EI is the default; UCB is the explicit-knob alternative; Thompson batches naturally.
+- Hull-aware EI is the materials-specific reformulation.
+- Cost-aware variants are non-negotiable in real labs.
+:::
+::: {.column width="50%"}
+**§E question**
+
+- We've made the GP central. *When is the GP wrong?*
+- When data scales beyond GP-friendly regimes, what replaces it?
+- How do you check that *any* uncertainty is calibrated?
+:::
+:::
+
+::: {.notes}
+**Recap aloud, 60 seconds.** "Acquisition is where the discovery loop meets the decision. EI / UCB / Thompson are the three workhorses. Hull-aware and cost-aware are the materials adaptations that turn generic BO into discovery BO. Now we step back: when is the GP itself the wrong tool? That's §E."
+
+**Pacing check.** ~64 minutes elapsed. §E is 10 minutes; lands at 74. On schedule.
+
+**Anti-hype frame for §E.** "Today we have made the GP look like the One Tool. It is not. There are three regimes where you should not use it. Two of them are common in practice. We name them, and we name the alternatives."
+:::
+
+# §E · Alternatives, Ensembles, and Calibration {.section}
+
+## 34. Deep Ensembles
+
+::: {.columns}
+::: {.column width="50%"}
+**Procedure**
+
+- Train $M \sim 5$–$10$ NN regressors with different random seeds.
+- Ensemble mean = predictive mean.
+- Ensemble std = epistemic uncertainty proxy.
+- (Optional: each NN predicts mean and aleatoric variance separately.)
+:::
+::: {.column width="50%"}
+**Strengths and weaknesses**
+
+- **+** Scales to $n \gg 10^4$.
+- **+** No kernel choice; works with any architecture.
+- **−** Ensembles can be jointly overconfident.
+- **−** Uncertainty uncalibrated by default.
+- **−** Expensive at training time.
+:::
+:::
+
+::: {.notes}
+**Deep ensembles dominate GPs at scale.** Above $\sim 10{,}000$ training points and inside a NN architecture (CGCNN, SchNet, MACE, MEGNet), a deep ensemble is the standard UQ tool. GPs hit the $O(n^3)$ wall before they reach this regime.
+
+**Why "jointly overconfident."** All ensemble members share the same architecture and training distribution. They make *correlated* errors, especially under distribution shift. The ensemble std underestimates the true uncertainty when all members are wrong in the same way. Diversification (different architectures, different training subsets) helps but does not eliminate this.
+
+**Calibration is mandatory.** A raw deep ensemble's std is *not* a calibrated standard deviation. Post-hoc calibration on a held-out set (temperature scaling, isotonic regression) is standard practice. Slide 41 covers reliability diagrams.
+
+**Heteroscedastic vs homoscedastic.** A vanilla ensemble assumes constant noise. A heteroscedastic ensemble has each NN output both $\hat{\mu}$ and $\hat{\sigma}^2_{\text{ale}}$ separately. The total uncertainty is then $\sigma^2_{\text{total}} = \text{ensemble\_var} + \overline{\sigma}^2_{\text{ale}}$. This separates the aleatoric and epistemic components — the ensemble var is epistemic, the average $\sigma^2_{\text{ale}}$ is aleatoric.
+:::
+
+## 35. MC-Dropout
+
+::: {.columns}
+::: {.column width="50%"}
+**Procedure**
+
+- Apply dropout at *inference time* (not just training).
+- Run $T \sim 20$ stochastic forward passes per input.
+- Mean and std across passes = predictive mean and uncertainty.
+:::
+::: {.column width="50%"}
+**Strengths and weaknesses**
+
+- **+** Trivial to implement (1 line of PyTorch).
+- **+** Works on any pre-trained NN.
+- **−** Notoriously miscalibrated.
+- **−** Calibration depends on dropout rate (a hyperparameter you set during training).
+- Useful as a *quick proxy*, not as a primary UQ source.
+:::
+:::
+
+::: {.notes}
+**The derivation of [@gal2016dropout].** MC-dropout is a variational approximation to a Bayesian NN with a specific prior. The derivation is elegant; the practical performance is mixed. The variational family is too narrow to capture meaningful uncertainty in many settings.
+
+**When it is honestly useful.** As a *quick* sanity check before investing in a deep ensemble. If you have a single trained NN and want a 5-minute uncertainty estimate, MC-dropout is the right tool. Calibration may still be off; treat it as a first-cut.
+
+**Anti-pattern.** Using MC-dropout uncertainty in a discovery loop without calibration. The dropout rate is a free parameter that strongly affects the apparent uncertainty; tuning it on the validation calibration is the only honest thing to do.
+
+**Practical recommendation.** If your lab is going to use a NN-based surrogate in a discovery loop, build a deep ensemble. If you just want to know "does my single NN have any uncertainty information at all," MC-dropout for a few hours.
+:::
+
+## 36. Conformal Prediction
+
+::: {.columns}
+::: {.column width="50%"}
+**Procedure**
+
+- Train any point predictor.
+- Compute residuals on a held-out *calibration* set.
+- Quantile of residuals → prediction interval that covers $1-\alpha$ of test points (under exchangeability).
+:::
+::: {.column width="50%"}
+**Properties**
+
+- **+** Finite-sample coverage *guarantee*.
+- **+** Distribution-free, model-agnostic.
+- **+** Trivially simple.
+- **−** Intervals are roughly *uniform width* — no kernel-aware $\sigma(\mathbf{x})$.
+- Better suited to *screening filters* than to *acquisition*.
+:::
+:::
+
+::: {.notes}
+**The exchangeability assumption is the catch.** Conformal coverage is guaranteed if test points are exchangeable with training-plus-calibration points. Distribution shift breaks this — and discovery campaigns *are* distribution shift by design. There are conformal variants for distribution shift (weighted conformal, adaptive conformal) but they are more complex.
+
+**Why conformal is suited to filtering.** A common pattern: train a fast predictor on a large database, use conformal to produce "safe" prediction intervals at every candidate, *filter* candidates whose intervals could exceed a stability threshold. The screening cuts the candidate pool from $10^5$ to $10^3$, then a GP runs BO on the filtered pool.
+
+**Why conformal is *not* suited to acquisition.** Acquisition needs a $\sigma(\mathbf{x})$ that varies meaningfully across candidates — high near unexplored regions, low near training data. Vanilla conformal gives near-constant interval widths, which provides no $\sigma$-contrast. There are *adaptive conformal* methods that condition the interval width on $\mathbf{x}$, but they are hairy.
+
+**For this unit.** Conformal is the right answer when you have a black-box predictor (random forest, XGBoost, big NN you cannot retrain) and need coverage. It is *not* the right answer for active learning. The decision table on slide 38 captures this.
+:::
+
+## 37. When Each UQ Method Wins
+
+::: {.columns}
+::: {.column width="50%"}
+**Decision table**
+
+- $n < 500$, small descriptor: **GP**.
+- $n \in [500, 10{,}000]$: **GP with inducing points** *or* **deep ensemble**.
+- $n > 10{,}000$, NN already trained: **deep ensemble** *or* **MC-dropout**.
+- Black-box predictor, need coverage: **conformal**.
+:::
+::: {.column width="50%"}
+**Caveats**
+
+- These are starting points, not laws.
+- Calibration is *always* mandatory regardless of method.
+- For a discovery loop, kernel-aware $\sigma(\mathbf{x})$ matters more than coverage guarantees.
+- For a one-shot screening filter, coverage matters more than $\sigma$-contrast.
+:::
+:::
+
+::: {.notes}
+**This is the slide students will photograph for their notes.** It is the operational summary of §E. Print it on the exercise sheet.
+
+**Why "always calibrate."** Even a GP, even a deep ensemble, can be miscalibrated under distribution shift. The discovery loop *is* distribution shift. Allocate a small held-out set (5–10% of training) for calibration diagnostics. Re-check after every batch.
+
+**The kernel-aware-vs-coverage distinction.** For *acquisition*, you need $\sigma(\mathbf{x})$ to vary meaningfully — the variance contrast is what drives next-pick decisions. For *filtering* (screen-and-discard), you need *coverage* — the guarantee that your "safe" set actually contains the truth at the claimed rate.
+
+**Forward link to ML-PC W8.** Calibration diagnostics are treated formally there. We use the toolbox, we don't re-derive it.
+:::
+
+## 38. Reading a Reliability Diagram
+
+::: {.columns}
+::: {.column width="50%"}
+**Construction**
+
+- Bin held-out points by predicted $\sigma$.
+- For each bin, compute the fraction of true values within $\pm \sigma$.
+- Plot: predicted coverage (x-axis) vs empirical coverage (y-axis).
+- Diagonal: perfectly calibrated.
+:::
+::: {.column width="50%"}
+**Reads**
+
+- Below the diagonal: *overconfident* — claimed 80% coverage, actual 65%.
+- Above the diagonal: *underconfident* — claimed 80% coverage, actual 92%.
+- GPs typically: well-calibrated in-distribution, overconfident OOD.
+- Deep ensembles typically: jointly overconfident across the board.
+:::
+:::
+
+::: {.fragment}
+> **Recalibrate after every batch.** Discovery campaigns shift the input distribution; calibration drifts; bad decisions follow.
+:::
+
+::: {.notes}
+**Whiteboard sketch.** Plot two curves: a near-diagonal one (well-calibrated GP in-distribution) and a sagging-below curve (overconfident model). Annotate with "claim 80%, deliver 60% — synthesis budget wasted."
+
+**Recalibration mechanics.** Two standard tools:
+- **Temperature scaling:** multiply $\sigma$ by a scalar $T$ chosen to maximise held-out NLL. Simple, often sufficient.
+- **Isotonic regression on quantiles:** non-parametric, more flexible, requires more data.
+
+ML-PC W8 covers these in detail.
+
+**Anti-pattern.** Calibrating once at $t=0$ and not revisiting. Discovery campaigns push the input distribution into new corners; the calibration that held at $t=0$ will not hold at $t=20$. Re-calibrate after every batch — it costs a small held-out subset and prevents silent failure.
+
+**War story.** The Berkeley A-Lab campaign [@szymanski2023autonomous]: silent calibration drift over ~50 acquisitions led to a stretch of "high-confidence" predictions that all came back failed. Post-mortem found the GP had become 3× overconfident on extreme compositions. After they added per-batch recalibration, the campaign stabilised. Hence: this is a real failure mode, not a hypothetical.
+:::
+
+## 39. Closing §E: UQ Is a Toolbox
+
+::: {.columns}
+::: {.column width="50%"}
+**§E summary**
+
+- GP: small data, kernel-aware $\sigma$, exact-inference $O(n^3)$.
+- Deep ensemble: large data, NN architectures, mandatory calibration.
+- MC-dropout: quick proxy; not for primary UQ.
+- Conformal: model-agnostic coverage; better for filtering than acquisition.
+- *Always* check calibration on held-out data.
+:::
+::: {.column width="50%"}
+**§F question**
+
+- We have the toolbox. What does the *full closed loop* actually look like in published work?
+- Three case studies: perovskite stability; alloy BO; autonomous labs.
+:::
+:::
+
+::: {.notes}
+**Pacing check.** ~74 minutes elapsed. §F is 10 minutes; lands at 84. §G is 6 minutes; closes at 90. On schedule.
+
+**Bridge sentence.** "We've assembled the components. Now let's see them in action — and see what fails. Three published campaigns, each with a named lesson."
+
+**Tone shift.** §F is more narrative than technical. The slides have less math and more storytelling. Pace accordingly: don't try to extract formulas from these slides — extract *patterns*.
+:::
+
+# §F · Discovery-Loop Case Studies {.section}
+
+## 40. Case 1 — Closed-Loop Perovskite Stability
+
+::: {.columns}
+::: {.column width="50%"}
+**Setup**
+
+- Target: halide-perovskite stability under environmental stress.
+- Surrogate: GP over composition (mixed A-site cations, mixed halides).
+- Acquisition: hull-aware EI.
+- "Experiment": automated stability measurement on a deposition platform.
+:::
+::: {.column width="50%"}
+**Outcome and lesson**
+
+- ~50 acquisitions; identified several previously unreported stable mixtures.
+- **Failure mode:** the GP became overconfident on extreme compositions (corners of the simplex).
+- **Mitigation:** periodic recalibration on a held-out slice; trust-region restriction on acquisition.
+:::
+:::
+
+::: {.notes}
+**The pedagogical takeaway.** Closed-loop campaigns can find genuinely new materials in 50 syntheses — that is the encouraging part. They can also silently fail without recalibration — that is the cautionary part. Both messages must be heard.
+
+**Concrete published work this is based on.** Multiple groups have run halide-perovskite BO campaigns since ~2018; the canonical references include the Toronto self-driving lab [@macleod2020selfdriving] and several Sandia / NREL papers (the latter not in our local `ref.bib`).
+
+**Why corners of the simplex are the failure point.** GPs with stationary kernels over a simplex have $\sigma$-shape that is *anti-correlated* with how much training data is nearby. Pure single-cation-end-members have many neighbours in training; mixed-cation interiors have few. So the GP's $\sigma$ is small at corners (lots of data) and large in interiors (sparse) — but the *acquisition function* drives toward high-$\sigma$, into interiors. After enough acquisitions, the interior fills up and the corners become the high-$\sigma$ frontier; but the GP's prior assumes corners are well-known. Mismatch → overconfidence at corners.
+
+**Trust-region restriction.** A common fix: only allow acquisition within a "trusted" region around current training data. Conservatively, the trust region is the convex hull of training compositions; aggressively, an enlarged version. Prevents acquisition from wandering into pathological extrapolation regions.
+:::
+
+## 41. Case 2 — BO for Alloy Composition
+
+::: {.columns}
+::: {.column width="50%"}
+**Setup**
+
+- Target: hardness or yield strength of a 4-element alloy.
+- Surrogate: GP over composition (4D simplex).
+- Acquisition: EI, with cost weighting (synthesis at $10^4$ EUR/sample).
+- ~30 acquisitions to near-optimum.
+:::
+::: {.column width="50%"}
+**Outcome and lesson**
+
+- BO found a near-optimal composition using ~30 syntheses out of an effective candidate space of $10^4$.
+- **Failure mode:** ignoring constraints — the "BO optimum" used a precursor combination that no real lab would actually attempt (toxicity, processing window).
+- **Mitigation:** constraint-aware acquisition (zero out infeasible regions before optimising $\alpha$).
+:::
+:::
+
+::: {.notes}
+**Why this case matters pedagogically.** It shows BO's strength (sample efficiency: 30 vs 10⁴ candidates) and its weakness (it does not know what is feasible). Both are real; both must be communicated.
+
+**Constraint-aware acquisition — operational mechanics.** Build a feasibility predictor (binary classifier: synthesisable / not) on past lab logs. Multiply $\alpha(\mathbf{x})$ by $\Pr(\text{feasible} \mid \mathbf{x})$ before optimising. Zero-out infeasible candidates from the candidate set before argmax.
+
+**The cost weighting — concrete.** Multiply $\alpha$ by $1 / c(\mathbf{x})$ where $c$ is in EUR per sample. For homogeneous synthesis routes, $c$ is roughly constant and the weighting is moot. For heterogeneous routes (mixed sol-gel + arc-melting + Bridgman), the weighting bites hard.
+
+**Forward link to U14.** Constraint-aware acquisition is *one* form of physics-informed constraint integration. Unit 14 generalises this to include thermodynamic constraints (E-hull thresholds), kinetic constraints (synthesis pathway accessibility), and trust constraints (human review on high-uncertainty picks).
+:::
+
+## 42. Case 3 — Autonomous Labs
+
+::: {.columns}
+::: {.column width="50%"}
+**Setup**
+
+- Berkeley A-Lab [@szymanski2023autonomous]; Toronto self-driving labs [@macleod2020selfdriving]; Argonne polybot.
+- Closed loop: synthesis robot + characterisation robot + BO planner.
+- No human in the inner loop; humans on safety + post-mortem.
+:::
+::: {.column width="50%"}
+**Lessons learned**
+
+- Bottleneck is rarely the GP — it's the *synthesis success rate*.
+- *Calibration drift* is the most common silent failure.
+- Hard guardrails (feasibility filters, human review on high-$\sigma$ picks) are non-negotiable.
+- Sets up Unit 14 directly.
+:::
+:::
+
+::: {.notes}
+**The synthesis-success-rate point is under-appreciated by ML-focused students.** A typical autonomous-lab synthesis succeeds 30–60% of the time. The failures inject *missing-data* into the BO loop. Naively treating failure as "infinitely bad" biases acquisition; treating failure as "missing" bleeds budget. Modern systems train a *secondary* GP on synthesis success rate and use it as a multiplier on the primary acquisition.
+
+**Calibration drift, restated for emphasis.** A GP calibrated at $t=0$ is *not* calibrated at $t=50$ if the input distribution has shifted (and it has, by construction). Recalibrate after every batch, not just at the start. This is the single most common silent failure in long-running discovery campaigns.
+
+**Hard guardrails.** Human review is triggered when:
+- Predicted $\sigma$ exceeds a threshold (high-uncertainty pick).
+- Predicted toxicity / hazard score is high.
+- Acquisition reaches a "creative" region (e.g. far from any training data).
+
+These guardrails are not nice-to-have. They are how real autonomous labs avoid producing reproducible non-results or, worse, hazardous outputs.
+
+**Unit 14 setup, said aloud.** "Everything we just learned about case-3 guardrails is what U14 makes systematic. Constraints, trust, integration. Today's calibrated surrogate is the *prerequisite*; tomorrow's governance is the *integration*."
+:::
+
+# §G · Wrap-Up {.section}
+
+## 43. When *Not* to Use a GP
+
+::: {.columns}
+::: {.column width="50%"}
+**Three honest "don't"s**
+
+- **Plentiful data ($n \gg 10^4$).** A GP is an ensemble's job done badly. Use a deep ensemble + conformal.
+- **Discontinuous response surfaces** (phase transitions, structural transitions). A stationary kernel will smear over them. Use a non-stationary kernel or segment the input space.
+- **Bad descriptor.** GP variance reflects descriptor-space density, not science. A bad descriptor gives confidently wrong uncertainty.
+:::
+::: {.column width="50%"}
+**Diagnostics that flag these regimes**
+
+- Marginal likelihood plateaus → too much data for current kernel.
+- Calibration deteriorates after every batch → distribution shift, kernel mismatch, or bad descriptor.
+- Length scale $\ell$ stuck at minimum → response is rougher than kernel allows.
+:::
+:::
+
+::: {.notes}
+**This is the anti-hype slide promised at the start.** GPs are a tool, not a religion. The three regimes above are common in real materials work; students must know how to recognise them.
+
+**Concrete diagnostics — use them in the exercise.**
+- Plot the marginal likelihood vs $n$ as the campaign grows. If it stops increasing, the GP has saturated; switching to an ensemble may help.
+- Plot reliability diagrams every 10 acquisitions. If they sag systematically, recalibrate; if they stay sagged after recalibration, the kernel is wrong.
+- After each fit, log $\ell$. If it bumps the lower bound (often a hard floor at $10^{-6}$ in libraries), the response is rougher than the kernel allows.
+
+**Anti-pattern.** Treating these diagnostics as cosmetic. They are not — they are *the* signals that tell you to switch tools. Ignoring them in a long campaign produces silent failure of the kind A-Lab post-mortems describe.
+
+**Forward look.** "Unit 14 takes the *what to do when* questions seriously: how do you build a discovery system that recognises its own failure modes? That is the integration / governance question."
+:::
+
+## 44. Bridge to Unit 14
+
+::: {.columns}
+::: {.column width="50%"}
+**What Unit 13 leaves you with**
+
+- A calibrated probabilistic surrogate.
+- An acquisition function that picks the next candidate.
+- A loop that closes between database, prediction, and lab.
+- Diagnostics for failure modes (calibration drift, OOD, bad kernel).
+:::
+::: {.column width="50%"}
+**What Unit 14 adds**
+
+- **Hard physics constraints** in acquisition: thermodynamic, kinetic, electrochemical.
+- **Trust** layers: human review, hazard filters, novelty detection.
+- **Integration** with autonomous labs: guardrails, monitoring, post-mortem discipline.
+- The path from "uncertainty-aware" to "trustworthy."
+:::
+:::
+
+::: {.notes}
+**The U13 → U14 transition is from *calibrated* to *trustworthy*.** Calibrated means honest about its own uncertainty; trustworthy means safe to deploy in a closed loop with non-trivial consequences. The two are related but not equivalent — and U14 makes the gap explicit.
+
+**The narrative arc of the SS26 second half.** U11 was structures + prediction; U12 was generation; U13 is uncertainty + decision; U14 is constraints + trust. The whole arc is "from prediction to deployment in an autonomous loop." We are now one unit away from the destination.
+
+**For students who want to go deeper.** The recommended reading for this transition is the recent literature on autonomous-lab governance: Berkeley A-Lab post-mortems, Toronto self-driving lab whitepapers, NREL closed-loop reports. None are in `ref.bib`; will be added next semester.
+:::
+
+## 45. Exercise + Reading Assignment
+
+::: {.columns}
+::: {.column width="50%"}
+**Exercise (90 min, this afternoon)**
+
+1. Pull a Materials Project ternary subset (Li–Co–O or similar). Reconstruct the convex hull. Identify hull and near-hull entries.
+2. Train a GP surrogate (Matérn-5/2, composition kernel) on a held-out subset. Plot $\mu$ and $\sigma$ over the simplex.
+3. Run BO loops with EI and with hull-aware EI; compare regret curves over 20 acquisitions.
+4. Run a calibration diagnostic; report whether the GP is over- or under-confident on the OOD slice.
+5. **One-page report:** claims, evidence, one named failure mode.
+:::
+::: {.column width="50%"}
+**Reading for next week (Unit 14)**
+
+- @murphy2012machine Ch 15 (GPs) — for any GP loose ends from today.
+- @bishop2006pattern §6 (kernel methods) — kernel deep-dive.
+- @neuer2024machine §6.4 — uncertainty in engineering workflows.
+- Optional: a recent autonomous-lab review paper (will be linked on the course site).
+
+**Next week (Unit 14):** *physics-informed constraints, trust, and discovery governance.*
+:::
+:::
+
+::: {.notes}
+**Set expectations for the exercise.** Tasks 1–3 are must-finish; task 4 is the pedagogical core (calibration is what separates a calibrated surrogate from a guess); task 5 is the report. Students who skip task 4 will have done BO without knowing whether their BO was honest.
+
+**Hand-off cues.** "The MP API key, the convex-hull starter notebook, and a GP-fit-and-EI scaffold are on the course Git. Reading the Murphy chapter *before* starting saves you 30 min of head-scratching during the exercise."
+
+**Reading priorities.** If they read one thing this week: Murphy Ch 15 — the canonical GP chapter, very readable. If two: + Bishop §6 for the kernel deep-dive. If three: + Neuer §6.4 for the engineering perspective.
+
+**Closing sentence.** "Next week: constraints and trust. The unit that takes today's calibrated surrogate and asks how to *deploy* it in an autonomous loop. End there. Take questions."
+:::
+
+## 46. Unit 13 — One-Slide Summary
+
+::: {.columns}
+::: {.column width="50%"}
+**The discovery loop**
+
+```
+database → predict → screen → synthesise → measure → refine
+```
+
+- **Database (§A):** MP / OQMD / AFLOW / NOMAD; formation energy; convex hull; energy-above-hull as the discoverability signal.
+- **Predict (§C):** Gaussian Process; kernel encodes similarity; $\mu$ and $\sigma$ for free.
+- **Screen (§D):** acquisition functions (EI / UCB / Thompson); hull-aware and cost-aware variants; batch strategies.
+:::
+::: {.column width="50%"}
+**The disciplines**
+
+- **Calibration (§E):** check after every batch; recalibrate; reliability diagrams.
+- **Alternatives (§E):** deep ensembles at large $n$; conformal for filtering; MC-dropout as a quick proxy.
+- **Lessons (§F):** corners of the simplex; constraints matter; calibration drift kills loops.
+- **Bridge (§G):** today's calibrated surrogate is U14's prerequisite.
+:::
+:::
+
+::: {.notes}
+**This is the take-home slide.** Photograph it. The discovery loop on the left, the disciplines on the right. Five sections, one through-line: a probabilistic surrogate with a calibrated $\sigma$, plus an acquisition function, plus the materials-database front end that gives it a target.
+
+**Final exhortation, said aloud.** "If you take one thing from today: discovery is not regression. It is sequential decision under uncertainty. Calibrated $\sigma$ is the currency of that decision. Everything else is implementation detail. Now: questions, then exercise."
+
+**End the lecture.** Eyes up; pause; take questions. Do not rush into Q&A — let the silence land.
+:::
+
+::: {#refs}
+:::
+
+<!-- BEGIN prev-next -->
+
+## Continue
+
+- &larr; Previous: [Unit 12 &mdash; Generative Models & Inverse Design](../12_generative_models_and_inverse_design/01_intro.html)
+- &rarr; Next: [Unit 14 &mdash; Physical Constraints, Trust, and Integration Outlook](../14_constraints_trust_and_integration_outlook/01_intro.html)
+- [All courses](../../index.html)
+
+<!-- END prev-next -->

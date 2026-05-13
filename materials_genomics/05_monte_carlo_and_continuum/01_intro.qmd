@@ -1,0 +1,741 @@
+---
+title: 'Materials Genomics<br>Unit 5: Monte Carlo Sampling & Continuum Mechanics'
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
+execute:
+  eval: true
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: © Philipp Pelz - Materials Genomics
+resources:
+- ../../assets/logos/*
+---
+# Where We Stand
+
+## Recap of Units 1–4
+
+::: {.incremental}
+- **Unit 1**: postulates of QM, hydrogen atom, Born interpretation
+- **Unit 2**: multi-electron atoms, Born–Oppenheimer, Slater determinants, LCAO
+- **Unit 3**: Hartree–Fock, post-HF (MP, CC), density functional theory
+- **Unit 4**: thermodynamics, statistical mechanics, classical interatomic potentials, molecular dynamics
+- We can now produce **finite-temperature trajectories** of $10^4$–$10^7$ atoms — but only if we trust ergodicity to deliver equilibrium averages
+:::
+
+## What Unit 5 Adds — The Pivot
+
+::: {.incremental}
+- MD samples the **canonical distribution** by integrating Newton — slow when barriers $\gg k_B T$
+- A complementary sampler: **Monte Carlo (MC)** moves through configuration space *without* dynamics
+- For length scales above the atomic, we move to a **continuum description** — fields, PDEs, balance laws
+- We learn the two workhorses for solving those PDEs numerically: **finite differences** and a brief look at **finite elements / volumes**
+- Together with Units 1–4, this completes the simulation toolkit that feeds the ML half of the course
+:::
+
+## Lecture Roadmap
+
+::: {.columns}
+::: {.column width="50%"}
+**Part I — Monte Carlo sampling**
+
+::: {.incremental}
+- The sampling problem and importance sampling
+- Markov chains, detailed balance, Metropolis
+- Ergodicity, equilibration, move design
+- Ensembles, kinetic MC, MC vs MD
+:::
+:::
+
+::: {.column width="50%"}
+**Part II — Continuum & discretization**
+
+::: {.incremental}
+- Balance laws and constitutive relations
+- Finite Difference Method (FDM)
+- Weak forms, Finite Element Method (FEM)
+- Finite Volumes (FV) and outlook
+:::
+:::
+:::
+
+## A Multiscale View
+
+::: {.columns}
+::: {.column width="55%"}
+| Length | Time | Method |
+|---|---|---|
+| 0.1–1 Å | fs | QM / DFT (Units 1–3) |
+| Å–nm | fs–ps | classical MD (Unit 4) |
+| Å–μm | μs–s | Monte Carlo (today, Part I) |
+| nm–m | ms–years | Continuum / FEM (today, Part II) |
+:::
+
+::: {.column width="45%"}
+::: {.incremental}
+- The "right" method tracks the **smallest** feature you must resolve
+- ML in materials genomics plays at *every* scale — surrogates for DFT, MLIPs for MD, neural PDE solvers for FEM
+- Today's content is what those surrogates ultimately reproduce
+:::
+:::
+:::
+
+# Part I — Monte Carlo Sampling
+
+## The Sampling Problem
+
+Equilibrium thermodynamics computes ensemble averages
+
+$$\langle A\rangle = \int A(\mathbf{r}^N,\mathbf{p}^N)\,p_{\text{Boltz}}(\mathbf{r}^N,\mathbf{p}^N)\,d\mathbf{r}^N d\mathbf{p}^N$$
+
+::: {.incremental}
+- For $N\sim 10^4$ atoms, the integral is over $\sim 6\times 10^4$ dimensions
+- Closed-form solutions exist only for trivially decoupled systems
+- We need a **sampling** strategy instead of a **quadrature** strategy
+- Goal: draw configurations $\{(\mathbf{r}^N_m,\mathbf{p}^N_m)\}_{m=1}^M$ such that $\langle A\rangle\approx \tfrac{1}{M}\sum_m A_m$
+:::
+
+## Why Brute Force Fails
+
+For a regular grid with $n$ points per dimension:
+
+$$\text{cost} = n^{3N}$$
+
+::: {.incremental}
+- $N=10$ atoms, $n=10$: $10^{30}$ evaluations — infeasible
+- This is the **curse of dimensionality**
+- Even sparse grids and quasi-Monte-Carlo lattices cannot beat the exponential scaling for typical materials problems
+- We need to sample *adaptively*, putting compute where the integrand is large
+:::
+
+## Why Uniform Sampling Fails
+
+Uniform random sampling: pick $\mathbf{r}^N$ at random with probability $1/V^N$.
+
+::: {.incremental}
+- Almost every uniform draw places atoms on top of each other $\Rightarrow$ astronomical $V$, vanishing Boltzmann weight $e^{-V/k_BT}\approx 0$
+- The Boltzmann mass concentrates in an **exponentially small** subset of phase space
+- Estimator variance grows exponentially with $N$
+- Effectively no signal — every sample contributes essentially zero
+:::
+
+::: {.fragment}
+We must bias the sampler *toward* high-probability regions: **importance sampling**.
+:::
+
+## Importance Sampling — The Idea
+
+If we can draw $\mathbf{x}_m \sim p(\mathbf{x})$ directly, then
+
+$$\langle A\rangle = \int A(\mathbf{x})\,p(\mathbf{x})\,d\mathbf{x}\;\approx\;\frac{1}{M}\sum_{m=1}^{M} A(\mathbf{x}_m)$$
+
+::: {.incremental}
+- The estimator collapses to a **simple average** when samples follow $p$
+- Variance is now $\mathrm{Var}(A)/M$ instead of an exponentially bad worst case
+- The target distribution here is the Boltzmann distribution
+$$p_{\text{Boltz}}(\mathbf{x}) = \frac{1}{Z}\,e^{-\mathcal{H}(\mathbf{x})/k_B T}$$
+- The catch: we cannot draw from $p_{\text{Boltz}}$ directly because $Z$ is intractable
+:::
+
+## The Partition Function Problem
+
+::: {.incremental}
+- The partition function is itself an integral over *all* of phase space
+$$Z = \int e^{-\mathcal{H}(\mathbf{x})/k_B T}\,d\mathbf{x}$$
+- Computing $Z$ has exactly the same dimensionality problem as the original average
+- **Key observation**: ratios of probabilities do *not* depend on $Z$
+$$\frac{p_{\text{Boltz}}(i)}{p_{\text{Boltz}}(j)} = \exp\!\left[-\frac{E_i - E_j}{k_BT}\right]$$
+- A sampler that uses only ratios can target $p_{\text{Boltz}}$ without ever evaluating $Z$
+- **Markov-chain Monte Carlo (MCMC)** is exactly such a sampler
+:::
+
+## Markov Chains — Setup
+
+A Markov chain is a sequence of random states $X_0,X_1,X_2,\dots$ with
+
+$$P(X_{t+1}=x'\mid X_0,\dots,X_t) = P(X_{t+1}=x'\mid X_t) \equiv T(x_t\to x')$$
+
+::: {.incremental}
+- **Memoryless**: the next state depends only on the current state
+- $T$ is the transition kernel — a probability over $x'$ for each $x$
+- A distribution $\pi$ is **stationary** if pushing it through $T$ leaves it unchanged
+- If the chain is *ergodic* (irreducible + aperiodic), it converges to $\pi$ from any starting state
+:::
+
+## Stationary Distributions
+
+$\pi$ is stationary if and only if
+
+$$\pi(x') = \sum_x \pi(x)\,T(x\to x')\qquad\text{(global balance)}$$
+
+::: {.fragment}
+A stronger, easier-to-design condition is **detailed balance**:
+
+$$\pi(x)\,T(x\to x') = \pi(x')\,T(x'\to x)$$
+:::
+
+::: {.fragment}
+Sum over $x$ on both sides: detailed balance $\Rightarrow$ global balance. The converse is *not* true — detailed balance is sufficient, not necessary.
+:::
+
+## Detailed Balance
+
+Detailed balance demands that **probability flux** between every pair of states cancels:
+
+$$\pi(i)\,P(i\to j) = \pi(j)\,P(j\to i)$$
+
+::: {.incremental}
+- Imposes a *local* condition rather than a global sum
+- Almost trivial to verify for a proposed acceptance rule
+- Sufficient (with ergodicity) to guarantee convergence to $\pi$
+- The standard design recipe for equilibrium MCMC algorithms
+:::
+
+## Proposal × Acceptance
+
+Decompose the transition kernel:
+
+$$P(i\to j) = P_q(i\to j)\,P_a(i\to j)$$
+
+::: {.incremental}
+- $P_q$: **proposal** — how we suggest a trial move (random displacement, swap, …)
+- $P_a$: **acceptance** — whether we keep the trial move
+- Inserting into detailed balance and dividing yields
+$$\frac{P_a(i\to j)}{P_a(j\to i)} = \frac{\pi(j)\,P_q(j\to i)}{\pi(i)\,P_q(i\to j)}$$
+- For **symmetric** proposals, $P_q(i\to j) = P_q(j\to i)$, the proposal cancels
+:::
+
+## Deriving the Metropolis Criterion
+
+For symmetric proposals, the acceptance ratio must satisfy
+
+$$\frac{P_a(i\to j)}{P_a(j\to i)} = \exp\!\left[-\frac{E_j - E_i}{k_B T}\right]$$
+
+::: {.fragment}
+The simplest rule satisfying this is the **Metropolis acceptance**:
+
+$$\boxed{\;P_a(i\to j) = \min\!\left[1,\;\exp\!\left(-\frac{\Delta E}{k_B T}\right)\right]\;}$$
+:::
+
+::: {.fragment}
+- Down-hill moves ($\Delta E\leq 0$): always accepted
+- Up-hill moves ($\Delta E>0$): accepted with Boltzmann probability
+:::
+
+## The Metropolis Algorithm
+
+Metropolis, Rosenbluth, Teller (1953).
+
+::: {.incremental}
+1. Initialise the system in some state (random, lattice, snapshot, …)
+2. Propose a symmetric trial move $i\to j$ (e.g. displace one atom by $\delta\in[-\Delta,\Delta]^3$)
+3. Compute the energy difference $\Delta E = E_j - E_i$
+4. Draw $u\sim\mathcal{U}(0,1)$. Accept if $u<\min[1,e^{-\Delta E/k_BT}]$
+5. If rejected, **stay in $i$** and count it again
+6. After equilibration, average observables along the chain
+:::
+
+## Why Metropolis Works
+
+With symmetric proposals, the Metropolis rule satisfies detailed balance for $\pi=p_{\text{Boltz}}$:
+
+$$\frac{P(i\to j)}{P(j\to i)} = \frac{P_a(i\to j)}{P_a(j\to i)} = e^{-\Delta E/k_BT} = \frac{\pi(j)}{\pi(i)}$$
+
+::: {.fragment}
+::: {.incremental}
+- The chain therefore converges to the canonical distribution
+- Accepting unfavourable moves lets it escape local minima
+- The rule never needs $Z$ — only **differences** of energies
+- "Reject = stay = count again" preserves the proper invariant measure
+:::
+:::
+
+## Ergodicity
+
+Detailed balance fixes the invariant distribution, but **ergodicity** is needed for convergence:
+
+::: {.incremental}
+- The chain must be able to reach every state with nonzero $\pi$ in finite time (*irreducibility*)
+- It must not get stuck in a cyclic pattern (*aperiodicity*)
+- Proposal moves must be **rich enough** to cross all relevant barriers
+- Conservative moves $\Rightarrow$ the chain may explore only a basin and give wrong averages
+- In practice: combine **multiple move types** (local + global) and check independence of the answer to the starting state
+:::
+
+## MC Workflow — Equilibration & Production
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.incremental}
+- **Equilibration / burn-in**: discard the first $N_{\text{eq}}$ samples — they reflect the initial state, not $\pi$
+- **Production**: record observables for $M$ samples
+- **Block averaging** or **autocorrelation analysis**: estimator variance is set by *independent* samples, not total samples
+- Effective sample size $M_\text{eff} = M / (1 + 2\tau)$ with autocorrelation time $\tau$
+:::
+:::
+
+::: {.column width="45%"}
+::: {.incremental}
+- Run multiple independent chains from different seeds
+- Compare within-chain and between-chain variance (Gelman–Rubin $\hat R$)
+- Diagnose poor mixing **before** trusting the average
+- Hint for the exercise: $\tau$ is often much larger than you think
+:::
+:::
+:::
+
+## Tuning Step Size
+
+Acceptance rate $\alpha$ as a function of step size $\Delta$:
+
+::: {.incremental}
+- Tiny $\Delta$: $\alpha\to 1$ but each step barely moves — slow exploration
+- Huge $\Delta$: almost every proposal rejected, $\alpha\to 0$
+- Sweet spot: **20–50% acceptance** for atomistic systems (theoretical optimum 23% for Gaussian targets)
+- Adapt $\Delta$ during equilibration; freeze it for production
+- Auto-tuning during production breaks detailed balance — separate the phases
+:::
+
+## Move Catalogue for Materials
+
+::: {.incremental}
+- **Atom displacement**: random $\delta$ on one atom — workhorse for fluids and amorphous systems
+- **Species swap**: exchange the labels of two atoms — fast equilibration of order/disorder
+- **Volume / cell move**: rescale box and coordinates — required for NPT
+- **Particle insertion / removal**: required for grand-canonical ($\mu$VT) sampling
+- **Configurational-bias moves**: regrow polymer chains segment by segment
+- **Cluster moves**: flip whole connected clusters (Swendsen–Wang) — Ising-type problems
+- **Hybrid MC**: short MD trajectory used as a proposal, Metropolis accept/reject
+:::
+
+## Ensembles in MC
+
+::: {.columns}
+::: {.column width="55%"}
+| Ensemble | Fixed | Extra move type |
+|---|---|---|
+| NVT (canonical) | $N,V,T$ | displacement |
+| NPT | $N,P,T$ | + volume move |
+| $\mu$VT (grand canonical) | $\mu,V,T$ | + insertion / removal |
+| Gibbs (multi-box) | $N_\text{tot},V_\text{tot},T$ | + particle transfer |
+:::
+
+::: {.column width="45%"}
+::: {.incremental}
+- Same Metropolis acceptance, generalised by the appropriate Boltzmann weight
+- $\mu$VT and Gibbs are unique to MC — MD cannot create/destroy atoms
+- Phase coexistence (e.g. liquid–vapour) is naturally obtained in Gibbs MC
+- Mirror the experimental boundary conditions
+:::
+:::
+:::
+
+## MC vs MD — Side by Side
+
+::: {.columns}
+::: {.column width="50%"}
+**MD strengths**
+
+::: {.incremental}
+- True dynamics: diffusion, viscosity, spectra
+- Non-equilibrium relaxation
+- Forces already available from MLIPs
+- Familiar Newtonian intuition
+:::
+:::
+
+::: {.column width="50%"}
+**MC strengths**
+
+::: {.incremental}
+- No forces required, only energies
+- "Unphysical" moves: species swap, volume change, particle exchange
+- Grand-canonical sampling
+- Often faster equilibrium sampling for dense / stiff systems
+- Trivially parallel over independent chains
+:::
+:::
+:::
+
+::: {.fragment}
+In practice they are **complementary**: MD for kinetics, MC for equilibrium and rare events.
+:::
+
+## Metropolis–Hastings & Beyond
+
+Asymmetric proposal $\Rightarrow$ acceptance ratio carries the **proposal correction**:
+
+$$P_a(i\to j) = \min\!\left[1,\;\frac{\pi(j)\,P_q(j\to i)}{\pi(i)\,P_q(i\to j)}\right]$$
+
+::: {.fragment}
+::: {.incremental}
+- Foundation for biased moves, parallel tempering, replica exchange
+- **Kinetic Monte Carlo (kMC)**: choose events with rates $r_{i\to j}$, advance the clock by $\Delta t = -\ln u / \sum r$
+- kMC samples **kinetics** of rare events (diffusion, defect migration) when a rate table is available
+- Modern variants: Hamiltonian / hybrid MC, NUTS, normalising-flow proposals — all share the same backbone
+:::
+:::
+
+# Part II — Continuum Mechanics
+
+## Why Continuum?
+
+::: {.incremental}
+- Below ~1 nm: atomistic discreteness matters $\Rightarrow$ MD / MC / DFT
+- Above ~1 μm: $10^{15}$ atoms is hopeless. Treat matter as a **continuous medium**
+- Fields $\rho(\mathbf{x},t)$, $T(\mathbf{x},t)$, $\mathbf{u}(\mathbf{x},t)$, $\sigma(\mathbf{x},t)$ live at every point
+- Atomic information enters only through **material laws** (constitutive relations)
+- This is the regime of structural mechanics, heat transport, fluid flow, electromagnetism
+- Same mathematical machinery serves every conserved quantity: mass, momentum, energy, charge, …
+:::
+
+## 1D Balance Setup
+
+Take a small interval $[x, x+dx]$, with flux $q(x)$ flowing through the boundary and a source/sink density $s(x)$:
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.incremental}
+- Influx from source: $s(x)\,dx$
+- Net flux through boundaries: $q(x+dx)-q(x)$
+- If the two balance, total inside is constant
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+$$s\,dx = q(x+dx) - q(x)$$
+$$\Rightarrow s = \frac{q(x+dx)-q(x)}{dx}$$
+
+Taking $dx\to 0$ gives the differential form.
+:::
+:::
+:::
+
+## Stationary Continuity Equation
+
+Limit of the balance:
+
+$$\boxed{\;s = \frac{\partial q}{\partial x}\;}$$
+
+::: {.incremental}
+- Net divergence of flux equals the source
+- "What flows out must be produced inside"
+- Valid for any conserved quantity at steady state
+- Independent of the physical meaning of $q$ — particles, heat, momentum, money
+:::
+
+## Transient Continuity Equation
+
+If influx and out-flux don't balance, the amount inside changes in time. Defining number density $\rho_{\text{nmbr}} = N/dx^{\text{dim}}$ and taking $dx,dt\to 0$:
+
+$$\frac{\partial \rho_{\text{nmbr}}}{\partial t} = -\frac{\partial q}{\partial x} + s$$
+
+::: {.fragment}
+::: {.incremental}
+- The first term moves material in/out
+- The second adds material from sources
+- This is the **transient continuity equation** in 1D
+- Generalises directly to higher dimensions
+:::
+:::
+
+## Multi-Dimensional Form
+
+In $d$ dimensions the flux becomes a vector $\mathbf{q}\in\mathbb{R}^d$ and the divergence replaces $\partial/\partial x$:
+
+$$\boxed{\;\frac{\partial \rho}{\partial t} = -\nabla\cdot\mathbf{q} + s\;}$$
+
+where
+
+$$\nabla\cdot\mathbf{q} = \sum_{i=1}^{d}\frac{\partial q_i}{\partial x_i}$$
+
+::: {.fragment}
+This is the universal form of conservation. To close the system we need **constitutive laws** that specify $\mathbf{q}$ in terms of the field.
+:::
+
+## Constitutive Laws
+
+Constitutive laws connect flux to gradient of the field:
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.incremental}
+- **Fick's law** (diffusion):
+$$\mathbf{q} = -D\,\nabla c$$
+- **Fourier's law** (heat):
+$$\mathbf{q} = -k\,\nabla T$$
+- **Darcy's law** (porous flow):
+$$\mathbf{q} = -k_{\text{hyd}}\,\nabla p$$
+:::
+:::
+
+::: {.column width="50%"}
+::: {.incremental}
+- All have the same form: flux opposes gradient
+- Coefficients ($D$, $k$, $k_{\text{hyd}}$) carry the material identity
+- Combining with continuity yields the **diffusion / heat / Darcy** PDEs
+- e.g. $\partial_t c = D\nabla^2 c + s$
+:::
+:::
+:::
+
+## Isotropy vs Anisotropy
+
+::: {.incremental}
+- Scalar coefficient $\Rightarrow$ **isotropic** material — same response in all directions
+- Many real materials are not: layered composites, fibre-reinforced polymers, single-crystal metals
+- General form uses a **material tensor** $\mathbf{A}$:
+$$\mathbf{q} = -\mathbf{A}\,\nabla\varphi$$
+- $\mathbf{A}$ has up to $d^2$ independent entries (symmetry usually reduces this)
+- The principal axes of $\mathbf{A}$ are the directions of fastest / slowest transport
+- ML potentials and ML constitutive models routinely predict $\mathbf{A}$ from microstructure
+:::
+
+# Part III — Discretization
+
+## Why Discretize?
+
+::: {.incremental}
+- Analytic solutions exist only for highly symmetric, often academic geometries
+- Real engineering problems involve complex shapes, multiphase media, nonlinearities
+- We replace the continuous PDE by an algebraic system on a **finite grid**
+- Two big families: **finite differences** (point values on a regular grid) and **finite elements** (basis functions on a mesh)
+- Both share a foundation: **Taylor expansion** of the field
+:::
+
+## Taylor Expansion
+
+For a smooth scalar field $\varphi$:
+
+$$\varphi(x_0+\delta) = \sum_{j=0}^{\infty}\frac{1}{j!}\frac{\partial^j\varphi(x_0)}{\partial x^j}\,\delta^j$$
+
+::: {.incremental}
+- Truncating at order $J$ leaves an error $\mathcal{O}(\delta^{J+1})$
+- We will obtain derivative approximations by **rearranging** truncated expansions
+- The choice of which neighbours to use determines accuracy and stability
+- All FDM stencils, including the gold-standard Crank–Nicolson and Runge–Kutta schemes, derive from this template
+:::
+
+## Forward & Backward Differences
+
+Truncating at first order:
+
+::: {.columns}
+::: {.column width="50%"}
+**Forward**:
+
+$$\frac{\partial\varphi(x_0)}{\partial x} \approx \frac{\varphi(x_0+\delta) - \varphi(x_0)}{\delta}$$
+:::
+
+::: {.column width="50%"}
+**Backward**:
+
+$$\frac{\partial\varphi(x_0)}{\partial x} \approx \frac{\varphi(x_0) - \varphi(x_0-\delta)}{\delta}$$
+:::
+:::
+
+::: {.fragment}
+- Both have leading error $\mathcal{O}(\delta)$ — only first-order accurate
+- One-sided; useful at boundaries
+- Cheap and stable for advection-dominated problems with upwinding
+:::
+
+## Central Difference
+
+Subtract the backward from the forward expansion: the second-order terms cancel.
+
+$$\boxed{\;\frac{\partial\varphi(x_0)}{\partial x} \approx \frac{\varphi(x_0+\delta) - \varphi(x_0-\delta)}{2\delta}\;}$$
+
+::: {.fragment}
+::: {.incremental}
+- Leading error $\mathcal{O}(\delta^2)$ — **one order better than one-sided**
+- Symmetric: no preferred direction
+- Requires neighbour information on both sides $\Rightarrow$ needs special treatment at boundaries
+- Standard choice for diffusive PDEs
+:::
+:::
+
+## Second-Derivative Stencil
+
+**Add** forward and backward expansions to order 2: first-order terms cancel.
+
+$$\frac{\partial^2\varphi(x_0)}{\partial x^2} \approx \frac{\varphi(x_0+\delta) - 2\varphi(x_0) + \varphi(x_0-\delta)}{\delta^2}$$
+
+::: {.fragment}
+::: {.incremental}
+- Error $\mathcal{O}(\delta^2)$ (odd-order terms cancel)
+- Three-point symmetric stencil
+- Generalises to higher derivatives and higher orders
+- This is *the* discrete Laplacian — appears in heat, Poisson, Schrödinger, Helmholtz, …
+:::
+:::
+
+## Worked Example: 1D Laplace
+
+Solve $\partial^2\varphi/\partial x^2 = 0$ on $x\in[0,4]$ with $\varphi(0)=0$, $\varphi(4)=1$.
+
+::: {.columns}
+::: {.column width="55%"}
+Three grid points, $\delta=2$:
+
+$$x_1=0,\; x_2=2,\; x_3=4$$
+
+Boundary values: $\varphi_1=0$, $\varphi_3=1$.
+
+Central stencil at interior node:
+
+$$\frac{\varphi_3 - 2\varphi_2 + \varphi_1}{\delta^2} = 0\;\;\Rightarrow\;\;\varphi_2 = \tfrac{1}{2}$$
+:::
+
+::: {.column width="45%"}
+::: {.incremental}
+- The discrete problem became a single algebraic equation
+- More interior nodes $\Rightarrow$ a tridiagonal linear system
+- Larger meshes: sparse linear solvers (e.g. conjugate gradient)
+- Same structure carries to 2D / 3D Poisson — the workhorse of FDM
+:::
+:::
+:::
+
+## Boundary Conditions
+
+Three families dominate practice:
+
+::: {.incremental}
+- **Dirichlet**: value of $\varphi$ is prescribed on $\partial\Omega$ — fixed temperature, fixed concentration
+- **Neumann**: normal derivative $\partial\varphi/\partial n$ is prescribed — insulated wall, fixed flux
+- **Robin (mixed)**: linear combination $\alpha\varphi + \beta\,\partial\varphi/\partial n = \gamma$ — convective heat transfer
+- One-sided differences are used at the edge of the domain
+- Bad boundary handling is the single most common bug in undergraduate FDM code
+:::
+
+## Time Stepping & CFL
+
+For transient problems, march in time with finite differences as well:
+
+::: {.incremental}
+- **Forward (explicit) Euler**: $\varphi^{n+1} = \varphi^n + \Delta t\,F(\varphi^n)$ — cheap, but conditionally stable
+- **Backward (implicit) Euler**: $\varphi^{n+1} = \varphi^n + \Delta t\,F(\varphi^{n+1})$ — needs a linear solve, unconditionally stable
+- **Crank–Nicolson**: average of the two — second-order accurate
+- For diffusion with explicit Euler: stable only if $\Delta t \leq \delta^2/(2D)$
+- For advection: **CFL condition** $\Delta t\leq \delta/|v|$ — information cannot move faster than the grid
+:::
+
+## Toward FEM: Weak Form
+
+Multiply the PDE by an arbitrary test function $w$ and integrate over the domain:
+
+$$\int_\Omega \frac{\partial}{\partial x}\!\left(A(x)\,\frac{\partial\varphi}{\partial x}\right)\,w\,dx = \int_\Omega q\,w\,dx$$
+
+::: {.fragment}
+Integrate the left-hand side by parts to lower the order of differentiation on $\varphi$:
+
+$$-\int_\Omega A\,\frac{\partial\varphi}{\partial x}\,\frac{\partial w}{\partial x}\,dx + \text{boundary terms} = \int_\Omega q\,w\,dx$$
+:::
+
+::: {.fragment}
+The PDE is now stated as an integral identity for *all* admissible $w$. Discretise both $\varphi$ and $w$ on a finite basis $\Rightarrow$ a linear system.
+:::
+
+## Finite Element Method
+
+Approximate $\varphi(x)\approx\sum_i \varphi_i\,N_i(x)$ with local **shape functions** $N_i$ (typically piecewise polynomials on a mesh).
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.incremental}
+- Mesh handles complex 2D/3D geometry
+- Local support $\Rightarrow$ **sparse** stiffness matrix
+- Higher-order $N_i$ trade memory for accuracy (h- vs p-refinement)
+- Natural treatment of Neumann boundaries through the boundary term in the weak form
+- Industry standard: ANSYS, Abaqus, COMSOL, Code_Aster, FEniCS, deal.II
+:::
+:::
+
+::: {.column width="45%"}
+::: {.incremental}
+- Strength: complex geometries, mixed BCs, multiphysics couplings
+- Weakness: mesh generation can dominate the workflow
+- Cousin: spectral methods (global shape functions, exponential accuracy on smooth domains)
+:::
+:::
+:::
+
+## Finite Volumes Variant
+
+Set the test function $w\equiv 1$ on each control volume and apply the divergence theorem:
+
+$$\int_{V_k}\nabla\cdot\mathbf{q}\,dV = \oint_{\partial V_k}\mathbf{q}\cdot\hat{\mathbf{n}}\,dA$$
+
+::: {.incremental}
+- The PDE becomes a **local flux balance** between neighbouring cells
+- Conservative by construction — total mass / energy is preserved to round-off
+- Method of choice for CFD (OpenFOAM, ANSYS Fluent), reservoir engineering, shock-capturing schemes
+- Conceptually closest to the original "balance law" derivation we started with
+:::
+
+# Closing
+
+## Where ML Plugs In
+
+::: {.incremental}
+- **Surrogate force fields** (MACE, M3GNet, CHGNet, …) deliver $E,\,\mathbf{F}$ for MD/MC at ~DFT accuracy
+- **Neural samplers** (Boltzmann generators, normalising flows) propose MC moves that vault over barriers — Noé *et al.* 2019
+- **Neural PDE solvers** (PINNs, Fourier neural operators, graph neural PDE solvers) learn the discretised continuum operator
+- **Operator learning** (FNO, DeepONet) generalises across geometries — promising for FEM-scale problems
+- **Inverse design** treats the continuum solver as a differentiable layer in a generative loop
+- *Every* technique in the rest of this lecture series sits on top of the simulation tools we just introduced
+:::
+
+## Key Takeaways
+
+::: {.incremental}
+- **Importance sampling**: integrate by drawing from a target distribution, not on a grid
+- **Markov-chain MC + detailed balance**: design a chain whose invariant distribution is $p_{\text{Boltz}}$ — Metropolis is the canonical example
+- **Ergodicity** is non-negotiable: move design and diagnostics determine whether averages are physical
+- **Continuum mechanics** replaces atoms with fields. Conservation gives a continuity equation; constitutive laws close the system
+- **FDM** turns derivatives into Taylor stencils; **FEM/FV** start from a weak form / flux balance to handle real geometries
+- These three sampling paradigms (DFT, MD, MC, FEM) span the length-scale ladder. ML in materials genomics learns surrogates for *each* rung
+:::
+
+## Outlook — Unit 6
+
+::: {.incremental}
+- **Unit 6**: how do we *encode* crystalline structures so an ML model can read them?
+- Classical descriptors (Magpie, matminer) as motivation
+- **Graph-based representations** as the modern workhorse (CGCNN, MEGNet, ALIGNN)
+- Equivariance and message passing: the conceptual leap to MACE, M3GNet, EquiformerV2
+- Unit 7 then turns those representations into **universal force fields** that feed straight back into the MD/MC machinery built today
+:::
+
+<!-- BEGIN prev-next -->
+
+## Continue
+
+- &larr; Previous: [Unit 04 &mdash; Thermodynamics, Statistical Mechanics & Classical Atomistic Simulation](../04_thermodynamics_and_atomistic_simulation/01_intro.html)
+- &rarr; Next: [Unit 06 &mdash; Graph-Based Crystal Representations](../06_graph_based_rep/01_intro.html)
+- [All courses](../../index.html)
+
+<!-- END prev-next -->
+
+## References
+
+::: {#refs}
+:::

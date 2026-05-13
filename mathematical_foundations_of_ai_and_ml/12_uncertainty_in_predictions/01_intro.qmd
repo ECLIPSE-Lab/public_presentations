@@ -54,7 +54,7 @@ By the end of this lecture, students can:
 - Overconfident models are more dangerous than inaccurate ones.
 ::::
 
-## Recall: aleatory vs epistemic uncertainty (Unit 8)
+## Recall: aleatory vs epistemic uncertainty (Unit 7)
 
 :::: {.columns}
 :::: {.column width="55%"}
@@ -520,133 +520,41 @@ $$
 ::::
 
 
-<!-- ===== §10b. Conformal prediction: distribution-free UQ ===== -->
+<!-- ===== §10b. Conformal prediction (already covered in Unit 7) ===== -->
 
-## Conformal prediction: distribution-free uncertainty with finite-sample guarantee
+## Conformal prediction --- already in your toolbox
 
 :::: {.columns}
-:::: {.column width="50%"}
-**What conformal prediction *is*.**
+:::: {.column width="55%"}
+**Recall from Unit 7.** Split conformal and CQR were introduced as the distribution-free coverage layer of the probabilistic toolbox.
 
 :::: {.incremental}
-- A **wrapper** that turns *any* point predictor into a set/interval predictor with a finite-sample coverage guarantee.
-- **Promise**: pick miscoverage $\alpha = 0.1$ — the prediction interval covers the true value at least $1 - \alpha = 90\%$ of the time, on average. **No assumption on the data distribution; no assumption on the model.**
-- Only assumption: **exchangeability** of the calibration and test data (usually true if both are i.i.d. from the same source).
+- Pick miscoverage $\alpha$. For any exchangeable new $(X, Y)$, the conformal interval $C(X)$ satisfies $\Pr(Y \in C(X)) \geq 1 - \alpha$ — finite-sample, model-agnostic [@angelopoulos2021gentle].
+- **Split conformal** (constant-width) is one calibration-set quantile away from any trained predictor.
+- **Conformalized Quantile Regression** (adaptive width) wraps a pinball-loss quantile head with the same finite-sample guarantee [@romano2019cqr].
 ::::
 ::::
 
-:::: {.column width="50%"}
-**Why everyone uses it in 2026.**
+:::: {.column width="45%"}
+**Why it shows up here.**
 
 :::: {.incremental}
-- **Model-agnostic.** Wraps NNs, GPs, GBMs, even hand-crafted models.
-- **Finite-sample, not asymptotic.** Coverage holds for $n=50$, not just $n \to \infty$.
-- **Cheap.** A calibration pass over $\sim 1000$ held-out points — no retraining.
-- **Composable** with all of §12 so far: take any MDN / MC-dropout / ensemble point estimate and *conformalize* it for rigorous coverage [@angelopoulos2021gentle].
+- This unit's UQ methods — GPs, MC Dropout, deep ensembles, MDN — all give intervals **conditional on a model being correct**.
+- Conformal **wraps** any of those to inherit a frequentist marginal-coverage stamp, independent of model correctness.
+- See **Unit 7** for the derivation, the 5-line Python recipe, and the exchangeability failure modes.
 ::::
 ::::
 ::::
 
 ::: {.fragment}
-> The trade-off: guaranteed coverage is *marginal* — averaged over the test distribution. Conditional coverage (per input $\mathbf{x}$) is harder; CQR is the standard fix.
+> In 2026 practice the default UQ stack for a regression NN is **quantile heads + CQR** on top of whatever this unit's method produced as a point estimate.
 :::
 
 ::: {.notes}
-- The big shift from §12 so far. Bayesian/ensemble UQ gives credible / predictive intervals **based on a model**. If the model is mis-specified, the intervals are wrong. Conformal gives **frequentist coverage** regardless of model correctness.
-- Most accessible reference: Angelopoulos & Bates, "A Gentle Introduction to Conformal Prediction" — the de facto teaching reference for the field.
-- Why this slide arrives *after* deep ensembles: ensembles produce a score (mean + variance); conformal turns that score into a **valid** interval. The two are complementary, not competitors.
-- Material-science context: when you tell a metallurgist your hardness prediction is "120 $\pm$ 8 HV with 90% coverage", and that 90% holds on a held-out lab batch *regardless of whether your NN is well-calibrated*, that lands. Bayesian "credible interval" is harder to defend in a regulated context.
-- Historical pointer (one sentence): the framework goes back to Vovk, Gammerman, Shafer [-@vovk2005algorithmic]; the explosion of practical use is post-2019.
-:::
-
-## Split conformal in 5 lines
-
-:::: {.columns}
-:::: {.column width="50%"}
-**The algorithm.** Given a trained predictor $\hat f$ and a separate **calibration set** $\{(\mathbf{x}_i, y_i)\}_{i=1}^{n}$:
-
-:::: {.incremental}
-1. Compute **nonconformity scores** $s_i = |y_i - \hat f(\mathbf{x}_i)|$ for $i = 1, \dots, n$.
-2. Compute the empirical quantile
-$$ \hat q = \mathrm{Quantile}\!\left(\{s_i\};\; \tfrac{\lceil (n+1)(1-\alpha) \rceil}{n}\right). $$
-3. For a new $\mathbf{x}$, output the interval
-$$ C(\mathbf{x}) = \big[\hat f(\mathbf{x}) - \hat q,\; \hat f(\mathbf{x}) + \hat q\big]. $$
-::::
-
-For any exchangeable new $(X, Y)$:
-$$\Pr\!\left(Y \in C(X)\right) \geq 1 - \alpha.$$
-::::
-
-:::: {.column width="50%"}
-**The 5-line Python.**
-
-```python
-# Held-out calibration set (x_cal, y_cal);
-# trained model `model`; alpha = 0.1
-scores = np.abs(y_cal - model.predict(x_cal))
-n = len(scores)
-qhat = np.quantile(
-    scores, np.ceil((n + 1) * (1 - alpha)) / n)
-
-# At test time:
-def conformal_interval(x):
-    yhat = model.predict(x)
-    return yhat - qhat, yhat + qhat
-```
-::::
-::::
-
-::: {.fragment}
-> $\hat q$ is a single scalar. The interval width is the **same for every test point** in vanilla split CP — exactly the per-input coverage problem CQR fixes next.
-:::
-
-::: {.notes}
-- Proof in one sentence: by exchangeability, the rank of the test-point score $s_{n+1}$ among $\{s_1, \dots, s_n, s_{n+1}\}$ is uniformly distributed on $\{1, \dots, n+1\}$; thresholding at the $\lceil (n+1)(1-\alpha) \rceil$-th score guarantees marginal coverage. Wave the hand on technicalities — this is a teaching deck, not a proof course.
-- The split: $n$ should be at least a few hundred; smaller works but with chunkier quantiles. The original training set is **separate** from the calibration set — no leakage.
-- Critical practical points to say aloud:
-  - "Split conformal is **trivially parallel** with any model; you don't retrain when you change $\alpha$."
-  - "It needs **exchangeability** — if there's distribution shift between calibration and test, coverage fails. Workarounds: weighted conformal, distribution-free CP under covariate shift."
+- This block deliberately does not re-derive conformal: Unit 7 already owns it (so that ML-PC u07 / u08 / u11 can assume the audience knows split CP and CQR).
+- The role of this slide in Unit 12 is purely the **composition** message: "any UQ method above + conformal wrapper = coverage guarantee on top of model-conditional uncertainty."
 - Jackknife+ [@barber2021jackknife] is the leave-one-out version — uses all data for both fitting and calibration, slightly more efficient with similar guarantees. Mention by name only.
-:::
-
-## Conformalized Quantile Regression (CQR) --- adaptive interval widths
-
-:::: {.columns}
-:::: {.column width="50%"}
-**Why vanilla split CP is too coarse.**
-
-:::: {.incremental}
-- $\hat q$ is the **same constant** for every $\mathbf{x}$.
-- Easy inputs get unnecessarily wide intervals; hard inputs may still under-cover *conditionally*.
-- We *want* intervals that widen near hard regions of input space --- like the heteroscedastic Gaussian head from Unit 8.
-::::
-::::
-
-:::: {.column width="50%"}
-**CQR fix** [@romano2019cqr].
-
-:::: {.incremental}
-1. Train a **quantile-regression** model predicting $\hat q_{\alpha/2}(\mathbf{x})$ and $\hat q_{1-\alpha/2}(\mathbf{x})$ --- e.g., a NN with two heads using the pinball loss, or a quantile GBM.
-2. Compute conformity scores
-$$ s_i = \max\!\big(\hat q_{\alpha/2}(\mathbf{x}_i) - y_i,\; y_i - \hat q_{1-\alpha/2}(\mathbf{x}_i)\big). $$
-3. Take $\hat q = \mathrm{Quantile}\!\left(s_i;\; \tfrac{(n+1)(1-\alpha)}{n}\right)$, then output
-$$ C(\mathbf{x}) = \big[\hat q_{\alpha/2}(\mathbf{x}) - \hat q,\; \hat q_{1-\alpha/2}(\mathbf{x}) + \hat q\big]. $$
-- Marginal coverage is **preserved**; intervals **adapt** to local input difficulty.
-::::
-::::
-::::
-
-::: {.fragment}
-> In 2026 practice, the default UQ stack for a regression NN is: **quantile heads + CQR**. Calibrate once, ship with finite-sample coverage.
-:::
-
-::: {.notes}
-- Why CQR is the practical default: vanilla CP is too conservative in easy regions and over-confident in hard ones; CQR fixes both with one extra training step. Same marginal guarantee.
-- Quantile heads can be added to any architecture: replace your single output with two outputs trained via the **pinball** (a.k.a. quantile) loss $\ell_\tau(r) = \max(\tau r, (\tau - 1) r)$ for $\tau \in \{\alpha/2,\, 1 - \alpha/2\}$.
-- This is exactly the SOTA reported in Romano et al. 2019; the method has aged extremely well.
-- For materials: any composition-property regression (the GP slide's running example) --- fit a quantile NN, apply CQR, ship. The result is a heteroscedastic interval with a **frequentist** coverage stamp.
 - Forward link: §13 PINNs can supply a physics-informed mean prediction; CQR wraps it with coverage. The two compose.
-- Brief mention of related: conformal classification (LAC, APS), conformal risk control. We don't go there today.
 :::
 
 ## Stochastic enrichment

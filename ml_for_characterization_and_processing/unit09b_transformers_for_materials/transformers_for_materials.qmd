@@ -1,0 +1,437 @@
+---
+title: 'Machine Learning for Characterization and Processing<br>Unit 9b: Transformers for Materials'
+subtitle: AI 4 Materials / KI-Materialtechnologie
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
+execute:
+  eval: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: © Philipp Pelz - ML for Characterization and Processing
+---
+
+# 01. Where we are
+
+## Recap of Unit 9 — and why we now need attention
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+**Unit 9 (PCA / AE / MAE on spectra):**
+
+- **PCA** — linear, closed-form, interpretable; a strong baseline on EELS / XRD / Raman.
+- **Autoencoders** — non-linear, but each layer sees only a small local neighborhood.
+- **MAE** — masked-autoencoder pretraining; already uses a transformer encoder, but we treated it as a black box.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**What is still missing:**
+
+- A principled way to mix information across **distant** positions of the input.
+- The Bragg disc on the left of a 4D-STEM pattern should be allowed to talk to the disc on the right *in one layer*, not after 20 convolutions.
+- This is exactly what **attention** gives us.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+Theory is in **MFML W10** (transformer derivation, complexity, optimisation). Today: **using** transformers on materials data on a 1080Ti budget.
+:::
+
+::: {.notes}
+Materials hook: recap that PCA / AE / MAE were the spectroscopy workhorses of Unit 9; the only one of them that already had global context was the MAE — because it had a transformer inside. We are now opening that black box. 1080Ti budget: everything in this deck must fit on 11 GB VRAM at fp16 — that is the constraint we keep returning to. Theory pointer: MFML W10 has the full derivation (positional encodings, layer-norm placement, optimiser quirks); ML-PC W10b is about *using* the result on lab data.
+:::
+
+# 02. Why attention for materials
+
+## Long-range correlations exceed practical CNN receptive fields
+
+::: {.fragment}
+- A diffraction pattern, a STEM image, an EELS line scan, an LPBF layer stack — all contain **structure that spans the entire field of view**.
+- The Bragg discs of a 4D-STEM pattern are **geometrically constrained pairs**: positions on opposite sides of the central beam carry coupled information (lattice vectors).
+- A CNN with 3×3 kernels needs ~$L/2$ layers to connect two pixels $L$ apart. On a 256×256 pattern that is **128 layers** for global context — unrealistic at 1080Ti budgets.
+:::
+
+::: {.fragment}
+- A transformer **mixes all positions in one layer**, at the cost of $\mathcal{O}(L^2)$ in sequence length.
+- For micrographs we trade pixels for **patches** (ViT) to make $L$ manageable.
+:::
+
+::: {.callout-warning .fragment}
+"Long-range" is not a buzzword on materials data. EELS edges span hundreds of channels; LPBF microstructure depends on the *previous five* layers. If your model cannot see that far in one layer, it cannot learn the physics.
+:::
+
+::: {.notes}
+Materials hook: I want students to feel why the 3×3 conv hammer hits a ceiling on diffraction and on layered builds. Walk through the Bragg-pair example explicitly — pick a 256×256 CBED pattern, point at two discs 200 px apart, count the conv layers needed. 1080Ti budget: even a 14×14-patch ViT on 256×256 has L=256, well inside what a 1080Ti runs with SDPA at batch 32. MFML W10 reference: receptive-field calculation is done formally there.
+:::
+
+# 03. Refresher: scaled dot-product attention
+
+## The formula and the cost
+
+::: {.columns}
+::: {.column width="55%"}
+$$
+\mathrm{Attn}(Q, K, V) = \mathrm{softmax}\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V
+$$
+
+::: {.fragment}
+- $Q, K, V \in \mathbb{R}^{L \times d_k}$ — queries, keys, values; one row per token.
+- $QK^\top \in \mathbb{R}^{L \times L}$ — pairwise similarity; this is the **memory bottleneck**.
+- $\sqrt{d_k}$ scaling keeps softmax saturation in check at high $d_k$.
+- **Multi-head**: run $h$ attention blocks of dim $d_k / h$ in parallel, concat; cheap diversity.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**Complexity:**
+
+- Compute: $\mathcal{O}(L^2 \, d_k)$.
+- Memory (naive): $\mathcal{O}(L^2)$ to materialise the attention matrix.
+- At $L = 1024$, $L^2 = 10^6$ entries per head per layer — fits, but tight on 11 GB.
+:::
+
+::: {.fragment}
+- This is why **Flash Attention** matters (slide 5): same math, $\mathcal{O}(L)$ memory.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+Reference: [@vaswani_2017_attention]. Derivation, gradient flow, why pre-norm beats post-norm — all in **MFML W10**.
+:::
+
+::: {.notes}
+Materials hook: re-emphasise that $QK^\top$ is what couples every token to every other token — which is what we wanted for diffraction patterns. 1080Ti budget: a naive attention on L=4096 needs 16M entries times batch times heads — blows past 11 GB instantly. This number motivates slide 5. MFML W10: refer students there for the full per-head, per-layer FLOP and memory count and for the positional-encoding zoo.
+:::
+
+# 04. Vision Transformer (ViT) in five lines
+
+## Patchify, embed, encode, classify
+
+::: {.fragment}
+1. **Patchify** the image into $P\times P$ patches (e.g. 16×16). Each patch becomes one token. A 224×224 image gives $L = 196$.
+2. **Linear embed** each flattened patch into a $d$-dimensional vector.
+3. Prepend a learnable **`[CLS]` token**; add **learnable positional embeddings** (one per slot, including CLS).
+4. Stack $N$ **transformer encoder blocks** (LayerNorm → MHA → MLP → residual).
+5. The final state of `[CLS]` is the image representation; classify with a linear head [@dosovitskiy_2021_vit].
+:::
+
+::: {.fragment}
+**Diagram in words:**
+*image* → grid of patches → flatten → linear projection → token sequence → `[CLS]` + pos. emb. → $N \times$ encoder → take `[CLS]` → MLP head.
+:::
+
+::: {.callout-warning .fragment}
+ViT was originally trained on JFT-300M. **Pretraining matters**: on small materials datasets, a ViT trained from scratch will overfit catastrophically — pretrain (MAE / DINO) or use a pretrained backbone. See anti-patterns slide.
+:::
+
+::: {.notes}
+Materials hook: the patch size is the lever. On a 256×256 4D-STEM CBED pattern, P=16 gives 256 tokens — comfortable on 1080Ti; P=8 gives 1024 tokens — tight; P=4 is naive-attention infeasible without SDPA / Flash. 1080Ti budget: a ViT-Tiny (d=192, 12 layers, 3 heads) at L=256 trains at batch 64 fp16 with SDPA — that is the workhorse setting I use. MFML W10: positional-embedding choices (learned vs sinusoidal vs 2-D RoPE) are covered there; for diffraction data 2-D positional info is non-trivial and matters.
+:::
+
+# 05. Flash Attention
+
+## The kernel that makes long sequences tractable
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- Same mathematics as scaled dot-product attention; **different IO pattern**.
+- Naive attention writes the full $L\times L$ matrix to HBM, then reads it back for softmax and the $\cdot V$ multiply. Memory-bound.
+- Flash Attention **tiles** the computation, keeps the running softmax statistics in SRAM, and never materialises the full matrix in HBM [@dao_2022_flashattention].
+:::
+
+::: {.fragment}
+**Net effect:**
+
+- $\mathcal{O}(L)$ memory at fixed head size.
+- 2–10× wall-clock speedup at long $L$.
+- Exact, not approximate — same gradients.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**Practical PyTorch:**
+
+```python
+import torch.nn.functional as F
+
+# auto-dispatches to the best available kernel
+y = F.scaled_dot_product_attention(
+        q, k, v,
+        attn_mask=None,
+        dropout_p=0.0,
+        is_causal=False,
+)
+```
+:::
+
+::: {.callout-note .fragment}
+On **Pascal (1080Ti)** SDPA dispatches to the **memory-efficient** kernel (not true Flash, but still $\mathcal{O}(L)$ memory and a real speedup). On **Ampere+** it dispatches to true Flash Attention. Either way: prefer SDPA to a hand-rolled `softmax(QK^T/√d)@V`.
+:::
+:::
+:::
+
+::: {.notes}
+Materials hook: this is the single piece of plumbing that unlocks training a 4D-STEM ViT on a 1080Ti at all. Without SDPA, batch 8 on L=1024 OOMs; with SDPA, batch 32 fits. 1080Ti budget: explicitly call out that we do **not** get true Flash Attention on Pascal — students on lab 1080Ti hardware still benefit from the memory-efficient kernel, just not the full 5× speedup the paper advertises (that is Ampere+). MFML W10 reference: complexity arguments are derived there; ML-PC W10b shows the wall-clock numbers.
+:::
+
+# 06. Materials application 1 — ViT on 4D-STEM
+
+## Diffraction patches → token sequence → ViT encoder
+
+::: {.fragment}
+- **4D-STEM**: at each scan position $(x, y)$ the detector records a 2-D diffraction pattern $I(k_x, k_y)$. The dataset is a 4-D tensor.
+- Treat each diffraction pattern as a 2-D image; patchify; ViT-encode.
+- Output: per-scan-position embedding → downstream tasks (phase map, strain map, orientation map, defect detection).
+:::
+
+::: {.fragment}
+**Why ViT and not a 2-D CNN:**
+
+- Bragg discs are **geometrically paired** across the central beam — a non-local relationship.
+- The relevant features (disc positions, Friedel pairs, kinematic vs dynamic intensities) live at all spatial scales.
+- A ViT mixes all patches in one layer; a CNN needs many layers to do the same.
+:::
+
+::: {.callout-note .fragment}
+Practical recipe: ViT-Tiny ($d=192$, 12 layers), patch 16, image 256×256, **MAE-pretrained** on unlabelled 4D-STEM stacks, then fine-tuned for the labelled task. On 1080Ti: batch 32 fp16 with SDPA.
+:::
+
+::: {.notes}
+Materials hook: this is the slide that pays off the whole unit. Tie back to Unit 9 — MAE pretraining on 4D-STEM is exactly what the autoencoder family was preparing for. Mention concrete tasks: orientation mapping (currently template matching), strain mapping (currently disc fitting), phase identification (currently library search). Each of these has been shown to benefit from ViT embeddings. 1080Ti budget: a single 4D-STEM scan is ~64×64 positions × 256×256 detector = 256M values — does not fit in VRAM as one batch; train on randomly-sampled scan-position minibatches. MFML W10 reference: the per-token compute count derived there explains the patch-size trade-off.
+:::
+
+# 07. Materials application 2 — long-stack micrograph context
+
+## Cross-attention across LPBF layers
+
+::: {.fragment}
+- **Laser powder-bed fusion (LPBF)**: part is built layer by layer; microstructure at layer $\ell$ depends on the **thermal history** of layers $\ell, \ell-1, \ldots, \ell-k$.
+- A per-layer CNN sees only the current layer — it cannot learn that an overhang two layers below changed the local cooling rate.
+- Stack the last $k$ in-situ thermal/optical layer images as a **sequence**; cross-attention lets layer $\ell$ attend to layers $\ell - 1, \ldots, \ell - k$.
+:::
+
+::: {.fragment}
+**Architecture sketch:**
+
+- Per-layer ViT encoder produces a token sequence $T_\ell \in \mathbb{R}^{L \times d}$.
+- A cross-attention block over the layer axis: $Q$ from $T_\ell$, $K, V$ from $\{T_{\ell-1}, \ldots, T_{\ell-k}\}$.
+- Output predicts local microstructure / defect probability for layer $\ell$.
+:::
+
+::: {.callout-warning .fragment}
+Naive concatenation along the token axis blows $L$ by $k\times$ → $L^2$ blows by $k^2$. Use **cross-attention with separate $K, V$** (not self-attention on the concatenated stack) to keep cost linear in $k$.
+:::
+
+::: {.notes}
+Materials hook: this is the killer application of attention for the processing side of the course. Thermal history is *the* hidden variable in LPBF; we have layer-resolved in-situ data; we just need a model with the right inductive bias. 1080Ti budget: a ViT-Tiny per layer at L=256 plus a cross-attention head over k=5 layers fits comfortably; k=20 starts to be tight. MFML W10 reference: cross-attention is the original encoder–decoder construct from the 2017 paper — point students at that derivation rather than re-deriving here.
+:::
+
+# 08. Scaling alternatives (mention only)
+
+## Beyond dense attention
+
+::: {.fragment}
+- **Mixture of Experts (MoE)** — replace the MLP block with $E$ parallel MLPs and a router that sends each token to the top-$k$ experts. Sparse compute: $E$× parameters, only $k$× FLOPs. Useful when we want a *large* model on a small inference budget.
+- **Mamba / structured state-space models (SSMs)** — recurrent formulation with $\mathcal{O}(L)$ compute and constant memory; competitive with transformers on long sequences [@gu_2023_mamba]. Cross-reference the **supplementary time-series deck** (sequence models).
+:::
+
+::: {.fragment}
+- For our 1080Ti / lab-scale budget, neither is *needed* on the typical materials sequence lengths ($L \lesssim 4096$ with SDPA).
+- They become relevant for **whole-build LPBF sequences** ($L \sim 10^5$ layers × patches) or **multi-spectrum joint models**.
+:::
+
+::: {.callout-note .fragment}
+Pick the right tool. A vanilla ViT + SDPA solves 90 % of materials tasks at our scale. MoE / Mamba are for the long-tail.
+:::
+
+::: {.notes}
+Materials hook: I deliberately keep this short. Students should know the names so they recognise them in papers; they should *not* leave thinking they need a 70B-parameter MoE to do strain mapping. Supplementary time-series deck: SSMs were introduced as a sequence-model alternative there; this slide is just a pointer.
+:::
+
+# 09. Practical recipe
+
+## `nn.MultiheadAttention` vs `F.scaled_dot_product_attention`
+
+::: {.columns}
+::: {.column width="50%"}
+**Old-style (`nn.MultiheadAttention`):**
+
+```python
+import torch.nn as nn
+
+mha = nn.MultiheadAttention(
+        embed_dim=192,
+        num_heads=3,
+        batch_first=True,
+)
+y, attn_w = mha(q, k, v)
+# pre-PT 2.0: materialises L×L
+```
+
+- Returns attention weights for free.
+- **Materialises** the $L\times L$ matrix on older PyTorch.
+- Use only when you actually need the weights (e.g. for an attention-rollout visualisation).
+:::
+
+::: {.column width="50%"}
+**New-style (`F.scaled_dot_product_attention`):**
+
+```python
+import torch.nn.functional as F
+
+y = F.scaled_dot_product_attention(
+        q, k, v, is_causal=False,
+)
+# auto-dispatches to Flash / mem-eff / math
+```
+
+- No attention weights returned (by design).
+- $\mathcal{O}(L)$ memory; 2–10× faster on Ampere+.
+- **Default choice** for all new code.
+:::
+:::
+
+::: {.fragment}
+**Wall-clock comparison — ViT-Tiny forward + backward, batch 16, fp16, 1080Ti (indicative):**
+
+| seq_len $L$ | naive MHA | SDPA (mem-eff) | speedup |
+|---:|---:|---:|---:|
+| 64 | 1.0× | 1.0× | ~equal |
+| 256 | 1.0× | 1.6× | 1.6× |
+| 1024 | OOM at batch 16 | runs at batch 16 | $\infty$ in practice |
+:::
+
+::: {.callout-note .fragment}
+Numbers are 1080Ti / fp16 / ViT-Tiny; trends hold, absolute values depend on driver and PyTorch version. Re-measure on your hardware before quoting.
+:::
+
+::: {.notes}
+Materials hook: this is the slide students will copy-paste from. Stress: `nn.MultiheadAttention` is *not deprecated*, it is just the wrong default — use it only when you need the attention weights. 1080Ti budget: the table is the punchline — at L=1024 naive MHA OOMs at batch 16, SDPA runs comfortably. Re-measure: 1080Ti drivers and PyTorch versions matter; have students run the bench themselves on lab hardware. MFML W10 reference: complexity is derived there; this slide is the empirical confirmation.
+:::
+
+# 10. Anti-patterns
+
+## What to *not* do
+
+::: {.fragment}
+**(a) Naive MHA on long sequences.**
+
+- Materialising the $L\times L$ matrix at $L > 512$ on a 1080Ti will OOM at any non-trivial batch.
+- Fix: `F.scaled_dot_product_attention` everywhere. No reason not to in 2026.
+:::
+
+::: {.fragment}
+**(b) ViT on a small dataset, trained from scratch.**
+
+- ViTs have weak inductive bias compared to CNNs. With ~$10^3$ labelled micrographs and no pretraining, they overfit hard and a ResNet18 will beat them.
+- Fix: pretrain with **MAE** (Unit 9) on unlabelled data, *then* fine-tune. Or start from a publicly-pretrained backbone.
+:::
+
+::: {.fragment}
+**(c) Forgetting positional embeddings on materials data.**
+
+- A diffraction pattern is **not permutation-invariant**: token at $(0, 0)$ is the central beam, token at $(7, 7)$ is a high-$k$ Bragg disc. Their positions encode physics.
+- Fix: always add (learned or 2-D sinusoidal / RoPE) positional embeddings. Verify by ablating — accuracy should crash without them.
+:::
+
+::: {.callout-warning .fragment}
+A ViT without positional embeddings is a deep set. On diffraction data, a deep set is wrong by construction.
+:::
+
+::: {.notes}
+Materials hook: each anti-pattern maps to a real lab mistake I have seen. (a) someone runs the textbook MHA on 2048-token EELS edges; OOM. (b) someone retrains a ViT-Base from scratch on 800 labelled SEM images; underperforms a ResNet18. (c) someone permutes tokens for data augmentation; deletes the physics. 1080Ti budget: (a) is partly a budget anti-pattern — at A100 scale you might get away with it, but the wasted memory still costs throughput. MFML W10 reference: deep-set vs positional-aware distinction is formalised there.
+:::
+
+# 11. Exercise preview
+
+## Tiny ViT on 4D-STEM patches — bench it
+
+::: {.fragment}
+**Task.** Build a ViT-Tiny that ingests 4D-STEM diffraction patches ($128 \times 128$, patch 16) and predicts a per-scan-position label (e.g. crystalline / amorphous, or one of $K$ orientations).
+:::
+
+::: {.fragment}
+**Baseline.** A small ResNet (ResNet8 or ResNet18) on the same input and label.
+:::
+
+::: {.fragment}
+**Variants to compare:**
+
+- ViT-Tiny with `nn.MultiheadAttention`.
+- ViT-Tiny with `F.scaled_dot_product_attention`.
+- ViT-Tiny **without** positional embeddings (sanity-check anti-pattern (c)).
+- ResNet baseline.
+:::
+
+::: {.fragment}
+**Report:**
+
+- Validation accuracy.
+- Wall-clock per epoch on 1080Ti.
+- Peak VRAM (`torch.cuda.max_memory_allocated`).
+- One-paragraph discussion: when does ViT beat ResNet on your data?
+:::
+
+::: {.callout-note .fragment}
+If you do not have 4D-STEM data, the exercise notebook ships with a small synthetic CBED generator — enough to make the architectural comparison meaningful.
+:::
+
+::: {.notes}
+Materials hook: this is a real lab exercise — students who do this *once* will reach for ViT + SDPA reflexively after. 1080Ti budget: the whole exercise must finish in <1 h wall-clock on a 1080Ti; ViT-Tiny + L=64 is calibrated for that. MFML W10 reference: students who want to understand *why* SDPA helps should read the complexity section of MFML W10 alongside doing the bench.
+:::
+
+# 12. Recap & References
+
+## Recap — what to take away
+
+::: {.fragment}
+1. **Attention exists to handle long-range correlations** — and materials data (diffraction, EELS, LPBF layer stacks) is full of them.
+2. **ViT is the default vision transformer**: patchify, embed, `[CLS]`, positional emb., $N$ encoder blocks. Needs pretraining on small datasets.
+3. **Flash Attention / SDPA is non-negotiable** — same math, $\mathcal{O}(L)$ memory, 2–10× speedup. Use `F.scaled_dot_product_attention`.
+4. **Use the right tool**: vanilla ViT covers most materials tasks at lab scale; MoE / Mamba are for the long tail. Theory in **MFML W10**; today was *using* it.
+:::
+
+## References
+
+- **Vaswani et al. (2017)** — Attention Is All You Need; the original transformer [@vaswani_2017_attention].
+- **Dosovitskiy et al. (2021)** — An Image Is Worth 16×16 Words; ViT [@dosovitskiy_2021_vit].
+- **Dao et al. (2022)** — FlashAttention: IO-aware exact attention [@dao_2022_flashattention].
+- **Gu & Dao (2023)** — Mamba; linear-time selective state spaces [@gu_2023_mamba].
+- **MFML W10** — full mathematical treatment of transformers (derivation, complexity, optimiser quirks, positional encodings).
+
+::: {#refs}
+:::
+
+<!-- BEGIN prev-next -->
+
+## Continue
+
+- &larr; Previous: [Unit 09 &mdash; ML for characterization signals](../unit09_characterization_signals/10_characterization_signals.html)
+- &rarr; Next: [Unit 10 &mdash; Automation in microscopy and characterization](../unit10_automation/11_automation.html)
+- [All courses](../../index.html)
+
+<!-- END prev-next -->

@@ -1,0 +1,603 @@
+---
+title: 'Materials Genomics<br>Unit 12: Generative Models & Inverse Design'
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
+execute:
+  eval: true
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: © Philipp Pelz - Materials Genomics
+resources:
+- ../../assets/logos/*
+---
+# Where We Stand
+
+## Recap of Units 6–11
+
+::: {.incremental}
+- **Unit 6**: graphs as the structural language of crystals
+- **Unit 7**: local atomic environments + universal MLIPs (MACE-MP-0, M3GNet, CHGNet)
+- **Unit 8**: regression with materials-aware splits and OOD discipline
+- **Unit 9**: neural networks as scalable surrogates
+- **Unit 10–11**: representation learning, latent spaces, and what an embedding actually means
+- All of the above is **forward** modelling: structure $\to$ property
+- Today we invert the arrow: **property target $\to$ structure**
+:::
+
+## From Prediction to Inverse Design
+
+::: {.incremental}
+- A predictor tells you what a *given* structure will do
+- A discovery loop wants the *opposite*: name a property target, get candidate structures
+- Classical inverse design = high-throughput screening + grid search — does not scale
+- Modern inverse design = **generative models** that sample structures conditioned on the target
+- Output: a stream of candidate crystals, each with composition, lattice, coordinates, and (optionally) space group
+- The candidate stream then enters a filtering funnel (MLIP relax $\to$ DFT $\to$ uncertainty $\to$ experiment)
+:::
+
+## Lecture Roadmap
+
+::: {.columns}
+::: {.column width="50%"}
+**Part I** — foundations of generative modelling for crystals
+
+**Part II** — diffusion-based crystal generators (CDVAE, DiffCSP, MatterGen)
+
+**Part III** — flow matching and autoregressive models (FlowMM, CrystaLLM)
+:::
+
+::: {.column width="50%"}
+**Part IV** — conditioning and constraints
+
+**Part V** — downstream filtering, MLIP relaxation, DFT screening, GNoME, the active-learning loop
+
+**Closing** — open challenges, takeaways, link to Unit 13 (uncertainty-aware discovery)
+:::
+:::
+
+## The Generative Landscape Today
+
+::: {.columns}
+::: {.column width="55%"}
+| Year | Model | Family |
+|---|---|---|
+| 2018 | CrystalGAN | GAN |
+| 2020 | FTCP | VAE-like |
+| 2022 | CDVAE | Diffusion + VAE |
+| 2023 | DiffCSP / DiffCSP++ | Diffusion |
+| 2023 | GNoME (DeepMind) | GNN screening at scale |
+| 2024 | MatterGen (MSR) | Diffusion + conditioning |
+| 2024 | CrystaLLM | LLM / autoregressive |
+| 2024 | FlowMM | Flow matching |
+:::
+
+::: {.column width="45%"}
+::: {.incremental}
+- The field passed a clear inflection in 2022–2024
+- Diffusion currently dominates the headlines for crystal generation
+- Flow matching and LLM-style models are closing fast
+- Foundation models (MACE-MP-0, MatterSim, ORB, UMA) are the **scoring layer** — generation + universal MLIP is one tightly coupled pipeline
+:::
+:::
+:::
+
+# Part I — Foundations
+
+## Forward vs Inverse Problems
+
+::: {.incremental}
+- **Forward**: $f:\mathcal{X}\to\mathcal{Y}$, i.e. structure $\to$ property
+- **Inverse**: given target $y^\star$, find $x$ with $f(x)\approx y^\star$
+- Forward is well-posed; inverse is *many-to-one* (lots of structures share a property) and *ill-posed* (no closed-form $f^{-1}$)
+- Generative model = a learned distribution $p(x\mid y^\star)$
+- Sample from $p$ instead of searching $\mathcal{X}$ — millions of candidates per GPU-hour
+:::
+
+## Crystal Structure as Data
+
+A crystal is a structured object with multiple types of variables:
+
+::: {.incremental}
+- **Composition**: which species, how many of each, $\{Z_i\}$
+- **Lattice**: 3×3 matrix $\mathbf{L}$ — six independent parameters $a,b,c,\alpha,\beta,\gamma$
+- **Fractional coordinates**: $\{\mathbf{f}_i\}\in[0,1)^3$ for each atom
+- **Symmetry**: space-group operations that close orbits under translation
+- Generators must respect all four — drop any one and the output is unphysical
+- Standard datasets supply these as CIFs or PyMatGen `Structure` objects
+:::
+
+## The Discovery Funnel
+
+::: {.incremental}
+1. **Generate**: sample $N\sim 10^5$ candidate structures from $p(x\mid y^\star)$
+2. **Pre-filter**: drop duplicates, unphysical geometries, exotic compositions
+3. **Relax with MLIP**: MACE-MP-0 or M3GNet relaxes each candidate to a local minimum, much cheaper than DFT
+4. **DFT verify**: validate energy / property predictions for the top few thousand
+5. **Uncertainty triage**: keep the candidates where the surrogate is *both* good and confident
+6. **Synthesise** the surviving handful in the lab
+- Each stage trims by ~10–100×; the top of the funnel must therefore be very wide
+:::
+
+## Evaluation Criteria
+
+What makes a generated structure good?
+
+::: {.incremental}
+- **Validity**: charge balance, no atomic overlaps, periodic-image consistency
+- **Novelty**: not already in the training set (or any known materials database)
+- **Uniqueness**: distinct from other samples generated in the same batch
+- **Stability**: energy above hull $\Delta H_{\text{hull}}\leq 0.1$ eV/atom is a common cutoff
+- **Task fidelity**: predicted property close to the conditioning target $y^\star$
+- All five must hold simultaneously — single-axis benchmarks are misleading
+:::
+
+## The S.U.N. Metric
+
+Common composite metric: **S.U.N. = Stable, Unique, Novel**.
+
+::: {.incremental}
+- "Stable" = below hull or within tolerance window
+- "Unique" within the generated batch
+- "Novel" with respect to training / reference databases
+- Report as a *rate*: fraction of samples that pass all three
+- Stronger variants: SUNS (Synthesizable) adds a literature-based filter
+- Be careful: hull cutoffs depend on the underlying convex hull (MP-2024 vs Alexandria changes the number significantly)
+:::
+
+## Conditional vs Unconditional Generation
+
+::: {.columns}
+::: {.column width="50%"}
+**Unconditional**
+
+::: {.incremental}
+- Sample from the full data distribution
+- Useful for exploring the breadth of the materials landscape
+- Used for pre-training and ablation studies
+- Often produces low S.U.N. unless heavily filtered
+:::
+:::
+
+::: {.column width="50%"}
+**Conditional**
+
+::: {.incremental}
+- Sample from $p(x\mid y^\star)$
+- Targets a property, composition, symmetry, or full multi-objective spec
+- Critical for actual discovery
+- Conditioning quality dominates downstream success rate
+:::
+:::
+:::
+
+## Training Data Landscape
+
+::: {.incremental}
+- **Materials Project** (~150 k entries) — DFT relaxations, properties, hull
+- **OQMD** (~1.0 M) — broad coverage, less curated
+- **Alexandria** (~4 M generated/curated) — large, includes many ML-discovered candidates
+- **ICSD** (~250 k) — experimentally observed structures, the gold standard for "real materials"
+- **GNoME** (~2.2 M, DeepMind 2023) — ML-discovered stable structures, partially overlaps with Alexandria
+- Choice of training corpus **strongly** shapes the bias of the resulting generator — train on ICSD vs Alexandria and you produce very different distributions
+:::
+
+# Part II — Diffusion Models
+
+## Diffusion Primer — Forward Process
+
+Start with data $x_0$, apply a noising schedule:
+
+$$q(x_t\mid x_{t-1}) = \mathcal{N}\!\left(x_t;\sqrt{1-\beta_t}\,x_{t-1},\beta_t\mathbf{I}\right)$$
+
+::: {.fragment}
+After $T$ steps, $x_T\approx\mathcal{N}(0,\mathbf{I})$ regardless of $x_0$.
+:::
+
+::: {.fragment}
+::: {.incremental}
+- Variance schedule $\{\beta_t\}$ is a hyperparameter
+- Closed-form: $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$
+- For crystals: noising applied to coordinates, lattice, and (categorically) to atomic types
+:::
+:::
+
+## Reverse Process — Denoising
+
+Learn $p_\theta(x_{t-1}\mid x_t)$ — the denoising step.
+
+::: {.fragment}
+Training objective: predict the noise $\epsilon$ that was added to obtain $x_t$:
+
+$$\mathcal{L} = \mathbb{E}_{t,x_0,\epsilon}\,\|\epsilon - \epsilon_\theta(x_t,t)\|^2$$
+:::
+
+::: {.fragment}
+::: {.incremental}
+- Sampling: start from $x_T\sim\mathcal{N}(0,\mathbf{I})$, denoise step by step to $x_0$
+- $\epsilon_\theta$ is a neural network — for crystals, an equivariant GNN (often a MACE-like or EGNN backbone)
+- Inference is iterative: ~50–1000 denoising steps; orders of magnitude slower than a single forward pass
+:::
+:::
+
+## Score-Based View
+
+An equivalent picture: learn the **score** $\nabla_x\log p_t(x)$ instead of the noise.
+
+::: {.incremental}
+- Forward SDE: $dx = f(x,t)\,dt + g(t)\,dw$
+- Reverse SDE: $dx = [f(x,t) - g(t)^2\nabla_x\log p_t(x)]\,dt + g(t)\,d\bar w$
+- Discretising the reverse SDE recovers the denoising step from the previous slide
+- Allows fancier samplers (DDIM, DPM-Solver, EDM) that converge in 10–50 steps instead of 1000
+- Almost all modern crystal diffusion papers cite the score-based formulation rather than the original DDPM derivation
+:::
+
+## CDVAE — Crystal Diffusion VAE
+
+Xie *et al.* 2022 — the first practical crystal generator with realistic SUN rates.
+
+::: {.incremental}
+- Hybrid: a **VAE** encodes the crystal into a global latent $z$, and a **diffusion model** generates the fine atomic coordinates conditioned on $z$
+- Decouples coarse (composition, density) from fine (positions)
+- Uses periodic-image-aware GNN as the score network
+- ICLR 2022 — the model that put diffusion on the crystal-generation map
+- Limitations: lattice prediction is weak; struggles with low-symmetry structures
+:::
+
+## DiffCSP — Joint Lattice + Coords
+
+Jiao *et al.* 2023 — diffusion model that generates lattice **and** coordinates jointly.
+
+::: {.incremental}
+- Lattice represented in a parameterised form that handles rotations cleanly
+- Coordinates are fractional and respect periodic boundaries
+- Score network: equivariant GNN with periodic message passing
+- Significantly improves stability rate over CDVAE
+- Inference cost still dominated by O(100) denoising steps
+- DiffCSP is widely used as a baseline in 2024–2025 papers
+:::
+
+## DiffCSP++ — Symmetry-Constrained
+
+Jiao *et al.* 2024 — adds **space-group conditioning** during generation.
+
+::: {.incremental}
+- Conditioning on a target space group during the reverse process
+- Reduces the search volume drastically — most crystals belong to a handful of space groups
+- Improves novelty *without* sacrificing stability
+- Naturally couples to symmetry-aware datasets (Alexandria, GNoME)
+- Trade-off: requires you to pick (or sample) the space group up front
+:::
+
+## Equivariant Diffusion
+
+Modern crystal diffusion almost always uses **equivariant** networks.
+
+::: {.incremental}
+- E(3)-equivariance: rotating the input rotates the output by the same transform
+- Periodic equivariance: a translation of the lattice does not change the predicted distribution
+- Networks: EGNN, NequIP, MACE-style message passing on a periodic graph
+- Without equivariance, the model has to *learn* symmetry from data — usually fails on small training sets
+- Same backbone trick that drives the MLIP revolution in Unit 7
+:::
+
+## MatterGen Architecture
+
+Zeni *et al.* 2024 (Microsoft Research) — diffusion model for property-conditioned generation.
+
+::: {.incremental}
+- Equivariant GNN score network operating on lattice + composition + coordinates
+- Trained on ~600 k Alexandria + MP entries
+- **Property head** trained jointly so the model can be conditioned at sample time
+- Adapter modules let you condition on *new* properties without retraining the full model
+- Open-source release in 2024 — currently the most-used crystal diffusion baseline
+:::
+
+## MatterGen — Conditioning and DFT-Validation
+
+::: {.incremental}
+- Conditioning targets demonstrated in the paper: bulk modulus, magnetic density, energy density, formation energy
+- 2.2× higher rate of DFT-validated stable + unique + novel structures vs prior SOTA
+- Lab synthesis: a Microsoft–PNNL collaboration reported the experimental synthesis of a MatterGen-proposed Ta–Cr–O$_4$ structure with target bulk modulus
+- This was the first widely covered "AI-designed and lab-realised material" story (2024)
+- A reminder: the model nominates, the lab validates — and **most** candidates still fail DFT screening
+:::
+
+## Limitations of Diffusion for Crystals
+
+::: {.incremental}
+- Sampling cost: O(100) forward passes per candidate
+- Mode collapse: heavily over-represents common space groups
+- Discrete variables (atomic types) need special handling (categorical / D3PM-style)
+- Magnetic / charged / disordered states are hard
+- Quality of evaluation depends heavily on the convex hull cut-off and the reference database
+- Most papers do *not* report failure modes — beware single-number benchmarks
+:::
+
+# Part III — Beyond Diffusion
+
+## Flow Matching Primer
+
+Continuous-time alternative to diffusion (Lipman *et al.* 2023).
+
+::: {.fragment}
+Learn a vector field $v_\theta(x,t)$ such that the trajectory
+
+$$\dot x = v_\theta(x,t)$$
+
+transports a simple base distribution $p_0$ to the data distribution $p_1$.
+:::
+
+::: {.fragment}
+::: {.incremental}
+- Same generative idea as diffusion, but with a **deterministic** ODE
+- Faster sampling (~10–25 steps vs ~100 for diffusion)
+- More flexible base distributions (e.g. sample on the lattice manifold directly)
+- Becoming the framework of choice for new model families
+:::
+:::
+
+## FlowMM
+
+Miller *et al.* 2024 — flow matching applied to crystals.
+
+::: {.incremental}
+- Manifold-respecting flow matching: handles fractional coordinates on the torus, lattice on the SO(3)×$\mathbb{R}^6$ manifold, and discrete species jointly
+- Faster sampling than DiffCSP / MatterGen
+- Competitive S.U.N. rates on standard benchmarks
+- Naturally trainable from a small data set because the velocity-matching objective is easier to fit than score matching for low-data regimes
+- Hot research direction in late 2024 / 2025
+:::
+
+## Autoregressive Generation
+
+::: {.incremental}
+- Treat the crystal as a **sequence** and predict it token by token
+- Order matters — choose a canonicalisation (e.g. Wyckoff-position order)
+- Each step: condition on what's already been generated, predict the next atom / coordinate
+- Pros: principled likelihood, simple sampling, easy to integrate with LLMs
+- Cons: error compounds along the sequence; long-range dependencies are hard
+- This is the family that brings LLM-style models into materials genomics
+:::
+
+## CrystaLLM — Language Models for Crystals
+
+Antunes *et al.* 2024 — train a GPT-style model on CIF text.
+
+::: {.incremental}
+- Represent each crystal as a CIF-formatted string and train a decoder LM
+- Sampling = generate a CIF, then parse it
+- Conditioning by prompting (composition, space group, target property)
+- Surprisingly competitive on stability and novelty
+- Trivially scales with model + data — inherits the LLM scaling laws
+- The "next token = next Wyckoff position" framing is now adopted by several follow-up models
+:::
+
+## VAEs and GANs for Crystals (Legacy)
+
+::: {.incremental}
+- **VAEs** (FTCP, iMatGen, …): smooth latent space, easy to interpolate, but lattice geometry is hard to constrain and SUN rates are mediocre
+- **GANs** (CrystalGAN, MatGAN, …): mode collapse and training instability — never matched diffusion / flow rates
+- Both still appear in literature for niche tasks: small molecules, doping studies, defect generation
+- For *crystal generation*, diffusion / flow / autoregressive have largely replaced them
+- Useful pedagogically: the earlier methods motivated the design choices that later succeeded
+:::
+
+## Comparison: Diffusion vs Flow vs Autoregressive
+
+| Family | Sample cost | S.U.N. rate | Conditioning | Notes |
+|---|---|---|---|---|
+| Diffusion | high (50–1000 steps) | strongest in 2023–2024 | flexible (classifier-free) | dominant today |
+| Flow matching | low (10–25 steps) | catching up fast | deterministic ODE | likely default by 2026 |
+| Autoregressive (LLM) | medium (token-by-token) | competitive | prompt-based | exploits LLM scaling |
+| VAE / GAN | low (single pass) | low | limited | legacy / niche |
+
+::: {.fragment}
+None of these are mutually exclusive — production pipelines often combine paradigms.
+:::
+
+# Part IV — Conditioning & Constraints
+
+## Targeting a Property
+
+How do we ask for "a structure with bandgap $\approx 2.0$ eV"?
+
+::: {.incremental}
+- **Classifier guidance**: train a property predictor $p(y\mid x)$; use $\nabla_x\log p(y\mid x)$ during sampling to steer the trajectory
+- **Classifier-free guidance**: jointly train a conditional and unconditional model, mix the gradients at inference: $\tilde s = (1+w)\,s_{\text{cond}} - w\,s_{\text{uncond}}$
+- **Hard conditioning**: bake the target into the score network directly (MatterGen approach)
+- Strength parameter trades off **fidelity to the target** against **diversity** — a constant battle
+:::
+
+## Composition, Symmetry, Synthesizability
+
+::: {.incremental}
+- **Composition**: fix the chemical system (e.g. only Li–Mn–O), or fix exact stoichiometry
+- **Symmetry / space group**: bias toward a specific space group (DiffCSP++)
+- **Synthesizability**: rule out compositions with no known synthesis route — usually via an auxiliary classifier trained on literature data
+- **Structure prototype**: condition on a known structural family (perovskite, spinel, MOF)
+- Multi-constraint conditioning is the realistic discovery setting and the hardest to satisfy
+:::
+
+## Classifier vs Classifier-Free Guidance
+
+::: {.columns}
+::: {.column width="50%"}
+**Classifier guidance**
+
+::: {.incremental}
+- Needs a separate predictor $p_\phi(y\mid x)$ trained on noisy $x_t$
+- Gradients $\nabla_x\log p_\phi(y\mid x)$ steer sampling
+- Inherits the predictor's biases and overfitting
+:::
+:::
+
+::: {.column width="50%"}
+**Classifier-free guidance**
+
+::: {.incremental}
+- One model, two passes (conditional + unconditional)
+- No noisy-image classifier to train
+- Cleaner; now the default in image and crystal models
+:::
+:::
+:::
+
+::: {.fragment}
+For multi-property targets, mixed strategies (CFG + a property predictor head) are common.
+:::
+
+## Multi-Objective Conditioning
+
+::: {.incremental}
+- Real discovery wants *several* targets at once (low cost, high bandgap, stable, synthesizable)
+- Naïve: combine guidance gradients in a weighted sum — works for 2–3 axes
+- Sophisticated: Pareto-front exploration via diverse-sample acquisition (Tanimoto / determinantal point processes)
+- Constrained generation: enforce hard constraints (e.g. space group) and condition softly on the rest
+- Coupled to **Unit 13** (next week): multi-objective UQ + acquisition is the cleanest framework
+:::
+
+# Part V — Downstream Filtering
+
+## The Candidate Funnel
+
+A 2025-era production pipeline:
+
+::: {.incremental}
+1. **Generate** $\sim 10^6$ candidates with a conditional model
+2. **Sanitise** (charge balance, valid composition, no overlaps) $\to 10^5$
+3. **Relax with MLIP** (MACE-MP-0 / M3GNet / CHGNet) $\to 10^4$
+4. **Score with MLIP** (energy, properties) $\to 10^3$ above-hull stable
+5. **DFT verify** the top $10^2$ — energy, bandgap, magnetism
+6. **UQ filter** $\to 10^1$ trustworthy + on-target
+7. **Synthesise** the 1–10 that survive
+- Each $\to$ is at least 10× — generation needs to *over*-produce by orders of magnitude
+:::
+
+## MLIP Relaxation
+
+::: {.incremental}
+- Universal MLIPs (Unit 7) make this stage cheap: 0.1 s/structure on a GPU
+- MACE-MP-0, M3GNet, CHGNet, ORB, MatterSim all support direct PyMatGen relax APIs
+- A typical generation pipeline runs **all** MLIPs and only keeps structures where they agree (consensus filter)
+- Disagreement between MLIPs is a leading indicator of generator-induced distribution shift
+- Without MLIPs, this stage would require DFT for every candidate — not feasible at $10^5$
+:::
+
+## DFT Validation
+
+::: {.incremental}
+- A few hundred top candidates per campaign survive to DFT
+- VASP / Quantum ESPRESSO / FHI-AIMS run the same protocol used to label the training data
+- Critical: use the **same XC functional** and convergence settings as the training set — otherwise the hull comparison is meaningless
+- 8–24 GPU-hours per structure are routine for modest-sized unit cells
+- DFT remains the bottleneck of inverse design even with all the ML upstream
+:::
+
+## Uncertainty-Aware Filtering
+
+::: {.incremental}
+- Each surrogate (MLIP energy, property head) ships a predicted value *and* an uncertainty
+- Reject candidates where the surrogate uncertainty is too large to commit to expensive DFT
+- Reject candidates where the property estimate is close to the target *only because* uncertainty is high (false confidence)
+- Treated in depth in **Unit 13** — UQ is the glue between generation and discovery
+- Without UQ, "high yield" generators ship many junk hits
+:::
+
+## The GNoME Story
+
+Merchant *et al.* (Nature 2023, DeepMind) — graph networks for materials exploration.
+
+::: {.incremental}
+- Not strictly generative — used a GNN energy predictor + crystallographic substitution rules to propose candidates
+- Validated ~380 k new stable structures against DFT
+- 1× scale jump in the size of the materials catalogue overnight
+- Sparked the 2023–2025 surge of generative-model papers — every group needed a competitive answer
+- Open data release is the standard reference for "novel materials" benchmarks in 2024–2025
+:::
+
+## Active Learning + Generative Loop
+
+::: {.incremental}
+- Round 1: generate, MLIP filter, DFT a subset
+- Round 2: retrain the MLIP / property head on the new DFT data
+- Round 3: regenerate with the improved scorer; smaller funnel attrition
+- 3–6 rounds typically halve the cost-per-validated-discovery
+- This loop is the operational heart of "AI for materials" platforms in 2025 (Microsoft Quantum, Google DeepMind, A-Lab at LBNL, …)
+- Couples directly to **Unit 13** on acquisition functions
+:::
+
+## Lab Automation Handoff
+
+::: {.incremental}
+- Surviving candidates are passed to an autonomous laboratory: A-Lab (LBNL), MIT Cyborg, GSK / Insitro platforms
+- Robotic synthesis: powder mixing, sintering, XRD characterisation
+- The **synthesizability classifier** at the start of the funnel determines whether a candidate even reaches this stage
+- Failed syntheses feed back into the synthesizability label, closing a meta-loop
+- Cycle time: weeks for inorganic crystals, days for thin films, hours for some MOFs
+:::
+
+# Closing
+
+## Open Challenges
+
+::: {.incremental}
+- **Disorder and defects**: every model today assumes a perfect crystal; real materials are partially disordered
+- **Realistic synthesizability**: "predicted stable" $\ne$ "you can make it next week"
+- **Property breadth**: bandgap and bulk modulus are easy; transport, catalytic activity, magnetism are hard
+- **Out-of-distribution candidates**: the models trust themselves outside the training manifold — UQ is essential (Unit 13)
+- **Compute cost**: a single training run costs $10^4$–$10^5$ GPU-hours; reproducibility is fragile
+- **Evaluation**: no single benchmark captures discovery quality — beware leaderboards
+:::
+
+## Key Takeaways
+
+::: {.incremental}
+- Inverse design = sample from a learned conditional distribution $p(x\mid y^\star)$
+- **Diffusion** dominates current crystal generation; **flow matching** and **LLM-style autoregressive** are closing fast
+- Generated structures must pass S.U.N. + downstream MLIP / DFT / UQ filters before any synthesis claim
+- Universal MLIPs (Unit 7) are the indispensable scoring layer of the funnel
+- The generative model is one component of a *loop* that includes UQ (Unit 13), lab automation, and re-training
+- Generative + universal MLIP + UQ + autonomous lab is the operational stack of 2025 materials discovery
+:::
+
+## Outlook — Unit 13
+
+::: {.incremental}
+- **Unit 13**: uncertainty-aware discovery and Gaussian Processes — turning "candidate" into "decision"
+- Aleatoric vs epistemic uncertainty, calibration, active learning loops
+- GPs as the small-data reference; deep ensembles and evidential learning at scale
+- Closing the loop: generated candidates $\to$ UQ filter $\to$ next experiment
+- **Unit 14**: physical constraints, trust, and outlook — the last word on what ML can and cannot do for materials
+:::
+
+<!-- BEGIN prev-next -->
+
+## Continue
+
+- &larr; Previous: [Unit 10 &mdash; Representation Learning and Feature Discovery](../10_representation_learning_and_feature_discovery/01_intro.html)
+- &rarr; Next: [Unit 13 &mdash; Uncertainty-Aware Discovery & Gaussian Processes](../13_uncertainty_aware_discovery_and_gaussian_processes/01_intro.html)
+- [All courses](../../index.html)
+
+<!-- END prev-next -->
+
+## References
+
+::: {#refs}
+:::

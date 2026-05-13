@@ -1,0 +1,1712 @@
+---
+title: 'Materials Genomics<br>Unit 11: Latent Spaces of Materials (supplementary)'
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
+execute:
+  eval: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: © Philipp Pelz - Materials Genomics
+---
+# Supplementary Reading {.section}
+
+## How to Use This Deck
+
+::: {.callout-important appearance="simple"}
+**This deck is supplementary reading, not a standalone lecture.**
+:::
+
+::: {.incremental}
+- After the **2026-05-13 realignment**, the Week 11 lecture (23.06.2026) merges representation learning *and* latent-space interpretation into a single 90-minute session delivered from [Unit 10](../10_representation_learning_and_feature_discovery/01_intro.html).
+- This deck is preserved as a **deeper dive** for students who want more detail on materials latent-space interpretation, anomaly detection, and the perovskite case study.
+- It is not lectured live. Treat it as extended reading after Unit 10 and before Unit 12 (generative models).
+- Cross-references in this deck to "next week's clustering unit" reflect the old schedule and should be read as: clustering content is now folded into Unit 13 (uncertainty-aware discovery).
+:::
+
+# §A · MFML W9 Recap {.section}
+
+## 01. Today's Question
+
+::: {.columns}
+::: {.column width="50%"}
+**You already have an embedding $z$. Now what?**
+
+- MG Unit 10 trained the encoder.
+- MFML W9 derived PCA, t-SNE, UMAP, contrastive learning.
+- Today's question: how do you *read* the resulting materials map without lying to yourself?
+:::
+::: {.column width="50%" .fragment}
+**What this unit is *not*.**
+
+- Not a derivation of dimensionality reduction — that is **MFML W9** [@bishop2006pattern; @murphy2012machine].
+- Not a re-introduction of autoencoders — that was **MG U10** and **ML-PC U5**.
+- Today: deploy these tools as a *materials discovery instrument*.
+:::
+:::
+
+::: {.notes}
+**Open with a question, not a title.** "Last week in MFML W9 you derived PCA, t-SNE, UMAP, contrastive learning. Two weeks ago in MG U10 you trained CGCNN, M3GNet, and a foundation-style encoder. Today is the unit where those two strands meet — where you take an embedding $z$ from a materials encoder, project it to two dimensions, and either learn something about chemistry or fool yourself spectacularly. Which of the two outcomes you get is the entire content of the next 90 minutes."
+
+**Triad coordination, said aloud.** I will not re-derive a single algorithm today. PCA derivation: MFML W9. t-SNE / UMAP loss functions: MFML W9. Contrastive InfoNCE: MFML W9. Encoder architecture: MG U10. If any of those feels shaky, revisit the relevant deck tonight; today builds on top.
+
+**The unit's verb.** Today's verb is *interpret*. Last week's was *learn*. Next week's (Unit 12) is *cluster*. The week after (Unit 13) is *decide*. Each verb is a different operation on the same object — the embedding $z$ — and conflating them is the most common mistake students make. Hold the verbs separate.
+
+**Pacing.** Six minutes on §A recap; eight on §B materials-specific structure; eighteen on §C composition–structure–property maps; sixteen on §D phase discovery; fourteen on §E latent arithmetic; twelve on §F failure modes; ten on §G perovskite case study; six wrap-up. Total 90.
+
+**Anti-hype frame.** A 2D UMAP scatter with three coloured blobs is the most dangerous figure in materials informatics. It is also the most published. We will spend at least one full section (§F) on what such a figure cannot prove.
+:::
+
+## 02. Where We Are in the Triad
+
+::: {.columns}
+::: {.column width="50%"}
+**Recap — what we already have**
+
+- **MFML W9:** PCA, t-SNE, UMAP, contrastive embeddings, foundation embeddings.
+- **MG U10:** materials-specific encoders — CGCNN [@xie2018cgcnn], MEGNet [@chen2019megnet], M3GNet [@chen2022m3gnet], contrastive crystal embeddings, foundation models for materials.
+- **ML-PC U5:** AE bottleneck $z$ as a feature; reconstruction-error anomaly detection.
+:::
+::: {.column width="50%"}
+**Today — Unit 11 in one line**
+
+- *Read* the materials latent space as a composition–structure–property map.
+- *Navigate* it by interpolation and arithmetic.
+- *Challenge* it: probes, ablations, and the failure modes of trusting a UMAP picture.
+:::
+:::
+
+::: {.notes}
+**Position the unit.** Unit 11 is an *interpretation* unit, not a *theory* unit. Two weeks ago we built the encoder; last week (in MFML) we derived the projections; today we ask what the resulting picture *means*, what it *shows*, and crucially what it *does not* show.
+
+**Why the triad framing matters.** The 2024 / 2025 literature is full of papers whose contribution is "we trained an encoder, ran UMAP, and our materials cluster in interesting ways." Half of those papers do not survive a linear probe. The triad split lets us say clearly: building the encoder is U10's problem; reading the embedding is U11's problem; and the standards of evidence for those two activities are different.
+
+**Anchor to MFML W9.** No symbols today are new. PCA: $\mathbf{X} \approx \mathbf{U}\mathbf{S}\mathbf{V}^\top$. t-SNE: minimise KL between $p_{ij}$ and $q_{ij}$. UMAP: minimise cross-entropy of fuzzy simplicial sets. If any of those phrases is unfamiliar, MFML W9 is the prerequisite tonight.
+
+**Anchor to MG U10.** $z = \mathcal{E}_\theta(\text{material})$ where $\mathcal{E}_\theta$ is the encoder you saw last unit. We do not retrain it today; we do not even fine-tune it. We pull frozen embeddings and ask geometric questions of them.
+
+**The single forward pointer.** "U12 partitions $z$. U13 places a Gaussian process on $z$. Both *assume* you have a usable map of $z$. Today we make that map and check it."
+:::
+
+## 03. PCA / t-SNE / UMAP at One Sentence Each
+
+::: {.columns}
+::: {.column width="33%"}
+**PCA**
+
+- Linear projection along directions of maximum variance.
+- Axes are *interpretable* via loadings.
+- Preserves global variance; preserves *no* nonlinear structure [@bishop2006pattern].
+:::
+::: {.column width="33%"}
+**t-SNE** [@vandermaaten2008tsne]
+
+- Nonlinear; preserves *local* neighbourhoods.
+- Inter-cluster distances are *not* meaningful.
+- Hyperparameter `perplexity` controls neighbourhood size.
+:::
+::: {.column width="33%"}
+**UMAP** [@mcinnes2018umap]
+
+- Nonlinear; faster than t-SNE.
+- Preserves *more* global structure than t-SNE — but still distorts.
+- Hyperparameters `n_neighbors`, `min_dist` control granularity.
+:::
+:::
+
+::: {.fragment}
+> **One-line decision rule.** If you need axes you can *name*, use PCA. If you need *clusters* you can *see*, use t-SNE / UMAP — and then verify them.
+:::
+
+::: {.notes}
+**Why three methods, not one.** They answer different questions. PCA: "what are the dominant directions of variation in my embedding?" t-SNE: "do my points fall into local neighbourhoods, and how many?" UMAP: "do those neighbourhoods aggregate into a coarser global picture?" Different questions, different tools.
+
+**The single most-repeated student mistake.** "I ran t-SNE and the clusters look beautiful, here is my paper." No. t-SNE clusters are an artefact of a *local* objective; their inter-cluster geometry is unconstrained. Two clusters that look adjacent on a t-SNE plot may be arbitrarily far in $z$. We will return to this in slide 34.
+
+**Hyperparameter discipline, briefly.** t-SNE perplexity 5 vs perplexity 50 gives qualitatively different pictures of the same data. UMAP `n_neighbors=5` vs `n_neighbors=200` gives different pictures. *Always* report the hyperparameters you used. *Always* sweep them and check that your story is robust.
+
+**What the slide does *not* say.** It does not say "use PCA always" or "UMAP is bad." It says: choose the method by the claim you want to make, and *commit* to that claim's standard of evidence.
+
+**Cross-reference once more.** All three loss functions and their derivations live in MFML W9. If you find yourself wanting to derive any of them in your head right now, redirect that energy to thinking about *what they mean for the geometry of the resulting picture*.
+:::
+
+# §B · From Abstract to Materials Latent Spaces {.section}
+
+## 04. What Changes When $z$ Encodes a *Material*?
+
+::: {.columns}
+::: {.column width="50%"}
+**Generic latent space (MFML W9 framing)**
+
+- $z = \mathcal{E}(x)$ for some input $x$ — could be pixels, words, audio.
+- Distances in $z$ are learned distances; nothing is assumed about $x$'s physical meaning.
+- The space is "blank" until you decide what claim to make.
+:::
+::: {.column width="50%" .fragment}
+**Materials latent space**
+
+- $z = \mathcal{E}(\text{composition}, \text{structure})$ from MG U10.
+- $z$ now lives in *chemistry / structure coordinates*.
+- Distances are *learned distances over chemistry* — not Euclidean distances in atom positions [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**The conceptual move.** A generic latent space is method-defined. A materials latent space is method-defined *plus* domain-defined: the encoder bakes in periodic-boundary conditions, equivariance, and chemistry priors. That is *additional* structure that the visualiser inherits — for free if the encoder did its job, as a bug if it didn't.
+
+**Why this matters today.** When we colour a 2D scatter by formation energy, we will see a smooth gradient in *most* MP-trained encoders. That smoothness is not because UMAP arranged the colours nicely — it is because the encoder *already* organised chemistry by an axis correlated with stability. The picture is just revealing what the encoder learned.
+
+**The flip side.** When the encoder *did not* bake in equivariance (a bad encoder), rotated duplicates of the same crystal show up as different points. The latent map is *immediately* unreliable. We will see this as failure mode in slide 6.
+
+**One sentence to leave on the board.** "The materials latent space is the encoder's view of chemistry — your job today is to read it without inventing more than is there."
+
+**Common student question.** "Are these distances physically meaningful?" Answer: only insofar as the encoder was trained to make them so. A composition-only encoder gives composition distances. A structure-aware encoder gives motif distances. A foundation-model encoder gives a *learned* distance whose meaning is whatever the pretext task encouraged. Always ask: *what was the pretext task?*
+:::
+
+## 05. Periodic-Boundary Considerations
+
+::: {.columns}
+::: {.column width="50%"}
+**Why PBC matters for $z$**
+
+- A crystal has *no* "first atom" — translations of the unit cell origin are physically equivalent.
+- $z$ must be invariant under origin shift.
+- Periodic images of a single atom must not be counted as neighbours of itself.
+:::
+::: {.column width="50%"}
+**Whose responsibility?**
+
+- The *encoder* (U10) carries this responsibility.
+- The *visualiser* (today) inherits it: a PBC-broken encoder produces a PBC-broken map.
+- Diagnostic: re-embed the same crystal with shifted origin; if $z$ moves, the encoder is broken.
+:::
+:::
+
+::: {.notes}
+**Why the encoder owns PBC.** A correctly written CGCNN / SchNet / M3GNet uses minimum-image conventions in its neighbour construction; supercell vs primitive-cell choices give the same $z$ up to floating-point noise. A naively written CNN-on-fractional-coordinates does not — it sees the unit-cell origin as meaningful.
+
+**Why today's lecture cares.** If you visualise a PBC-broken latent space, you see "phantom" structure — clusters that arise from origin choice, not chemistry. This is one of the most insidious forms of latent-space lie because it is *internally consistent* (the same crystal in the same conventions always lands in the same place) but *externally meaningless* (a different convention gives a different map).
+
+**The two-line diagnostic.** Re-embed the same crystal in two different unit-cell choices: primitive vs conventional, or with a translated origin. If $z_1 = z_2$ (up to numerical precision), PBC is fine. If not, the encoder is broken and *no* visualisation will recover the truth — fix the encoder.
+
+**Forward link.** This is one of the failure modes in §F. We will not name it again there because it is more naturally an *encoder* failure than a *visualisation* failure, but you should keep it in your back pocket as one of the things to check before reading any latent map.
+
+**Mention but don't dwell.** Most modern foundation-model encoders are PBC-correct. If you use `from_pretrained()` on a published encoder, this is mostly handled. We mention it because *naively trained* encoders — which the exercise explicitly does not use — get this wrong with surprising regularity.
+:::
+
+## 06. Equivariance Baked Into $\mathbb{L}$
+
+::: {.columns}
+::: {.column width="50%"}
+**The equivariance promise**
+
+- Rotation: rotated crystal $\to$ same $z$.
+- Permutation: relabelling atoms of the same species $\to$ same $z$.
+- Reflection / inversion: handled by encoder design.
+- *Equivariant* encoders make $\mathbb{L}$ a *quotient* space — symmetry duplicates collapse.
+:::
+::: {.column width="50%"}
+**What goes wrong without it**
+
+- Rotated duplicates show up as a *spurious* axis in $z$.
+- Permuted-atom duplicates form a *fake* cluster.
+- Visualisation cannot fix these; they were errors before projection.
+- Discipline: check that one input gives one $z$, regardless of pose.
+:::
+:::
+
+::: {.notes}
+**The bridge from U10.** Equivariance was U10's flagship topic. Today's payoff: an equivariant encoder is the *necessary precondition* for a clean latent map. Without it, the map shows poses, not chemistry.
+
+**Why this is one of the deeper points of the unit.** Many published "we ran t-SNE on materials embeddings" papers use non-equivariant encoders and then are surprised that "structure" axes emerge in the latent space. The structure axes are *poses*. The remedy is not to interpret pose as chemistry; the remedy is to use an equivariant encoder.
+
+**A concrete diagnostic.** Take 100 crystals from MP. For each, generate 10 random rotations / permutations. Embed all 1000. If your encoder is equivariant, the 10 versions of each crystal collapse to 10 points within a tiny radius — you see 100 tight clusters of 10. If not, the 10 versions spread out and you see 1000 scattered points. The diagnostic takes one afternoon and will save your project from publishing pose as discovery.
+
+**Connection to MFML W9 contrastive learning.** Contrastive objectives often *enforce* invariance through positive pair augmentations. A contrastively pretrained materials encoder is, by construction, more equivariant than a random one — even if the architecture itself is not. This is one reason contrastive pretraining (U10) matters for visualisation (U11).
+
+**Hold the thought.** "Equivariance is U10's job. Today's job is to *trust* that U10 did it — and to verify with the diagnostic above when in doubt."
+:::
+
+## 07. Composition vs Structure Latent Spaces
+
+::: {.columns}
+::: {.column width="50%"}
+**Composition-only embeddings**
+
+- One $z$ per *formula* (e.g., $\text{BaTiO}_3$).
+- All polymorphs collapse to the same point.
+- Useful when polymorphism is irrelevant; misleading otherwise.
+- Examples: Magpie-derived embeddings [@ward2016magpie], formula-only foundation models.
+:::
+::: {.column width="50%" .fragment}
+**Structure-aware embeddings**
+
+- One $z$ per *crystal* — primitive cell + space group.
+- Polymorphs separate; defects modify $z$.
+- The standard for the rest of this lecture.
+- Examples: CGCNN, M3GNet, SchNet [@schutt2018schnet] on full structures.
+:::
+:::
+
+::: {.notes}
+**Why this distinction is on a slide of its own.** It is the single most-confused choice in materials informatics. A junior researcher pulls "MP embeddings" from a community repo, runs UMAP, sees that $\text{BaTiO}_3$ is one point — and reports "the cubic and tetragonal phases co-occupy the same latent location." That is not a discovery; that is the consequence of a composition-only embedding.
+
+**Pick the right tool.** If your downstream task is a *formula-level* property (formation energy, average bulk modulus), composition-only is fine and cheap. If your task involves *polymorphism* (band gap depending on space group, magnetic ordering), composition-only is *wrong* and structure-aware is required.
+
+**A worked check.** For BaTiO$_3$, MP has the cubic, tetragonal, orthorhombic, rhombohedral, and hexagonal phases. In a composition-only embedding, all five collapse to one point. In a structure-aware embedding, the five form a small cluster with the *order* of structures along an octahedral-tilting direction. The ferroelectric transition shows up as motion along that direction — which is exactly the §E §31 micro-example.
+
+**Today's default.** From slide 8 onward, when I say "embedding," I mean structure-aware. When I want composition-only, I will say so.
+
+**A sentence for the exam.** "A latent map without polymorph separation has lost the very signal that materials genomics is supposed to study."
+:::
+
+# §C · Composition–Structure–Property Maps {.section}
+
+## 08. Projecting MP onto 2D — The Workhorse View
+
+::: {.columns}
+::: {.column width="50%"}
+**The recipe**
+
+1. Pull ~30 k–100 k MP entries (a chemistry slice or all of MP).
+2. Embed each: $z_i = \mathcal{E}_\theta(\text{material}_i) \in \mathbb{R}^{128}$.
+3. Project to 2D: PCA *and* UMAP — both, not one.
+4. Colour by the property of interest.
+:::
+::: {.column width="50%"}
+**Why both projections**
+
+- PCA gives you axes you can *defend*.
+- UMAP gives you clusters you can *see*.
+- Reporting both prevents either-method bias.
+- This 2D scatter is the unit's central object — the rest of §C reads it.
+:::
+:::
+
+::: {.notes}
+**Anchor on the workflow.** Twelve lines of Python: `from_pretrained()` for the encoder, a loop over MP, `PCA(n_components=2)` and `UMAP()` for projections, `matplotlib.scatter()` for the figure. The whole recipe fits on a single Jupyter screen. The exercise this afternoon is essentially this twelve-line workflow.
+
+**Why structure-aware is the default.** Anything we plot from now on assumes a CGCNN- or M3GNet-class encoder from MG U10. Composition-only embeddings would show the same trends but with polymorphs collapsed; the qualitative story would survive, but the polymorphism-related details we care about would vanish.
+
+**Sample-size discipline.** With ~10 k points, both PCA and UMAP run in seconds and the figures are crisp. With ~100 k, UMAP takes a minute or two and you may want to subsample for the figure (keep all points for analysis). Below ~3 k, sampling noise dominates and the picture is unreliable.
+
+**The dual-projection rule.** I report PCA *and* UMAP for every claim. If a feature appears only in UMAP, it might be a UMAP artefact. If a feature appears only in PCA, it might be a linear-shadow artefact. If it appears in both, it's likely real.
+
+**Forward pointer.** Slides 9–11 now colour this scatter by three different properties. Hold the scatter shape constant; let the colour change. That is the cleanest possible way to read what the latent map encodes.
+:::
+
+## 09. Colour by Formation Energy
+
+::: {.columns}
+::: {.column width="50%"}
+**What we see**
+
+- Stable region (most negative $E_f$): a dense lobe in one corner.
+- High-$E_f$ "frontier": a sparser region at the periphery.
+- Smooth colour gradient between them — *not* random.
+:::
+::: {.column width="50%"}
+**What this *says***
+
+- The encoder has organised chemistry along an axis correlated with thermodynamic stability — *without* ever being told a stability label.
+- Formation energy is *implicit* in pretraining tasks like reconstruction or property regression.
+- The gradient is the encoder's organisation; the projection just makes it visible.
+:::
+:::
+
+::: {.notes}
+**The "smoothness" is the diagnostic.** A *random* encoder would scatter formation energy uniformly across the 2D layout. A *good* encoder organises it into a smooth gradient. The smoothness is therefore evidence — *partial* evidence — that the encoder learned something about energetics.
+
+**What "partial" means.** A smooth $E_f$ gradient shows the encoder learned *something* about chemistry. It does not show that the encoder learned anything *beyond* composition statistics. To go further, we will run a linear probe (slide 39).
+
+**A concrete number.** For an MP-pretrained M3GNet, the linear probe $R^2$ on $E_f$ from frozen 128-D embeddings is typically $0.85$–$0.90$. For a Magpie-derived 145-D vector, it's typically $0.80$–$0.85$. The "extra" learned by the structure-aware encoder is real but modest. We will return to this number in §F when discussing whether structure-aware embeddings are *worth* their training cost.
+
+**Visual to draw on the board.** Sketch the 2D scatter with a red-to-blue colour gradient corresponding to $E_f$. Mark the dense "stable" lobe; mark the sparse "frontier"; draw an arrow along the gradient direction.
+
+**A common student mistake.** "The dense lobe is where the discoveries are." No — the dense lobe is where the *known* materials are. Discoveries live at the *edge* of the dense region: structures stable enough to be made but not yet in MP. We return to this in slide 19.
+:::
+
+## 10. Colour by Band Gap
+
+::: {.columns}
+::: {.column width="50%"}
+**What we see**
+
+- Metals ($E_g = 0$): one cluster.
+- Insulators ($E_g > 3$ eV): another cluster.
+- Semiconductors: a band along the boundary between them.
+- The map *separates* electronic regimes.
+:::
+::: {.column width="50%"}
+**Why this is non-trivial**
+
+- Most pretraining tasks do *not* explicitly target band gap.
+- The separation arises from *correlated* features that the encoder *did* see (electron count, electronegativity contrast, coordination).
+- "Emergent" structure — but emergent because of physics, not magic.
+:::
+:::
+
+::: {.notes}
+**The "emergence" framing.** When a property the encoder was not trained on still organises along a recognisable direction in $z$, that is *partial evidence* that the encoder learned something physically meaningful. It is also *easy to over-claim*. The semiconductor band of slide 10 is real, but its width is approximately the precision of the encoder's understanding of the gap — not 0.
+
+**Foundation models help.** Modern foundation-model encoders (M3GNet, MACE-MP, SevenNet) trained on energies *and* forces across all of MP-Computed and the Materials Project end up with strong implicit understanding of electronic structure, even though band gap was not in their loss. This is one of the strongest arguments for foundation-model embeddings over single-task encoders.
+
+**Don't over-claim.** A linear probe for $E_g$ from frozen MP-pretrained embeddings is typically $R^2 \approx 0.55$–$0.70$. That is non-trivial but far from supervised state-of-the-art. The map separates *coarse* electronic regimes; for actual band-gap prediction, you fine-tune.
+
+**Bridge to §D.** The very fact that band-gap regimes separate spontaneously is what makes phase discovery in latent space tractable. We will use this in slide 18.
+
+**One sentence.** "When a property organises in $z$ without supervision, the encoder learned something about the physics that produces the property."
+:::
+
+## 11. Colour by Stability — Energy Above Hull
+
+::: {.columns}
+::: {.column width="50%"}
+**The colour scale**
+
+- $E_{\text{hull}} = 0$ eV/atom: on the convex hull. Synthesisable.
+- $E_{\text{hull}} \in (0, 0.05]$: metastable; usually accessible.
+- $E_{\text{hull}} > 0.1$: unlikely to be synthesisable as the listed structure.
+:::
+::: {.column width="50%"}
+**Reading the stability map**
+
+- Hull-stable region: a connected manifold, not isolated points.
+- Metastable shell around it: candidates for synthesis with effort.
+- Far frontier: useful as *negatives*, rarely as targets.
+- This map is the foundation for U13's discovery loop.
+:::
+:::
+
+::: {.notes}
+**Why $E_{\text{hull}}$ instead of $E_f$.** $E_f$ tells you absolute stability; $E_{\text{hull}}$ tells you *relative* stability — given competing phases, will this one form? For materials *discovery*, $E_{\text{hull}}$ is the more actionable colour.
+
+**The convex-hull connection.** Recall from MG U4 (and U13 preview) that the convex hull is the lower envelope of formation energies as a function of composition. A material on the hull is, by definition, the most stable composition–structure pair at its formula. Materials near the hull are *competitive* phases.
+
+**Discovery move.** A material on the metastable shell, in a sparse region of $z$, is interesting: it is not yet in MP but the encoder thinks it lives next to known stable materials. That conjunction — sparse latent neighbourhood *plus* low $E_{\text{hull}}$ — is the simplest possible "discovery score." More sophisticated scores come in U13.
+
+**A war story.** A 2024 high-throughput perovskite study used exactly this conjunction to propose ~50 unreported ABO$_3$ candidates. Of the top 10 DFT-validated, 7 ended up below 50 meV/atom on the hull. This is not magic — it is the encoder + projection + colour together exploiting structure that a pure formation-energy regressor would not have surfaced.
+
+**Forward link.** "Latent map + stability colour + sparse neighbourhood = discovery candidate" is the single thread that connects §C to §D to §E to U13. Hold this thread.
+:::
+
+## 12. What Clusters Reveal About Chemistry Families
+
+::: {.columns}
+::: {.column width="50%"}
+**Coarse separation**
+
+- Oxides, sulfides, halides occupy distinct regions.
+- Intermetallics form their own peninsula.
+- Carbides and nitrides share a region — they share much chemistry.
+- The encoder *spontaneously* recovers conventional chemistry-class boundaries.
+:::
+::: {.column width="50%"}
+**Per-element substructure**
+
+- Within "Ti-bearing oxides": further organisation by Ti coordination, oxidation state, and tilt pattern.
+- Within "rare-earth halides": organisation by lanthanide contraction.
+- The map has *internal* structure all the way down.
+:::
+:::
+
+::: {.notes}
+**The "spontaneously recovers" framing.** None of these chemistry-class labels were ever input to the encoder. Their emergence in $z$ is partial evidence that chemistry-class membership is a learnable function of composition + structure — which is consistent with chemistry textbooks but is now *measurable* via a linear probe on $z$ predicting class membership.
+
+**Pedagogical move.** Show the slide; then ask the room: "If the oxide / sulfide separation is so clean, can you tell me from this picture which oxide has the highest band gap?" Answer: usually yes, *coarsely*, by looking at where the high-$E_g$ region intersects the oxide region. That intersection is the closest the unit gets to "interpretability."
+
+**Per-element substructure is the deeper insight.** The map is *fractal* — at every zoom level, you see further organisation. This is consistent with chemistry being multi-scale: families have sub-families have sub-sub-families. A good encoder respects all those levels.
+
+**Caution.** "Substructure" does not mean "axis-aligned interpretable substructure." The Ti-coordination axis at small zoom is *not* the same as $z_1$ at the full-MP zoom. Local structure of the latent space is real; global axis names are not.
+
+**One sentence.** "Chemistry families pop out of $z$ for free; sub-families are visible if you zoom; named axes are visible only if you probe."
+:::
+
+## 13. Per-Prototype Substructure
+
+::: {.columns}
+::: {.column width="50%"}
+**Within a chemistry family**
+
+- "ABO$_3$ oxides" subdivides into perovskites, ilmenites, spinels (where $\text{A}^{2+}\text{B}^{4+}$ allows).
+- "Garnets" form a distinct sub-cluster.
+- Layered vs three-dimensional structures separate.
+:::
+::: {.column width="50%"}
+**Why prototypes work**
+
+- A prototype is a recurring local-environment pattern — the very thing the encoder was trained to recognise (MG U7, U10).
+- The latent map's prototype clusters are the *learned* analogue of structural-prototype databases.
+- Implication: the encoder has *implicitly* solved a polytope-classification task.
+:::
+:::
+
+::: {.notes}
+**Connect to U7.** Local atomic environments (U7) are the input that the encoder turns into $z$. Recurring local environments — the very definition of a prototype — produce nearby $z$. Hence prototypes cluster.
+
+**Connect to U10.** A contrastively trained encoder *explicitly* tries to bring same-prototype crystals together in $z$. A reconstruction-trained encoder does this *implicitly* via the bottleneck. Either way, the result is what slide 13 shows.
+
+**A useful exercise.** In a notebook, take all entries with a known prototype label (Strukturbericht / Pearson notation). Plot them in PCA / UMAP coloured by prototype. Most prototypes form clean clusters; a few overlap. The overlaps are themselves chemistry — they tell you *which* prototypes are structurally close.
+
+**Failure mode preview.** A "prototype cluster" that does *not* cleanly separate is not necessarily a failure of the encoder — it may be that the prototypes themselves are similar (e.g., perovskite vs anti-perovskite). Distinguishing encoder failure from genuine chemical similarity requires the linear probe + ablation discipline of §F.
+
+**One sentence.** "If the encoder respects local environments, the latent map respects prototypes."
+:::
+
+## 14. Case Study Preview — Perovskites in 2D
+
+::: {.columns}
+::: {.column width="50%"}
+**The ABO$_3$ slice**
+
+- ~10 k entries in MP that match ABO$_3$ stoichiometry.
+- Cubic, tetragonal, orthorhombic, rhombohedral, hexagonal polymorphs.
+- Octahedral tilt patterns (Glazer notation) discrimminate sub-families.
+:::
+::: {.column width="50%"}
+**What we will see in §G**
+
+- Three main lobes: cubic, tilted, hexagonal.
+- A tetragonal–orthorhombic bridge populated by ferroelectrics.
+- A "formability frontier" along $E_{\text{hull}}$ gradient.
+- Full slide-by-slide treatment in §G (slides 41–46).
+:::
+:::
+
+::: {.notes}
+**Why perovskites are the canonical worked example.** Three reasons. First, the ABO$_3$ family is large enough (~10 k entries) for a meaningful latent map. Second, polymorphism is rich and well-documented (cubic / tetragonal / orthorhombic / etc.), so we can read the map against ground truth. Third, the family contains real-world targets (ferroelectrics, photovoltaics, photocatalysts) that motivate the design moves of §E.
+
+**Don't deliver §G now.** This slide is the *preview* — name the picture so that the audience holds it in mind through §C–F. The full case study is at the end so that students see all the apparatus (composition–structure–property maps, phase discovery, arithmetic, failure modes) applied together.
+
+**A teaching ribbon.** Tie a thread from this slide through §D §22 (MoS$_2$ polymorphs as another polymorph case), §E §31 ($\text{Ba}_{1-x}\text{Sr}_x\text{TiO}_3$ as a perovskite trajectory), and §G §41–46 (the full perovskite map). The students should leave with perovskites as their canonical example of "what a materials latent space looks like."
+
+**The reproducibility note.** All of these figures will be reproducible from the exercise repo, with a frozen encoder and a fixed random seed. Slides 41–46 are not "PowerPoint figures" — they are screenshots of code that students run.
+:::
+
+## 15. Reading a Property Map — Checklist
+
+::: {.columns}
+::: {.column width="50%"}
+**Five questions before you trust a latent-space figure**
+
+1. *What encoder?* Version + pretraining corpus.
+2. *What projection?* PCA vs UMAP vs t-SNE; hyperparameters; seed.
+3. *What colour scale?* Linear / log / clipped; what range?
+4. *Are dense regions distinguishable from cherry-picked highlights?* Show density.
+5. *What linear-probe $R^2$* for the property being plotted?
+:::
+::: {.column width="50%" .fragment}
+**A figure that fails any of these questions is decoration.**
+
+- Decoration may be illustrative; it is not evidence.
+- Evidence requires all five.
+- This checklist is the *default* requirement for any latent-space claim in U11–12 exercises.
+:::
+:::
+
+::: {.notes}
+**Why a checklist on a slide.** Because the failure mode of latent-space interpretation is not algorithmic — it is *cultural*. The community routinely publishes 2D scatters with no encoder version, no projection hyperparameters, and no linear-probe $R^2$. Each missing item is a hidden degree of freedom that lets the same data tell different stories.
+
+**Walk through each item aloud.**
+
+- *Encoder version + corpus.* "M3GNet trained on MP-2024" tells me the bias structure of $z$. "Some encoder we trained" does not.
+- *Projection method + hyperparameters.* "UMAP with `n_neighbors=15, min_dist=0.1, seed=42`" is reproducible. "UMAP" is not.
+- *Colour scale.* A log-scale band gap looks like one story; a linear-clipped scale looks like a different one. State which.
+- *Density.* A "cluster" that contains 3 points is not a cluster. Always show point density, ideally with hexbin or KDE.
+- *Linear-probe $R^2$.* The numerical statement of "what the latent space knows about the colour."
+
+**Don't be precious about this checklist.** It is not a moral imperative; it is a *minimum standard for the rest of the unit*. Slides 41–46 will explicitly meet it. The exercise will require it. This is the rigor floor.
+
+**One sentence.** "If your figure cannot answer the checklist, it is a poster, not a result."
+:::
+
+## 16. The Pitfall of UMAP-as-Truth
+
+::: {.columns}
+::: {.column width="50%"}
+**Why UMAP layouts are not unique**
+
+- UMAP loss has many local minima.
+- Different seeds $\to$ different *global* layouts.
+- Different `n_neighbors` $\to$ different cluster topologies.
+- Different `min_dist` $\to$ different cluster compactness.
+:::
+::: {.column width="50%"}
+**What is robust vs what is not**
+
+- *Robust:* "these N materials cluster together" (with a sweep showing it survives).
+- *Not robust:* "this cluster is at the upper-left."
+- *Not robust:* "cluster A is closer to cluster B than to cluster C."
+- *Robust* claims survive a hyperparameter sweep.
+:::
+:::
+
+::: {.notes}
+**The seeded layout problem.** Run UMAP with `random_state=0` and `random_state=1` on the same data; you get two layouts that look qualitatively similar but have different absolute positions, different orientations, and sometimes different cluster topologies. None of those layouts is "the" truth.
+
+**The hyperparameter sensitivity.** `n_neighbors=5` emphasises *very* local structure (small clusters, lots of them). `n_neighbors=200` emphasises global structure (few large clusters). The same data tells different stories under different hyperparameters. A *robust* feature of the data tells the same story across reasonable hyperparameter ranges.
+
+**The discipline.** When you publish a UMAP figure, include in the supplement a small grid of UMAP runs spanning $n_{\text{neighbors}} \in \{5, 15, 50, 200\}$ and three random seeds. If your headline cluster survives all twelve panels, it's real. If it's only there for one specific configuration, it is a UMAP artefact.
+
+**Why this happens.** UMAP optimises a non-convex objective; the optimum is sensitive to initialisation and to the precise locality scale chosen. This is a feature, not a bug — the algorithm honestly finds *a* layout consistent with the constraints. The bug is in *interpreting* one such layout as canonical.
+
+**Tie back to slide 3.** This slide is the most concrete instance of the slide-3 admonition: "If you need axes you can name, use PCA; if you need clusters you can see, use t-SNE / UMAP — and then verify." Slide 16 specifies what verification looks like for UMAP.
+:::
+
+## 17. PCA When You Need Accountable Axes
+
+::: {.columns}
+::: {.column width="50%"}
+**When PCA wins**
+
+- A reviewer asks "what does the $x$-axis mean?"
+- You need to *name* the dominant direction of variation.
+- You want to compare loadings across multiple datasets.
+- The relationship is plausibly linear in the embedding [@bishop2006pattern; @murphy2012machine].
+:::
+::: {.column width="50%"}
+**What PCA cannot do**
+
+- Show *nonlinear* clusters as separated.
+- Resolve manifold structure smaller than the global variance scale.
+- Tell you anything t-SNE / UMAP would tell you about local neighbourhoods.
+
+**Use PCA *and* UMAP — they answer different questions.**
+:::
+:::
+
+::: {.notes}
+**The reviewer test.** "What does $x$ mean?" is the question PCA can answer (loadings of the first principal component on the input features) and that t-SNE / UMAP cannot. If your paper makes a claim about an *axis*, PCA is the supportable tool.
+
+**Why PCA on top of an encoder.** The encoder itself is nonlinear; PCA on its embedding is linear in $z$, not in the raw atoms. This is the right composition: nonlinear encoder for chemistry, linear PCA for visualisation accountability. You get the best of both.
+
+**The dual-projection rule, restated.** Always run PCA *and* UMAP. PCA tells you whether your claim is about *axes*; UMAP tells you whether your claim is about *clusters*. Both can be true; both should be reported.
+
+**A common mistake.** Running PCA, finding axes that "explain only 30% of the variance," and concluding PCA is useless. Two responses. (1) The variance not explained by PCA may not be relevant to your downstream property anyway — check by colouring the PCA scatter by the property. (2) "Variance explained" is a property of the *unsupervised* objective; what you care about is *property-explained*, which requires a probe.
+
+**Connection to MFML W9.** PCA loadings on the encoder's embedding are *not* the same as PCA loadings on the raw inputs. They are loadings in the encoder's learned coordinate system. Their physical interpretation requires going *back through the encoder* — which is itself a research problem. This is one reason why "axes I can name" is harder for deep encoders than for hand-crafted features.
+:::
+
+# §D · Phase Discovery in Latent Space {.section}
+
+## 18. Phase Discovery Without Labels
+
+::: {.columns}
+::: {.column width="50%"}
+**The setting**
+
+- Large unlabelled crystal database (MP [@jain2013materialsproject], OQMD [@saal2013oqmd], AFLOW [@curtarolo2012aflow]; or your own DFT batch).
+- Goal: identify chemistry / structure families *without* prototype labels.
+- Method: cluster in $z$, not in raw composition.
+:::
+::: {.column width="50%"}
+**Why this works**
+
+- A good encoder has already done most of the heavy lifting (§C §12–13).
+- Clustering on $z$ is therefore far easier than clustering on raw features.
+- Cluster *names* are assigned post-hoc — by inspecting exemplar materials per cluster.
+:::
+:::
+
+::: {.notes}
+**The verb shift.** Up to slide 17 we have been *reading* latent maps. From slide 18 we start *discovering* with them. Discovery here means proposing structure — chemistry families, novel polymorphs, candidate compositions — that is not in the original labels.
+
+**Why not just use composition.** Two reasons. (1) Composition does not see polymorphism; structure-aware $z$ does. (2) Composition does not see *learned similarity*; $z$ does. A clustering on $z$ recovers chemistry families that a clustering on composition would mix.
+
+**The "post-hoc naming" discipline.** Discovery is two steps. First, find clusters. Second, *name* them by inspecting the materials in each cluster — what's the typical chemistry, the typical structure, the typical $E_f$? Naming should be done by a human chemist, not by the algorithm. The algorithm finds *structure*; the chemist supplies *meaning*.
+
+**Forward pointer to U12.** Unit 12 makes the clustering itself the focus: K-means, GMM, HDBSCAN on $z$. Today we just say "cluster on $z$"; next week we ask which clustering algorithm to use, how to choose $k$, and how to validate.
+
+**One sentence.** "If your encoder is good, *any* sensible clustering on $z$ will recover most of conventional chemistry — and the surprises are in the gaps."
+:::
+
+## 19. Outliers and Overlooked Materials
+
+::: {.columns}
+::: {.column width="50%"}
+**Outlier $\neq$ noise**
+
+- Materials in sparse regions of $z$ are *unlike anything else in the dataset*.
+- For *labelled* data, that's interesting.
+- For *unlabelled* data, it's a signal that the encoder thinks this entry is unusual — worth investigation.
+:::
+::: {.column width="50%"}
+**The outlier as a target**
+
+- Sparse latent neighbourhood + low $E_{\text{hull}}$ = under-explored stable corner.
+- A 2024 latent-space study of MP found ~200 such entries; ~30 had no published synthesis attempt despite favourable thermodynamics.
+- Outliers are not noise; they are the next paper.
+:::
+:::
+
+::: {.notes}
+**Reframe outlier from "error" to "signal".** In standard ML, outliers are usually data-quality problems. In materials latent spaces, they are usually under-studied chemistry — interesting precisely because the encoder has placed them in a sparse region.
+
+**The "gap" framing.** A latent map has *clusters* (well-known chemistry) and *gaps* (under-studied chemistry). Both are informative. The gaps are arguably *more* informative for discovery — they tell you what the literature has not yet covered.
+
+**A concrete example.** The 2024 MP latent-space study (referenced for the worked example, slide 41) identified Pb-free perovskite candidates by looking at the sparse regions of the perovskite cluster *adjacent* to known stable Pb-containing entries. The encoder's "sparse-but-near-stable" region was a literal map of "things we should have computed but didn't." This is the discovery move that U13 will formalise.
+
+**Caveat.** "Outlier" is *encoder-relative* and *corpus-relative*. A material that's an outlier in MP-trained $z$ may be common in OQMD-trained $z$. The outliers are evidence about the *intersection* of the dataset and the encoder, not about chemistry in absolute terms.
+
+**One sentence.** "Sparse neighbourhoods in $z$ + favourable thermodynamics = the cheapest discovery instrument materials informatics has."
+:::
+
+## 20. Novelty Detection in Latent Coordinates
+
+::: {.columns}
+::: {.column width="50%"}
+**The novelty score**
+
+- $\text{novelty}(z) = $ distance to the $k$-th nearest neighbour in $z$.
+- High score $\to$ isolated in latent space.
+- Threshold: top-1% of training-set scores, or fixed quantile.
+:::
+::: {.column width="50%"}
+**Caveats baked in**
+
+- Novelty is *relative* to the corpus that built $z$.
+- A "novel" material may just be a chemistry family the pretraining set under-covered.
+- Always cite the pretraining corpus alongside any novelty claim [@neuer2024machine].
+:::
+:::
+
+::: {.notes}
+**The simplest novelty score.** $k$-NN distance in latent space — typically with $k=10$ — is a one-liner that works surprisingly well as a triage tool. More sophisticated novelty scores (LOF, isolation forest in $z$, Mahalanobis distance) exist; none are dramatically better than $k$-NN at the materials scale.
+
+**Threshold discipline.** Compute the novelty score on your *training* set first; pick the 99th-percentile value as the threshold. Apply that threshold to the *unseen* set. Materials above the threshold are novelty candidates. This is the same calibration discipline as the AE anomaly threshold from ML-PC U5.
+
+**The corpus caveat is the deepest point.** "Novelty" without a stated corpus is meaningless. A nitride may be "novel" in an oxide-trained encoder and "ordinary" in a chalcogenide-trained encoder. The novelty score is a statement about the *intersection* of the encoder's view and the candidate material — not about the candidate alone.
+
+**Connection to slide 35 (pretraining bias).** Pretraining bias and novelty are two sides of the same coin: bias is when the encoder *under-represents* a region; novelty is the symptom (isolated points in that region). Recognising the same phenomenon from both sides is one of the core mental moves of the unit.
+
+**One sentence.** "Latent-coordinate novelty is a useful triage tool *if* you state the encoder and corpus alongside it."
+:::
+
+## 21. Latent-Coordinate Novelty vs Reconstruction-Error Novelty
+
+::: {.columns}
+::: {.column width="50%"}
+**Two different anomalies**
+
+- *Latent novelty* (slide 20): "this material is in an empty region of $z$."
+- *Reconstruction novelty*: "the autoencoder cannot redraw this material" — high $\|x - \mathcal{A}(x)\|^2$ [@neuer2024machine].
+- They flag *different* failure modes.
+:::
+::: {.column width="50%"}
+**When each fires**
+
+- *Latent novelty fires* on *unseen chemistry* — the encoder placed it in an empty corner.
+- *Reconstruction novelty fires* on *broken inputs* — bad CIF, wrong stoichiometry, parse errors.
+- Use both; never confuse them.
+:::
+:::
+
+::: {.notes}
+**The two-axis discipline.** The most informative scoring is a 2D plot: latent-novelty score on one axis, reconstruction-error score on the other. Materials in the lower-left are normal. Upper-left = "weird shape, normal chemistry" = parse / data-quality issues. Lower-right = "normal shape, weird chemistry" = candidate discoveries. Upper-right = "weird both ways" = either truly exotic chemistry, or both data-quality and encoder-coverage issues.
+
+**The legacy slide says they're the same — it's wrong.** The previous version of this unit treated reconstruction error and latent isolation as interchangeable. They are not. Failing the AE (reconstruction error) is a *data sanity* signal — the AE was trained on *clean* data and cannot redraw broken data. Being far from the centroid in $z$ (latent isolation) is a *chemistry novelty* signal — the encoder learned a representation and this entry is not near anything it knows.
+
+**Use case 1.** Quality control on a new DFT batch: run *reconstruction* novelty; flag for human review the high-error entries (these are bad CIFs, miscoded stoichiometries, etc.).
+
+**Use case 2.** Discovery on a triage queue: run *latent* novelty; flag the latent outliers as candidates for synthesis attempt or further investigation.
+
+**Use case 3.** Combined diagnostic: when both fire on the same material, *first* fix the data; *then* re-evaluate latent novelty on the corrected entry.
+
+**One sentence.** "Reconstruction error catches broken data; latent isolation catches new chemistry; do not conflate the two."
+:::
+
+## 22. Published Example — MoS$_2$ Polymorphs
+
+::: {.columns}
+::: {.column width="50%"}
+**The system**
+
+- MoS$_2$ has at least three known polymorphs: 2H (semiconducting), 1T (metallic), 1T' (semimetallic, distorted).
+- All three exist in MP / OQMD with full structures.
+:::
+::: {.column width="50%"}
+**The latent map shows**
+
+- Three distinct latent locations corresponding to the three polymorphs.
+- 1T' lies *between* 2H and 1T — consistent with its description as a distorted 1T.
+- The encoder's *learned* layout matches the textbook structural relationship.
+:::
+:::
+
+::: {.notes}
+**Why MoS$_2$ is the canonical 2D-materials latent example.** Three polymorphs of *the same composition* with *qualitatively different* electronic structures. Any latent space that fails to separate them has not learned structure. Any latent space that places 1T' *between* 2H and 1T has learned the *physical* relationship between them — distortion as a continuous deformation.
+
+**The "predicted before common" claim.** Earlier work (≈2020–2022) on TMDC latent spaces flagged the 1T' region as accessible *before* it was experimentally a routine target. This is partial evidence that latent maps can pre-empt experimental effort — at least for one notable case.
+
+**Don't over-claim.** The MoS$_2$ result is one positive example. Cherry-picking a single success story across the literature is not evidence for the method. We use it because it's *clean*, *checkable* (the polymorphs are well-known), and *graphic* (three polymorphs, one composition, three latent points). For more sober statistical evidence about latent-space discovery rates, U13 will be the place.
+
+**Pedagogical move.** Sketch the three polymorphs on the chalkboard: 2H (trigonal prismatic), 1T (octahedral), 1T' (distorted octahedral). Then sketch their latent positions. Have the audience predict where 1T' should be *before* you reveal that it's between 2H and 1T. Many will guess right — which is the point: the latent map matches the chemistry intuition that the audience already has.
+
+**Forward link.** Slide 31 ($\text{Ba}_{1-x}\text{Sr}_x\text{TiO}_3$) is the same idea — solid solution as a latent path — but for compositional rather than structural variation.
+:::
+
+## 23. Published Example — High-Entropy Alloy Clustering
+
+::: {.columns}
+::: {.column width="50%"}
+**The system**
+
+- HEAs: 4–6 element alloys, near-equiatomic compositions.
+- Tens of thousands of compositions in computed databases.
+- Conventional clustering (by element pair, structure type) is *brittle*.
+:::
+::: {.column width="50%"}
+**What the latent map shows**
+
+- HEAs cluster by *dominant element pair* — not by labelled "HEA-class."
+- Cantor-class (FeCoNiCrMn) clusters separately from refractory HEAs.
+- Within each cluster: organisation by lattice (FCC / BCC / HCP) and short-range order.
+:::
+:::
+
+::: {.notes}
+**Why HEAs are the canonical compositional latent example.** Composition space is huge (a 6-element alloy has thousands of equiatomic-ish points); structural fingerprinting is hard (disorder); conventional descriptors struggle. A learned $z$ collapses the composition diversity into a tractable 2D picture.
+
+**The "dominant element pair" finding is non-trivial.** It suggests that the encoder is implicitly factoring HEA composition space into "primary chemistry pair + perturbations." This factorisation matches the physical intuition that HEAs are dominated by the strongest interactions among their elements.
+
+**Caveat.** HEA latent maps are *especially* sensitive to encoder choice and pretraining corpus. An encoder trained on ordered structures may struggle with disorder; an encoder trained on dilute alloys may not transfer. The slide is a positive example, not a generic recipe.
+
+**Discovery move.** Sparse regions of HEA latent space (between Cantor-class and refractory clusters) have been the source of a small but growing list of new HEA candidates. The discovery rate is modest but real — this is one of the more honest "ML for HEA discovery" stories in the field.
+
+**One sentence.** "HEA latent spaces show that learned distances on chemistry can collapse a high-dimensional combinatorial space into a *navigable* low-dimensional one — the prerequisite for guided HEA discovery."
+:::
+
+## 24. Complement to Supervised Regression
+
+::: {.columns}
+::: {.column width="50%"}
+**Two different jobs**
+
+- *Supervised regression*: given $x$, predict $y$. Solved by U8–U10.
+- *Latent discovery*: given $\{x_i\}$, propose new $x$'s of interest. Solved by today's tools.
+:::
+::: {.column width="50%"}
+**They are *adjoint*, not redundant**
+
+- Regression interpolates *within* known $x$.
+- Discovery proposes *new* $x$ to evaluate.
+- A discovery loop alternates: regression predicts $y$ on candidates; latent geometry suggests new candidates.
+- This is the loop U13 will close with uncertainty quantification.
+:::
+:::
+
+::: {.notes}
+**The verb-distinction made explicit.** *Predict* and *discover* are different verbs operating on the same object. Regression takes $x$ as given and returns $\hat{y}$. Discovery takes a *family* of $x$'s and returns *more* $x$'s. Conflating them — "I trained a regression and asked it for the best $x$" — is a frequent failure mode that we pre-empt here.
+
+**The closed loop.** Discovery proposes; regression evaluates; the most promising candidates get DFT-computed; the new (x, y) data are folded back into the encoder retraining and the regression. This is the materials-genomics loop in its most compact form. U13 makes the "promising" criterion uncertainty-aware.
+
+**Why students often miss this.** Most ML courses spend 90% of their time on regression and 10% on unsupervised methods. Materials genomics inverts this: the unsupervised side is where *discovery* lives, and discovery is the value proposition that makes the field worth studying. Today's lecture is therefore a corrective.
+
+**Connection to ML-PC.** ML-PC's emphasis on anomaly detection (Unit 6) and uncertainty (Unit 13) is the same instinct, applied to processing rather than chemistry. The triad converges on the same insight: regression and discovery are different and both are necessary.
+
+**One sentence.** "Regression tells you about materials you have; latent discovery tells you about materials you do not have yet — both required, neither sufficient."
+:::
+
+## 25. Discovery as a Verb
+
+::: {.columns}
+::: {.column width="50%"}
+**The discovery loop in one slide**
+
+1. Embed the corpus.
+2. Project + colour.
+3. Identify a sparse region of low $E_{\text{hull}}$.
+4. Decode candidate compositions in that region.
+5. DFT-validate the top-$k$.
+6. Synthesise the most promising 1–2.
+7. Fold results back; retrain.
+:::
+::: {.column width="50%"}
+**The latent map is a *first* filter**
+
+- Step 3 is what today's lecture builds toward.
+- Steps 4–7 are the rest of the course (U12, U13, U14).
+- Without step 3, the rest of the loop has no proposal mechanism.
+:::
+:::
+
+::: {.notes}
+**The seven steps are the integrative summary of MG.** Step 1 = U10 + U11 §B. Step 2 = today §C. Step 3 = today §D. Step 4 = today §E (decoding) + U12 (clustering candidates). Step 5 = U4 (DFT). Step 6 = experimental partners, beyond MG scope. Step 7 = closed-loop discovery, U13 with uncertainty.
+
+**Today's contribution to the loop.** Today is steps 2–3, with the foundation for step 4. The unit's existence in the curriculum is justified by being the place where "embed" becomes "discover."
+
+**Why this is the §D finale.** Slides 18–24 each addressed *one piece* of the discovery story. Slide 25 ties them into a sequence. Walk through the seven steps aloud, naming the tool for each. Audience leaves §D with the loop in their notes.
+
+**Forward to §E.** §E covers step 4: how do you *use* the latent space to propose candidates that are not already in the corpus? Answer: arithmetic and interpolation, which is the next 8 slides.
+
+**One sentence to close §D.** "Discovery is a loop; today's job is to make sure step 3 — the proposal mechanism — is grounded, not decorative."
+:::
+
+# §E · Latent-Space Arithmetic and Interpolation {.section}
+
+## 26. The word2vec Analogy
+
+::: {.columns}
+::: {.column width="50%"}
+**The famous example**
+
+$$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{queen}}$$
+
+- Word embeddings support analogical arithmetic [@mikolov2013word2vec].
+- The vector "$- \text{man} + \text{woman}$" is, approximately, a "gender" direction.
+- Semantic relationships become *vectors* in $\mathbb{L}$.
+:::
+::: {.column width="50%" .fragment}
+**The materials analogue**
+
+$$z_{\text{BaTiO}_3} - z_{\text{Ba}} + z_{\text{Sr}} \approx z_{\text{SrTiO}_3}$$
+
+- For some encoders, this *works* — element substitution is a vector.
+- "Replace Ba by Sr" becomes a navigable direction.
+- The analogy is the conceptual seed for inverse design.
+:::
+:::
+
+::: {.notes}
+**Why word2vec is the right reference.** [@mikolov2013word2vec] made vector arithmetic in latent spaces a household concept. The materials community discovered that *some* materials encoders support an analogous arithmetic — at least approximately, at least for compositional substitutions in the same structural family.
+
+**"For some encoders" is doing real work.** Composition-only encoders (like Magpie-derived embeddings, or the simplest formula-only models) almost always support compositional arithmetic — composition is approximately additive in those representations. Structure-aware encoders are messier; arithmetic works in some directions and breaks in others. We will see this in slide 33.
+
+**The conceptual move.** Once you accept that "replace Ba by Sr" is a *vector*, you can ask: what's the steepest property gradient? What's the direction that minimises $E_{\text{hull}}$? These questions become geometric, not chemical. That's the seed for inverse design — adopted in U12 and U13.
+
+**Don't oversell.** Materials analogies are far less reliable than word analogies, even in the best encoders. We are showing that the *idea* exists, not that arbitrary element-substitution analogies will always work. The discipline of slide 33 (*test* arithmetic before relying on it) is the corrective.
+
+**One sentence.** "Word2vec made vectors out of analogies; materials encoders make vectors out of substitutions — within limits."
+:::
+
+## 27. Composition-Substitution Arithmetic
+
+::: {.columns}
+::: {.column width="50%"}
+**The substitution vector**
+
+- $\vec{v}_{\text{Ba}\to\text{Sr}} = z_{\text{SrTiO}_3} - z_{\text{BaTiO}_3}$.
+- Apply to *another* perovskite parent: $z_{\text{BaZrO}_3} + \vec{v}_{\text{Ba}\to\text{Sr}} \approx z_{\text{SrZrO}_3}$.
+- Approximately.
+:::
+::: {.column width="50%"}
+**When it works, when it doesn't**
+
+- *Works*: same structural family, same oxidation states, well-pretrained encoder.
+- *Fails*: cross-family substitutions, oxidation-state changes, multi-modal chemistry (e.g., Mn$^{2+}$ vs Mn$^{4+}$).
+- *Always test*: pick two known examples; compute the residual.
+:::
+:::
+
+::: {.notes}
+**The diagnostic.** The substitution-vector test takes ten minutes: extract $\vec{v}_{\text{A}\to\text{B}}$ from one parent; apply to a second parent; compare to the actual $z$ of the substituted child. The residual $\|\hat{z}_{\text{predicted}} - z_{\text{actual}}\|$ tells you whether arithmetic works *for this substitution in this family*.
+
+**A useful threshold.** If the residual is smaller than the inter-family distance (the typical $\|z_A - z_B\|$ for materials in different chemistry families), arithmetic is "working." If it's larger, arithmetic is "broken" for that substitution.
+
+**Why oxidation-state changes break things.** A Ba$\to$Sr substitution preserves oxidation state (+2 in both). A Ba$\to$La substitution does not (+2 vs +3). The encoder typically has a *qualitatively different* representation of charge — and the arithmetic loses linearity. This is one of the most reliable failure modes.
+
+**Connection to the chemistry intuition.** Working chemists know that Ba/Sr/Ca substitutions are "smooth" — alkaline-earth perovskites are a nearly continuous family. Working chemists also know that Ba/La substitutions are *not* smooth — different ionic radius, different charge, different chemistry. The latent space, when it's good, encodes this same chemical intuition geometrically.
+
+**One sentence.** "Substitution arithmetic is real, narrow, and worth testing — it is not a free-for-all on the periodic table."
+:::
+
+## 28. Smooth Interpolation Between Chemistries
+
+::: {.columns}
+::: {.column width="50%"}
+**The interpolation path**
+
+$$z(t) = (1 - t)\, z_A + t\, z_B \quad t \in [0, 1]$$
+
+- $t = 0$: material $A$.
+- $t = 1$: material $B$.
+- Intermediate $t$: a *learned* path through chemistry.
+:::
+::: {.column width="50%"}
+**Why latent interpolation beats raw**
+
+- Raw atom-coordinate interpolation produces nonphysical overlaps.
+- Latent interpolation stays *on the manifold* the encoder learned.
+- Decoded intermediate structures are physically plausible — at least more often than raw [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**The "manifold" framing.** The encoder has learned a low-dimensional *manifold* of plausible chemistry, embedded in the higher-dimensional $z$ space. The straight line $z(t)$ does not generally lie *on* the manifold — but it stays *close* to it for short interpolation distances, especially when the encoder's manifold is reasonably flat in that region.
+
+**The geodesic alternative.** A more correct interpolation would follow the *geodesic* on the learned manifold, not the straight line. In practice, geodesics are hard to compute and rarely worth the effort at the resolution of materials discovery. Straight lines work for short paths; for long paths, you should not be interpolating in the first place.
+
+**The decoding step.** Decoding $z(t)$ back to a physical structure requires a *decoder* — an inverse map. Modern encoders (CGCNN, M3GNet) typically do *not* have invertible decoders out of the box. To realise an interpolated structure, you either (a) constrain to a parametric family (compositions only, given a fixed structural template), or (b) use a generative model that *was* trained with a decoder (VAE, diffusion). Today we wave at this; U12 makes it concrete.
+
+**A caveat.** The "physically plausible" claim is *empirical*, not guaranteed. For well-behaved encoders + simple substitutions, decoded paths look like solid-solution series. For mismatched encoders or bridge across chemistry families, decoded paths look like nonsense. The discipline of slide 33 — test before relying — applies.
+
+**One sentence.** "Latent interpolation is the engineering shortcut to chemistry intuition: nearby chemistry, nearby materials, nearby properties — when the encoder is well-behaved."
+:::
+
+## 29. Smooth Property Gradients
+
+::: {.columns}
+::: {.column width="50%"}
+**The gradient direction**
+
+- For property $y$, find the direction $\hat{\mathbf{g}}_y \in \mathbb{R}^L$ along which $\partial y / \partial z$ is largest.
+- Linear probe (slide 39) gives the direction directly: $\hat{\mathbf{g}}_y = \nabla_z (\hat{w}_y^\top z)$ where $\hat{w}_y$ is the linear-probe weight.
+:::
+::: {.column width="50%"}
+**The actionable axis**
+
+- Moving $z \to z + \alpha \hat{\mathbf{g}}_y$ increases predicted $y$ by approximately $\alpha \|\hat{w}_y\|$.
+- This is the *most* actionable axis for design.
+- Decode the new $z$ to read off candidate compositions.
+:::
+:::
+
+::: {.notes}
+**The conceptual move.** A latent space is *most useful* when it has *named directions* — when "this way is hardness, that way is band gap, the other way is stability." Most encoders do not give those directions for free. The linear probe *creates* them — one per property of interest.
+
+**Why linear, not nonlinear.** A nonlinear probe could fit any property arbitrarily well, but it would not give a *direction* — it would give a curve. The whole point of slide 29 is to extract a *direction* in $z$ that we can move along. Linearity is therefore not a limitation; it's a *requirement* for the direction-extraction interpretation.
+
+**The "approximately" is doing work.** $y \approx \hat{w}_y^\top z$ holds linearly only locally. Moving far along $\hat{\mathbf{g}}_y$ takes you off the regime where the linear probe fits well. In practice, design moves of $\alpha \sim 0.5$–$1$ standard deviations of $z$-magnitude are about as far as the linearisation supports.
+
+**Connection to inverse design (U12) and acquisition (U13).** A *property-gradient direction* is exactly what an acquisition function in U13 will exploit: move along $\hat{\mathbf{g}}_y$ until you hit the boundary of the explored region; place the next experiment there. The gradient is the *steering* and the GP uncertainty is the *braking*.
+
+**One sentence.** "A linear probe gives you both a *number* (probe $R^2$) and a *direction* (probe weight) — and the direction is the actionable object."
+:::
+
+## 30. Targeted Property Modification
+
+::: {.columns}
+::: {.column width="50%"}
+**The design move**
+
+1. Pick a starting material with $z_0$.
+2. Pick a target $\Delta y$ (e.g., increase band gap by 0.5 eV).
+3. Compute $\alpha = \Delta y / \|\hat{w}_y\|$.
+4. Move: $z_1 = z_0 + \alpha \hat{\mathbf{g}}_y$.
+5. Decode $z_1$ to a candidate composition / structure.
+:::
+::: {.column width="50%"}
+**Caveats baked in**
+
+- The *predicted* $\Delta y$ is linear; the *true* $\Delta y$ may be smaller, especially for large moves.
+- The decoded structure must be DFT-validated.
+- The decoder is the bottleneck (slide 28).
+- This is the *cheapest* possible design move, not the *best*.
+:::
+:::
+
+::: {.notes}
+**The simplest possible inverse-design recipe.** Slide 30 is a five-step procedure that any student can implement in an afternoon. It is also the *prerequisite* for the more sophisticated procedures of U12 (full generative inverse design) and U13 (uncertainty-aware acquisition). Without the linearised direction, those richer methods have no compass.
+
+**The DFT-validation step is non-negotiable.** A latent-space "design move" gives you a *candidate*, not a *result*. The candidate must be DFT-validated for $E_f$, $E_{\text{hull}}$, the actual property $y$, and at minimum a phonon-stability check. The literature has seen too many "we designed material X" claims that vanished under proper DFT — slide 30 is *not* a substitute for DFT; it's a *triage* on what to DFT.
+
+**The "linearity is local" caveat, restated.** Designing a $\Delta y = 0.1$ eV change is reliable. Designing a $\Delta y = 2$ eV change is not — the linear extrapolation is well outside the regime where it was validated. Multiple small moves with re-fitting at each step is the cleaner workflow.
+
+**Connection to U12.** U12's generative inverse-design models (VAE-based, diffusion-based) replace step 5 of slide 30 with a *learned* decoder that is more robust than naive interpolation. The conceptual structure is the same; the decoding fidelity is much better.
+
+**One sentence.** "A linear probe + a small move + DFT validation is the simplest design loop in materials genomics — and it works."
+:::
+
+## 31. The $\text{Ba}_{1-x}\text{Sr}_x\text{TiO}_3$ Trajectory
+
+::: {.columns}
+::: {.column width="50%"}
+**The series**
+
+- $x = 0$: BaTiO$_3$ (tetragonal at room temperature).
+- $x = 1$: SrTiO$_3$ (cubic at room temperature).
+- Intermediate $x$: continuous solid solution.
+- Known phase transitions at specific $x$.
+:::
+::: {.column width="50%"}
+**Map as a curve in $z$**
+
+- Embed each $x$; project; trace the curve.
+- *Smooth* segments: continuous solid solution.
+- *Kinks* in the curve: phase transitions detected by the encoder.
+- The latent path *recovers* known phase boundaries.
+:::
+:::
+
+::: {.notes}
+**Why this is the canonical micro-example.** It is small (10–20 compositions), has well-known phase transitions, and produces a *visualisable* curve in 2D. Three good reasons.
+
+**The "kinks" claim, carefully.** A *kink* in the latent path is not a guaranteed phase transition; it is a *candidate* for one. The encoder may detect a structural change that does not correspond to a phase transition (e.g., a local distortion that does not break symmetry). And the encoder may *miss* a phase transition that does not produce a recognisable structural change. So: kinks are useful triage, not ground truth.
+
+**Connection to MoS$_2$ (slide 22).** MoS$_2$ polymorphs were *isolated points* in $z$. BaSr-titanate is a *continuous curve*. The polymorph case is the *discrete* extreme; the solid-solution case is the *continuous* extreme. Most real materials are between them.
+
+**The teaching ribbon.** Slides 22 (MoS$_2$ polymorphs), 31 (BaSrTiO$_3$ series), and 41–46 (perovskite case study) are all instances of "the latent map respects known chemistry." Together they make the affirmative case before §F makes the negative case.
+
+**Pedagogical move.** Sketch the BaSrTiO$_3$ phase diagram on the chalkboard. Mark the cubic-tetragonal phase transition. Then sketch the latent curve and ask the audience to predict where the kink will be. They will mostly get it right — which reinforces that the latent map is doing real chemistry.
+
+**One sentence.** "Solid-solution series traced in $z$ recover known phase boundaries — when the encoder is good and you ask the right question."
+:::
+
+## 32. Why Arithmetic Is a Necessary Precondition for Inverse Design
+
+::: {.columns}
+::: {.column width="50%"}
+**Without usable arithmetic**
+
+- "Move toward higher band gap" has no meaning.
+- Generative models cannot navigate $z$.
+- Acquisition functions in U13 cannot define neighbourhoods.
+- The latent space is decorative, not actionable.
+:::
+::: {.column width="50%"}
+**With usable arithmetic**
+
+- Property gradients become design directions.
+- Generative models (U12) sample along directions.
+- Acquisition functions (U13) place experiments on top of $z$.
+- The latent space is the *substrate* for the rest of the course.
+:::
+:::
+
+::: {.notes}
+**Why this slide is a hinge.** §E §26–31 has been showing that arithmetic *exists* in materials latent spaces. Slide 32 names *why we cared*: every downstream method we will see in U12 and U13 *assumes* the latent space supports a usable arithmetic. Take away the arithmetic and inverse design and acquisition both collapse.
+
+**The forward-pointer to U12.** U12's generative inverse design — VAE-based, diffusion-based, or auto-regressive — is *all* about generating new $z$ values that satisfy a property constraint. That sampling is *navigation* in $z$. Without arithmetic, navigation is undefined.
+
+**The forward-pointer to U13.** U13's GP-based discovery loop places a Gaussian process on $z$ and uses an acquisition function (UCB / EI / Thompson sampling) to choose where to compute next. The acquisition function is a *score on $z$*; it presupposes a usable metric on $z$.
+
+**The discipline implication.** Before doing anything generative (U12) or anything sequential (U13), *test* arithmetic. Slide 27's diagnostic is the prerequisite. If arithmetic doesn't work, fix the encoder *first*, before trying to do downstream tasks.
+
+**One sentence.** "If the latent space does not support arithmetic, nothing the rest of the course teaches will work on it."
+:::
+
+## 33. Limits of Arithmetic
+
+::: {.columns}
+::: {.column width="50%"}
+**Where arithmetic fails**
+
+- Cross-family substitutions (perovskite $\to$ spinel) — chemistry is multi-modal.
+- Oxidation-state changes (Mn$^{2+} \to$ Mn$^{4+}$) — encoder uses different sub-modes.
+- Long compositional paths — linear extrapolation breaks far from training.
+- Encoder regions that the corpus under-covered — pretraining bias.
+:::
+::: {.column width="50%"}
+**The discipline**
+
+- *Test before relying*: pick two known endpoints; sweep; decode; check.
+- Report the residual.
+- If the residual is large, *do not* extrapolate — use a more sophisticated decoder (U12) or constrain the path.
+:::
+:::
+
+::: {.notes}
+**The "test before relying" mantra.** Materials latent-space arithmetic is *narrowly* useful. It is not a magic wand. The discipline is: every time you assert a vector or a path, *check* that it actually predicts known chemistry on a small held-out set. If it does, lean on it; if it doesn't, shrink your claim.
+
+**Why multi-modality matters.** A latent space in which Mn$^{2+}$ and Mn$^{4+}$ are *both* dense regions, with a *gap* between them, is multi-modal. Linear arithmetic crosses the gap as if it were chemistry — but the gap is *forbidden chemistry* (Mn$^{3+}$ Jahn-Teller is a different beast). The decoded "intermediate" is a fiction.
+
+**The pretraining-bias connection.** An MP-pretrained encoder under-covers exotic chalcogenides; arithmetic that crosses *into* a chalcogenide region produces nonsense. This is the same phenomenon as "pretraining bias" in slide 35; the symptom is "arithmetic breaks here."
+
+**The corrective.** When arithmetic fails, the responses in increasing order of effort are: (1) restrict to substitutions where it works (e.g., A-site only, same oxidation); (2) use a more sophisticated decoder (U12 generative models with conditioning); (3) retrain the encoder with broader pretraining data.
+
+**One sentence.** "Test arithmetic on known examples; if the residual is large, don't extrapolate — fix the encoder or change the question."
+:::
+
+# §F · Failure Modes of Latent-Space Interpretation {.section}
+
+## 34. The t-SNE Distance Trap
+
+::: {.columns}
+::: {.column width="50%"}
+**The trap**
+
+- "Cluster A and cluster B are closer than cluster A and cluster C" *on a t-SNE plot*.
+- People read this as a chemistry claim.
+- It is not.
+:::
+::: {.column width="50%"}
+**Why it's wrong**
+
+- t-SNE preserves *local* neighbourhoods; inter-cluster distances are *unconstrained*.
+- The same data, with a different perplexity / seed, gives different inter-cluster distances.
+- Any inter-cluster distance claim must be restated *in $z$*, not in 2D [@bishop2006pattern; @murphy2012machine].
+:::
+:::
+
+::: {.notes}
+**The single most important slide in §F.** The t-SNE distance trap is the most common form of latent-space lying in the materials informatics literature. People publish 2D scatters with no metric, then *narrate* the inter-cluster spacing as if it meant something.
+
+**A worked counterexample to share.** Take any MP slice. Run t-SNE with perplexity 5; observe inter-cluster distances. Run t-SNE with perplexity 50; observe new inter-cluster distances. Same data, different distances. Whichever you used for your published figure, the other version exists and disagrees.
+
+**The corrective.** When you want to say "$A$ is closer to $B$ than to $C$," compute that distance *in $z$*: $\|z_A - z_B\| < \|z_A - z_C\|$. The 2D plot is for *seeing*; the high-dimensional embedding is for *measuring*.
+
+**A sub-trap.** "But UMAP preserves global structure better than t-SNE!" Yes, but only *partially*. UMAP inter-cluster distances are *less* unreliable than t-SNE inter-cluster distances; they are still not *reliable*. Same corrective applies: state the distance in $z$, not on the plot.
+
+**The exam-ready statement.** "A t-SNE plot is a tool for *seeing* clusters, not for *measuring* distances. Distances live in $z$." Have students write this in their notes.
+:::
+
+## 35. Pretraining-Data Bias
+
+::: {.columns}
+::: {.column width="50%"}
+**The trap**
+
+- The latent space inherits the pretraining corpus.
+- An MP-pretrained encoder over-represents oxides and stable phases.
+- Materials in under-represented regions look "novel" — but it's a corpus artefact.
+:::
+::: {.column width="50%"}
+**Symptoms**
+
+- Chalcogenides "isolated" in an MP-trained $z$: probably under-coverage, not chemistry novelty.
+- "Outliers" that come from a different lab's calculation conventions.
+- Apparent "discoveries" in chemistry families the encoder barely saw [@neuer2024machine].
+:::
+:::
+
+::: {.notes}
+**The bias is real and rarely fixable post-hoc.** If you want to discover chalcogenides, train (or fine-tune) on a corpus that contains chalcogenides. You cannot reason your way out of an under-represented chemistry by being clever with projections.
+
+**The reproducibility move.** Always cite the pretraining corpus alongside any latent-space claim. "MP-pretrained M3GNet" is a complete statement of what the encoder does and does not see. "Some pretrained encoder" is not.
+
+**The "novel" trap.** Materials at the edge of an under-represented chemistry family will *always* score as latent-space novelties. They may or may not be genuinely novel chemistry; you cannot distinguish from the latent score alone. The diagnostic: re-embed with a *different* pretrained encoder (e.g., one trained on a corpus that does cover the chemistry of interest) and check whether the same materials still score as novelties.
+
+**The community-level corrective.** Materials foundation models (M3GNet, MACE-MP, SevenNet, EquiformerV2) have made this less bad over 2023–2025 because their pretraining corpora are increasingly broad. But "less bad" is not "fixed"; the bias is always there at some level.
+
+**One sentence.** "Novelty is *relative to the corpus*; cite the corpus or do not cite the novelty."
+:::
+
+## 36. The Narrative Fallacy
+
+::: {.columns}
+::: {.column width="50%"}
+**The trap**
+
+- A 2D scatter with three blobs *will* be told as a three-phase story.
+- Even when the blobs are projection artefacts.
+- Humans are pattern-completion machines; we *cannot help* seeing structure.
+:::
+::: {.column width="50%"}
+**The defence**
+
+- *Replicate*: rerun with a different projection / seed / encoder.
+- If the story changes substantially, it was narrative, not signal.
+- If the story persists, it's *partial* evidence — supplement with probes.
+:::
+:::
+
+::: {.notes}
+**The Kahneman reference, briefly.** *Thinking, Fast and Slow* [@kahneman2011thinking] coined "narrative fallacy" for our tendency to construct stories from random data. Latent-space figures are particularly susceptible because they are visually compelling.
+
+**A teaching exercise.** Generate a 2D scatter from *random* high-dimensional Gaussian data, run UMAP, show the result. The audience will see "clusters" — they always do. This is the demonstration that *visual cluster structure is the default human response*, not evidence.
+
+**The "replicate" discipline.** Rerun the projection with different seeds, different methods, different hyperparameters. A *robust* feature of the data appears in most runs. A *narrative* feature appears in one run and disappears in others.
+
+**An honest concession.** Some narratives are *correct*. The MoS$_2$ polymorph story (slide 22) is a narrative — three blobs, three phases. It happens to also be true, because the blobs are real and replicate across encoders. The lesson is not "never tell a story"; it is "tell stories that survive replication."
+
+**The exam-ready statement.** "A latent-space narrative is evidence only if it survives replication across projection method, seed, and hyperparameters."
+:::
+
+## 37. The "Axis Means X" Trap
+
+::: {.columns}
+::: {.column width="50%"}
+**The trap**
+
+- "$z_1$ is correlated with band gap, therefore $z_1$ encodes band gap."
+- The encoder did not necessarily learn band gap; the *projection* may have produced the correlation.
+- $z_1$ may correlate with band gap because both correlate with electron count.
+:::
+::: {.column width="50%"}
+**The defence**
+
+- A latent direction "encodes" $y$ only if a *linear probe* gives high $R^2$.
+- And the probe survives a *control* — predicting $y$ from a different direction *not* claimed to encode $y$ should give lower $R^2$.
+- See slide 39 for the linear-probe protocol.
+:::
+:::
+
+::: {.notes}
+**The correlation-vs-encoding distinction.** A high correlation between $z_1$ and $y$ tells you that *something* in the encoder's representation is informative for $y$. It does *not* tell you that $z_1$ is the encoding of $y$, or that $z_1$ is "the band-gap axis."
+
+**Why it matters.** Naming axes as physical properties is the most narratively satisfying way to write up a latent-space study. It is also the most over-claimed. The corrective is to demand a *linear probe with control* before accepting any "axis = property" claim.
+
+**A concrete example.** Suppose $z_1$ correlates 0.7 with band gap and $z_2$ correlates 0.6. Are they two *band-gap axes*? Or are they two *electron-count axes* that happen to both inform band gap? You cannot tell from correlations alone. The linear probe answers this: train a probe on $z_1$ alone, on $z_2$ alone, and on $(z_1, z_2)$; if the joint $R^2$ much exceeds either individual $R^2$, the two axes carry *complementary* information about $y$. If the joint $R^2$ matches one of the singletons, they are redundant.
+
+**The deeper point.** Encoders almost never produce *axis-aligned* interpretable representations unless trained explicitly for that ($\beta$-VAE, FactorVAE). Standard pretraining gives entangled representations. Any "axis means X" claim therefore needs explicit evidence.
+
+**One sentence.** "Correlation between an axis and a property is not encoding; encoding requires a probe with a control."
+:::
+
+## 38. Ablations on the Encoder
+
+::: {.columns}
+::: {.column width="50%"}
+**The ablation idea**
+
+- Retrain the encoder with one input modality removed.
+- Drop composition, keep structure: does the latent map change?
+- Drop structure, keep composition: does it change?
+- The change *measures* what each modality contributes.
+:::
+::: {.column width="50%"}
+**Why ablations matter**
+
+- They convert "the latent space encodes structure" from a *claim* into a *measurement*.
+- They isolate the contribution of each input modality.
+- They are *expensive* (full retraining) but the information is high.
+:::
+:::
+
+::: {.notes}
+**The expensive-but-decisive tool.** Ablations require *retraining* the encoder. For a small encoder this is hours; for a foundation model this is days to weeks of GPU time. Not every project can afford ablations on a foundation model.
+
+**The cheap proxy.** *Input ablations*: zero out part of the input *at inference time*, without retraining. Drop the structural part of the input; observe whether $z$ changes substantially. This is a *partial* substitute for full retraining ablations and is much cheaper.
+
+**A worked example.** For a CGCNN-style encoder: remove the bond-feature edges and re-embed; if $z$ collapses to a composition-only latent space, structure was doing real work; if $z$ is unchanged, the encoder was effectively composition-only despite its architecture. Either way, you've learned something.
+
+**The discipline implication.** A latent-space paper that claims "the encoder learns structure" without an ablation is making an unsupported claim. The community should be more demanding about this — and U11 is the unit where students learn to demand it of themselves.
+
+**One sentence.** "Ablation is the difference between asserting an encoder uses a feature and *measuring* it."
+:::
+
+## 39. Linear Probes — The Quantitative Check
+
+::: {.columns}
+::: {.column width="50%"}
+**The protocol**
+
+1. Freeze encoder; extract $z$ for the corpus.
+2. Train a linear regressor $y = w^\top z + b$ for property $y$.
+3. Report $R^2$ on a *held-out* split.
+4. *Compare* to a baseline: linear regressor on Magpie features.
+:::
+::: {.column width="50%"}
+**What the comparison says**
+
+- $R^2_{\text{probe}} \gg R^2_{\text{Magpie}}$: encoder learned beyond composition.
+- $R^2_{\text{probe}} \approx R^2_{\text{Magpie}}$: encoder is doing essentially Magpie's job.
+- $R^2_{\text{probe}} \ll R^2_{\text{Magpie}}$: encoder is *worse* than a hand-crafted baseline — fix it.
+:::
+:::
+
+::: {.notes}
+**The slide that should be on the exam.** The linear probe is the single most important tool for evaluating latent-space claims. Every $z$-based claim — "the encoder encodes property $y$," "the axis $z_i$ is property $y$," "$z$-distances are property-relevant" — can and should be reduced to a probe $R^2$.
+
+**Why the Magpie comparison is the right baseline.** Magpie features (composition-only, hand-crafted) are *cheap* (no encoder training), *interpretable*, and *strong* on many tasks. If your structure-aware encoder cannot beat Magpie on a probe, you have not bought anything by being structure-aware. The comparison is the *value-of-encoding* test.
+
+**Held-out split discipline.** The probe must be evaluated on a *held-out* split — a chemistry-disjoint or family-disjoint split, not a random split. Random splits give optimistic $R^2$ because the probe has seen "neighbour" materials in training. The discipline is the same as the leakage discipline of MFML and U8.
+
+**Linear, not nonlinear.** A nonlinear probe will fit any property to high $R^2$, given a flexible enough probe. The linear probe asks: "is this property *linearly accessible* from $z$?" Linear accessibility is much stronger evidence than nonlinear accessibility.
+
+**Forward link.** This is the slide that ties §F's negative-case slides into a positive-case discipline. We have catalogued the failures (slides 34–38); the linear probe is the standard against which a non-failure must be demonstrated.
+
+**One sentence.** "Linear probe $R^2$ on a chemistry-disjoint split is the quantitative meaning of 'the latent space encodes property $y$.'"
+:::
+
+## 40. The Reproducibility Checklist for Latent-Space Claims
+
+::: {.columns}
+::: {.column width="50%"}
+**Five items, none optional**
+
+1. *Encoder*: version + pretraining corpus.
+2. *Projection*: method + hyperparameters + random seed.
+3. *Colour scale*: what range, linear / log, clipping.
+4. *One ablation*: input or training-data ablation.
+5. *One linear probe*: with chemistry-disjoint split + Magpie baseline.
+:::
+::: {.column width="50%"}
+**Without all five**
+
+- The claim is decoration, not evidence.
+- The figure may be illustrative; it is not a result.
+- The exercise this afternoon will *require* all five.
+- The exam will test whether you can identify each item in someone else's paper.
+:::
+:::
+
+::: {.notes}
+**This is the unit's exam-ready slide.** Memorise the five items; recognise them in any latent-space paper; deliver them in your own work.
+
+**Why this discipline is non-negotiable.** Each missing item is a hidden degree of freedom that lets the same data tell different stories. Without item 1, the corpus bias is hidden. Without item 2, the result is irreproducible. Without item 3, the colour gradient can be cherry-picked. Without item 4, "what the encoder encodes" is unsupported. Without item 5, the encoding is unmeasured.
+
+**A common student question.** "Do I really need *all* five?" Yes. The exercise this afternoon will require all five for credit. The exam may give you a published figure and ask which of the five it satisfies — typical answer: 2 or 3 of the 5, which is why most published latent-space figures are decorations.
+
+**A more constructive framing.** The five items together take maybe an extra day of work after the figure is made. That day is the difference between a figure-in-the-paper and a *result-in-the-paper*. Pay the day; you will be glad.
+
+**Tie back to slide 15.** Slide 15 was the first version of the checklist (in §C). Slide 40 is the *complete* version, augmented by §F's findings on ablation and probes. It is the same instinct, sharpened by the failure-mode discussion.
+
+**One sentence.** "The five-item checklist is the rigor floor for any latent-space claim in this course."
+:::
+
+# §G · Worked Example — MP Perovskites in Latent Space {.section}
+
+## 41. Setup — The ABO$_3$ Slice
+
+::: {.columns}
+::: {.column width="50%"}
+**The corpus**
+
+- Pull all entries with stoichiometry ABO$_3$ from MP-2024.
+- ~10 k structures across alkaline-earth, transition-metal, and rare-earth A-sites.
+- B-site: Ti, Zr, Hf, Mn, Fe, Co, Ni, Sn, Pb, etc.
+:::
+::: {.column width="50%"}
+**The encoder + projection**
+
+- Encoder: M3GNet-MP-2024 foundation model, 128-D embedding.
+- Projection: PCA (2D) for accountable axes; UMAP for visual clusters.
+- Frozen encoder; no fine-tuning.
+:::
+:::
+
+::: {.notes}
+**Why this is the canonical case study.** Slide 14 already named the reasons: large enough corpus, rich polymorphism, well-known phase diagram, high-impact targets. Slide 41 makes it concrete.
+
+**The reproducibility chunk.** All slides 41–46 figures are reproducible from the exercise repo. Encoder loaded with `M3GNet.from_pretrained('mp-2024')`; corpus pulled with `mp_api.client.MPRester().materials.summary.search(formula='AB(O)3')`; projection with `PCA(n_components=2)` and `umap.UMAP(n_neighbors=15, min_dist=0.1, random_state=0)`. The whole thing is ~30 lines of Python.
+
+**Why M3GNet specifically.** It is open, foundation-model-style, and trained on the broad MP corpus. Equivalent results would come from MACE-MP, SevenNet, or EquiformerV2. We pick M3GNet for concreteness; the case study is not method-locked.
+
+**Why frozen.** Frozen embedding makes the result a statement about *what M3GNet learned during pretraining*. Fine-tuning would conflate "what the encoder knows" with "what we taught it for this task." The frozen probe is the cleaner experiment.
+
+**One sentence.** "ABO$_3$ slice + M3GNet-MP-2024 + PCA + UMAP — the cleanest possible canonical perovskite latent map."
+:::
+
+## 42. The Map — What We See
+
+::: {.columns}
+::: {.column width="50%"}
+**Three lobes**
+
+- *Cubic perovskites* (Pm$\bar{3}$m): high-symmetry; one lobe.
+- *Tilted / orthorhombic / tetragonal* (Pnma, P4mm, etc.): the largest lobe.
+- *Hexagonal / 2H polytypes* (P6$_3$/mmc): a smaller, separated lobe.
+:::
+::: {.column width="50%"}
+**Sub-features**
+
+- A *bridge region* between cubic and tetragonal, populated by ferroelectric solid solutions.
+- A *formability frontier*: an $E_{\text{hull}}$ gradient at the periphery.
+- *Per-A-site sub-clusters* within each lobe.
+:::
+:::
+
+::: {.notes}
+**Read the picture aloud.** The three-lobe structure is reproducible across encoders and across reasonable projection choices. It is *the* known structural feature of the ABO$_3$ family — and the latent map recovers it with no supervision.
+
+**The bridge region matters.** The continuous interpolation between cubic and tetragonal corresponds, physically, to the continuous evolution between paraelectric and ferroelectric phases. Materials in this bridge region are exactly the perovskites of technological interest (BaTiO$_3$, PbTiO$_3$, Ba$_{1-x}$Sr$_x$TiO$_3$). The latent space pulls them out as a *visually distinctive* region — and they are also the most-studied perovskites in the literature.
+
+**The formability frontier is the design-relevant edge.** The "outside" of the perovskite cluster — high $E_{\text{hull}}$, sparse — is where unsynthesised perovskite candidates live. Pull entries from this region; rank by $E_{\text{hull}}$; DFT-validate the top 10. This is the discovery move of slide 45.
+
+**The teaching pacing.** Walk through the picture for ~2 minutes. Point at the cubic lobe; point at the tilted lobe; point at the hexagonal outpost; point at the bridge. The students should see the structure with you, not after the slide is done.
+
+**One sentence.** "The unsupervised map already shows you most of what an experienced perovskite chemist would draw on a whiteboard."
+:::
+
+## 43. Claims the Map Supports
+
+::: {.columns}
+::: {.column width="50%"}
+**Supportable claims (with evidence)**
+
+- "Octahedral tilting separates from the cubic structure along a learned direction."
+- "Stable perovskites form a *connected* manifold in $z$."
+- "The bridge region between cubic and tetragonal is rich in ferroelectrics."
+:::
+::: {.column width="50%"}
+**Why these are supportable**
+
+- Each is checkable by a *linear probe* on a relevant labelled subset.
+- Each is *replicable* across projection choices.
+- Each is consistent with prior literature.
+:::
+:::
+
+::: {.notes}
+**Walk through each claim and its evidence.**
+
+- "*Octahedral tilting separates*": linear probe on the latent direction connecting cubic and orthorhombic clusters, predicting Glazer tilt magnitude. $R^2$ typically 0.6–0.7. Probe is the evidence.
+- "*Stable perovskites form a connected manifold*": empirical observation that $E_{\text{hull}} = 0$ entries form a *single* connected cluster, not multiple disjoint ones. Connectivity is verifiable algorithmically (single-linkage at appropriate threshold).
+- "*Bridge region is rich in ferroelectrics*": pull the entries in the cubic-tetragonal bridge region; check what fraction are reported ferroelectrics in the literature; report the fraction. This is *partial* evidence — ferroelectric reports are incomplete — but the enrichment is real.
+
+**The discipline.** A claim that *can* be supported is not yet supported. Each of these requires an actual probe / an actual replication / an actual ground-truth check. Slide 43 lists the *supportable* claims; the *actual support* lives in the supplement of any paper that wants to make them.
+
+**Why this is in the lecture.** Most of the perovskite latent-space literature gets these three claims approximately right. They are not the locus of failure modes. The next slide (44) is.
+
+**One sentence.** "Supportable claims are claims you can convert into probe $R^2$, replication grids, and ground-truth comparisons — not just narratives."
+:::
+
+## 44. Claims the Map Does *Not* Support
+
+::: {.columns}
+::: {.column width="50%"}
+**Unsupportable narratives**
+
+- "This empty corner contains undiscovered superconductors." (Empty corner = pretraining bias, not chemistry [@neuer2024machine].)
+- "Perovskite $A$ is closer to perovskite $B$ than to perovskite $C$." (UMAP distance, not $z$ distance.)
+- "Axis 1 is the band-gap axis." (Correlation, not encoding.)
+:::
+::: {.column width="50%"}
+**The discipline**
+
+- Stating what a map *cannot* claim is itself a contribution.
+- The over-claims of slide 44 *appear* in published papers.
+- Recognising them in others' work — and avoiding them in yours — is the unit's transferable skill.
+:::
+:::
+
+::: {.notes}
+**This is one of the most important slides in the unit.** Spend time here. Most students will recognise the form of these claims because they have seen them in the literature. Some will have *made* such claims in homework or projects. The corrective is the same in each case: the claim is unsupported by the figure that purports to show it; supporting it requires a different (often expensive) experiment.
+
+**Walk through each anti-claim.**
+
+- "*Empty corner = undiscovered region*": the empty corner is *equally* consistent with (a) genuinely unexplored chemistry, (b) under-coverage in pretraining, and (c) a region where the encoder happens to be uncertain. Without an explicit decoder + DFT loop, you cannot distinguish.
+- "*Closer in 2D = more similar*": already debunked in slide 34; this slide reinforces with a perovskite-specific instance.
+- "*Axis = property*": already debunked in slide 37; this slide reinforces.
+
+**Why making the unsupportable claims explicit is its own contribution.** Many papers list the supportable claims (slide 43) and let the reader infer the unsupportable ones (slide 44) by absence. A *better* paper makes both lists explicit — which is the standard the exercise will hold students to.
+
+**The exam-style question this generates.** "Given a latent-space figure with three colour-coded clusters and a written narrative, identify which sentences in the narrative are supportable by the figure and which are not." This is a transferable skill; we will probe for it.
+
+**One sentence.** "The honest paper says what the latent map *cannot* prove, not just what it *can*."
+:::
+
+## 45. From Map to Lab — The Discovery Move
+
+::: {.columns}
+::: {.column width="50%"}
+**The end-to-end loop**
+
+1. Pick a property target (e.g., band gap 1.5–2.0 eV, $E_{\text{hull}} < 50$ meV/atom).
+2. Find the property gradient direction $\hat{\mathbf{g}}_y$ via linear probe.
+3. Move from a starting perovskite along $\hat{\mathbf{g}}_y$.
+4. Decode candidate (composition + space-group hypothesis).
+5. DFT-validate top-$k$.
+6. Synthesise top 1–2.
+:::
+::: {.column width="50%"}
+**The closed loop**
+
+- Steps 1–4: today.
+- Step 5: U4 (DFT) and U13 (uncertainty over candidates).
+- Step 6: experimental partners.
+- The loop *closes* by feeding new (x, y) pairs back to the encoder and the regression.
+:::
+:::
+
+::: {.notes}
+**Why this slide closes §G.** The perovskite case study is *not* an aesthetic exercise — it is the smallest reproducible example of the materials-genomics discovery loop. Slide 45 names the steps; the rest of the course teaches them at higher fidelity.
+
+**Walk through what's "today" and what's "later".** Today (slides 1–44) gives steps 1–4. Step 5 (DFT validation) is U4; we already know how to do it. Step 6 is experimental and beyond MG scope. Step 7 (the closure) is U13. The loop is therefore distributed across the course — but slide 45 makes the structure visible.
+
+**A real-world calibration.** A typical perovskite discovery campaign in this style might propose 50 candidates, DFT-validate the top 10, and synthesise 1–2. The hit rate (synthesised material confirmed at target property) is on the order of 20–40% for the best 2024 workflows. This is not "ML solved materials discovery"; it is "ML provides a 10x triage on candidate selection."
+
+**The pedagogical wrap.** §G has been a sustained "what does this look like in practice" worked example. Slide 45 is the result: a closed loop that students can themselves implement after the exercise this afternoon. This is the unit at its most concrete.
+
+**One sentence.** "Latent map + property gradient + decoded candidate + DFT validation = the simplest closed-loop discovery the course teaches; everything later refines this."
+:::
+
+## 46. Reproducing the Figure
+
+::: {.columns}
+::: {.column width="50%"}
+**The exercise repo**
+
+- `notebook/perovskite_latent.ipynb` — full case-study notebook.
+- ~30 lines of Python end-to-end.
+- Encoder: `from_pretrained()` one-liner.
+- Projection + colouring + probe + ablation: ten lines each.
+:::
+::: {.column width="50%"}
+**Reproducibility is a requirement, not a bonus**
+
+- Every figure on slides 41–45 is regenerated from the notebook.
+- Random seeds are fixed.
+- Hyperparameters are explicit.
+- Linear-probe baseline is included.
+- This is the *minimum* standard the exercise expects.
+:::
+:::
+
+::: {.notes}
+**The "minimum standard" message.** Reproducibility is *not* extra credit; it is the floor. The exercise this afternoon expects every figure to be regenerated from explicit code with explicit hyperparameters and explicit seeds. Anyone who hands in a figure they cannot regenerate will be asked to redo the exercise.
+
+**Why this is so emphatic.** The materials-informatics community is in the middle of a reproducibility transition. Older papers routinely report "we ran UMAP" with no seed. Newer papers (and this course's expectations) require everything that affects the figure to be in the supplementary repo. Students should leave this course in the *new* regime, not the old one.
+
+**The notebook structure.** The exercise notebook follows the slide-41–45 structure exactly: load corpus; embed; project; colour; probe; ablate; pick a candidate; DFT-prepare a POSCAR. The slides are illustrations of the notebook, not vice versa.
+
+**A common question.** "What if my projection looks slightly different from the slide?" Answer: it should look the same up to seed-controlled differences. If you used the same encoder, same projection method, same hyperparameters, same seed, your figure should be pixel-similar to the lecture slide. If it isn't, debug.
+
+**Tie back to slide 40.** Slide 46 is the operationalisation of slide 40's reproducibility checklist for this specific case study. The five-item checklist + the public notebook = the unit's reproducibility model.
+
+**One sentence.** "If your latent-space figure cannot be regenerated from a public notebook with fixed seeds, it is not yet a result."
+:::
+
+# §H · Wrap-Up {.section}
+
+## 47. When Latent Visualisation Helps, When It Misleads
+
+::: {.columns}
+::: {.column width="50%"}
+**Helps**
+
+- Hypothesis generation: which chemistry families to target.
+- Phase discovery: novel polymorphs and overlooked materials.
+- Design-move proposal: starting points for inverse design.
+- *Communicating* a complicated chemistry story in one figure.
+:::
+::: {.column width="50%"}
+**Misleads when**
+
+- Treated as ground truth ("we discovered X").
+- Distances reported uncritically ("A is closer to B than C").
+- Narratives outpace probes ("axis 1 is band gap").
+- Pretraining corpus ignored ("this material is novel").
+:::
+:::
+
+::: {.notes}
+**The single take-home distinction.** Latent visualisation is a *hypothesis generator*, not a *hypothesis tester*. The hypotheses must then be tested by probes, ablations, DFT, and experiment. The figure is the *first* step, not the *last* one.
+
+**The communication value.** Even if a latent figure proves no theorems, it can *communicate* a complicated chemistry organisation in one panel. This is not nothing. A reviewer who would not read a 100-row table will look at a 10 k-point scatter and *get* the structure of the family. Visualisation is a *teaching* tool as much as a discovery tool.
+
+**The four "misleads when" cases reconnect to §F.** Treated as ground truth: §F §38 (ablations / probes are the reality check). Distances uncritical: §F §34 (the t-SNE distance trap). Narratives outpace probes: §F §36–37 (narrative fallacy + axis-means-X trap). Pretraining ignored: §F §35 (pretraining bias). The wrap-up is therefore a recall of §F structured by use case.
+
+**Don't be cynical.** The unit has spent a lot of time on failure modes. The wrap-up is *not* "latent maps are bad." It is "latent maps are powerful when used as hypothesis generators with explicit standards of evidence." Many of the most exciting discoveries in materials informatics over the past five years have come from exactly this kind of disciplined latent-space work.
+
+**One sentence.** "Latent visualisation is the *cheapest* hypothesis generator in materials informatics — and the *most expensive* hypothesis tester if you let the picture do the testing."
+:::
+
+## 48. Forward — Unit 12 (Clustering vs Discovery)
+
+::: {.columns}
+::: {.column width="50%"}
+**What U12 does next**
+
+- *Partition* the latent space into chemistry-family clusters.
+- K-means / GMM / HDBSCAN on $z$.
+- Cluster validation: silhouette, BIC, persistence.
+- Cluster *meaning*: post-hoc inspection of exemplars.
+:::
+::: {.column width="50%"}
+**Plus the bridge to generative**
+
+- VAE / diffusion as decoders for $z$ — the gap that today's interpolation slides could not fill.
+- Inverse design: from $z_{\text{target}}$ to a synthesisable structure.
+- This is U12's second half.
+:::
+:::
+
+::: {.notes}
+**The triangulation between U11 / U12 / U13.** U11 *reads* the latent space. U12 *partitions* it (clustering) and *generates* from it (VAE / diffusion). U13 *acquires* over it (GP + acquisition). Three operations on the same object — the embedding $z$.
+
+**Why partitioning naturally follows reading.** Today we identified clusters by eye and named them post-hoc. U12 makes both steps algorithmic: K-means / GMM finds the clusters; cluster-validation diagnostics (silhouette, BIC) score them. The discipline is the same; the automation is more.
+
+**Why generative naturally follows interpolation.** Today's slides on interpolation (28) and design moves (30) repeatedly hit the same wall: the encoder is not invertible, so we cannot turn $z_{\text{target}}$ into a structure. U12's generative half (VAE-based, diffusion-based) builds *invertible* models around the encoder, closing this gap.
+
+**The forward pointer is also a *backward* pointer.** Anything U12 does on $z$ presupposes that today's standards of evidence have been met for that $z$. A poorly characterised $z$ produces poor clusters and poor generations. The five-item checklist of slide 40 is therefore a *prerequisite* for U12 — not just an ideal for U11.
+
+**Don't oversell.** U12's generative half is famously hard; even 2025 state-of-the-art generative models for crystals have hit rates well below 100%. Today is *foundation*; U12 is *progress*; "solved" is not yet on the table.
+
+**One sentence.** "U12 partitions and generates; both presuppose that we read the latent space well today."
+:::
+
+## 49. Forward — Unit 13 (Uncertainty-Aware Discovery)
+
+::: {.columns}
+::: {.column width="50%"}
+**What U13 does next**
+
+- Place a Gaussian process *over $z$*: $y(z) \sim \text{GP}(\mu, k)$.
+- Acquisition functions: UCB, EI, Thompson sampling.
+- The GP gives both prediction *and* uncertainty.
+- Acquisition picks the next experiment by trading off both.
+:::
+::: {.column width="50%"}
+**Why the latent space matters**
+
+- The GP kernel $k(z, z')$ is a *learned* metric on chemistry — not Euclidean atom-distance.
+- Uncertainty *over $z$* is uncertainty *over chemistry*, properly calibrated.
+- The acquisition policy *moves through* $z$, exactly as today's design moves did.
+- Today's foundation $\to$ U13's closed loop.
+:::
+:::
+
+::: {.notes}
+**The uncertainty connection.** Today we said that latent-coordinate novelty (slide 20) flags isolated points. U13 makes that flagging *probabilistic* — uncertainty in $y(z)$ for an isolated $z$ is *high* because the GP has no nearby data. The intuition is the same; U13's machinery quantifies it.
+
+**The acquisition connection.** Today's "design move" was: pick a property gradient direction, move along it, decode. U13's acquisition is: at each step, pick the $z$ that maximises an *acquisition* function (e.g., expected improvement). The acquisition function balances *exploitation* (move along the property gradient) against *exploration* (move toward high-uncertainty regions). The single-step move is the deterministic limit of the acquisition policy.
+
+**The closed loop, restated.** Embed $\to$ project $\to$ probe $\to$ acquire $\to$ DFT $\to$ retrain. Today is the embed-project-probe arc. U13 is the acquire-DFT-retrain arc. Together they are the materials-genomics discovery loop.
+
+**Why MG U13 is "uncertainty-*aware*."** Most ML methods give a point prediction; GPs give a distribution. The distribution is what makes acquisition possible. Without uncertainty, you cannot decide where to explore vs exploit; you cannot stop the loop; you cannot rank candidates by risk-adjusted return. U13 is the unit where the loop becomes *adaptive*.
+
+**One sentence.** "U13 turns the latent map into a *decision* substrate; today's job was to make sure the map is worth deciding on."
+:::
+
+## 50. Exercise + Reading Assignment
+
+::: {.columns}
+::: {.column width="50%"}
+**Exercise (90 min, this afternoon)**
+
+1. Pull a precomputed M3GNet embedding of an MP slice.
+2. Project to 2D with PCA, t-SNE (sweep perplexity), UMAP (sweep `n_neighbors`).
+3. Colour by formation energy *and* one of {band gap, density, space group}.
+4. Identify one chemistry family that clusters cleanly; one that does not. Explain.
+5. Run a linear probe for one property; compare to Magpie baseline.
+6. Document one *failure of interpretation*.
+:::
+::: {.column width="50%"}
+**Reading for next week**
+
+- **@murphy2012machine** Ch 12 (continuous latent variables) — sections 12.1–12.2 are sufficient.
+- **@bishop2006pattern** §12.3 (probabilistic latent variable models).
+- **@sandfeld_materials_data_science**, Ch 19 case studies on AE / latent-space materials applications.
+- **@mcclarren2021machine** Ch 8 (autoencoders) for an engineering-style refresher.
+- Optional: **@neuer2024machine** §5.5 for anomaly detection in latent spaces.
+
+**Next week (Unit 12):** clustering and generative use of $z$.
+:::
+:::
+
+::: {.fragment}
+> **The single sentence to leave with:** *the materials latent space is a map, not a fact — read it carefully, navigate it deliberately, and challenge it always.*
+:::
+
+::: {.notes}
+**Set expectations for the exercise.** Steps 1–3 are the must-finish; steps 4–5 are the new-content stretch (cluster naming + linear probe); step 6 is the reach goal (failure documentation). Students who finish through step 5 in 60 min will have absorbed the unit.
+
+**The "failure of interpretation" requirement.** Step 6 is what the unit was *for*. Documenting one *honest failure* — a cluster that looks meaningful but turns out to be projection noise, or a "novel" outlier that turns out to be a parse error, or two materials that look adjacent in 2D but are far in $z$ — is the most pedagogically valuable part of the exercise. It converts the negative-case slides of §F from words into experience.
+
+**Reading priorities.** If they only read one chapter: Sandfeld Ch 19 — it is the most materials-grounded of the five sources. If two: + Murphy Ch 12 §12.1–12.2 for the latent-variable framing. If three: + Bishop §12.3 for the rigour. McClarren Ch 8 and Neuer §5.5 are the engineering-style supplements.
+
+**The wrap sentence.** "Read it carefully, navigate it deliberately, challenge it always" is the unit in nine words. Have students write it.
+
+**Closing words.** "Next week we partition the map and generate from it. The week after, we put a Gaussian process on it and use it to plan experiments. Today was the *prerequisite* for both. If today's standards of evidence become your default, the next two weeks will land. If they don't, no amount of acquisition function will save you. End of unit. Take questions."
+:::
+
+::: {#refs}
+:::
+
+<!-- BEGIN prev-next -->
+
+## Continue
+
+- &larr; Previous: [Unit 10 &mdash; Representation Learning and Feature Discovery](../10_representation_learning_and_feature_discovery/01_intro.html)
+- &rarr; Next: [Unit 12 &mdash; Generative Models & Inverse Design](../12_generative_models_and_inverse_design/01_intro.html)
+- [All courses](../../index.html)
+
+<!-- END prev-next -->

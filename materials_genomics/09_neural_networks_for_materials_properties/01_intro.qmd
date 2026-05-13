@@ -1,0 +1,1771 @@
+---
+title: 'Materials Genomics<br>Unit 9: Neural Networks for Materials Properties'
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
+execute:
+  eval: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: © Philipp Pelz - Materials Genomics
+---
+# §0 · Frame {.section}
+
+## 01. Today's Question
+
+::: {.columns}
+::: {.column width="50%"}
+**What does a neural network for an *atomic system* look like?**
+
+- A crystal is not a vector and not an image.
+- It is a graph of atoms under periodic boundary conditions, with a precise set of symmetries.
+- A generic MLP on a Magpie vector is blind to most of that structure.
+- Today: the architectures designed to *respect* atomic-system geometry.
+:::
+::: {.column width="50%" .fragment}
+**What this unit is *not*.**
+
+- Not a re-introduction of the neuron, MLP, backprop, or convolution — that is **MFML W4**.
+- Not an attention / transformer derivation — that is **MFML W10**, forward-linked here in §G.
+- Not a re-derivation of crystal graphs — that is **MG U6**, recapped in one slide.
+- Not a re-derivation of local environments — that is **MG U7**, recapped in one slide.
+:::
+:::
+
+::: {.notes}
+**Open with the question, not the title.** "Last week we built crystal graphs and pooled local environments. Today we ask the obvious next question: what does a neural network *on* such a graph look like, and why is it not the same as a network on an image or a feature vector?"
+
+**Stake the lecture.** Eight sections, one through-line: an architecture that respects the symmetries of atomic systems — translation, rotation, permutation, periodicity. Every named model today (SchNet, CGCNN, MEGNet, ALIGNN, M3GNet, NequIP, Allegro, MACE, Matformer, OMat24-style foundation models) is a different way of building those symmetries into the network. If they leave knowing that *symmetry is the inductive bias*, the lecture has done its job.
+
+**Pacing.** Eight minutes on §0 frame + §A recap; twelve on §B (why generic NNs fail); fifteen on §C SchNet; fifteen on §D CGCNN; fifteen on §E MEGNet/ALIGNN/M3GNet; ten on §F equivariance; ten on §G transformers and foundation models; five on §H wrap-up. Tight schedule — keep the recap to three slides.
+
+**Pre-empt the obvious objection.** "Why not just train an MLP on a Magpie vector?" Answer: you can, and you should as a baseline (MG U7, U8). But it cannot distinguish two polymorphs with the same composition — and most interesting properties depend on geometry. Today's architectures fix exactly that.
+
+**Anti-hype frame.** Foundation models for materials are real and useful as of 2024–2026, but they are not magic. They are pretrained graph or transformer encoders. The same data discipline from MG U8 still applies — grouped splits dominate the leaderboard MAE.
+:::
+
+## 02. Where We Are
+
+::: {.columns}
+::: {.column width="50%"}
+**Recap — what we already have**
+
+- **MFML W4:** the neuron, MLP, backprop, convolutions [@goodfellow2016deep].
+- **MFML W10 (preview):** attention and transformers — forward-linked in §G.
+- **ML-PC W4:** neuron-level NN with materials-imaging examples.
+- **MG U6:** crystals as graphs under PBC [@sandfeld_materials_data_science].
+- **MG U7:** local atomic environments, SOAP, ACSF.
+- **MG U8:** benchmark discipline — grouped splits, residual analysis.
+:::
+::: {.column width="50%"}
+**Today — Unit 9 in one line**
+
+- *Compose* MFML's NN primitives with MG's structural representations to build neural networks **on atomic systems**.
+- Eight sections: recap, why-generic-fails, SchNet, CGCNN, MEGNet/ALIGNN/M3GNet, equivariance, transformers + foundation models, wrap-up.
+:::
+:::
+
+::: {.notes}
+**Position the unit.** Unit 9 is a *composition* unit, not a *primitives* unit. The primitives (the neuron, the MLP, backprop, convolutions, attention) all live in MFML. The structural representations (graphs, local environments, descriptors) all live in earlier MG units. Unit 9 *combines* them into the architectures actually used in materials.
+
+**Triad-coordination check.** This is a triad-coordinated semester: MFML covers ML pipeline foundations, ML-PC covers experimental data quality and neuron-level NN imaging, MG covers materials-specific physics, representations, and architectures. We are not re-teaching pipeline mechanics today.
+
+**Anchor to MG U6.** "Last unit you built a crystal graph. Today every model we discuss eats exactly that graph and produces a property. CGCNN, MEGNet, ALIGNN are direct instantiations of last week's message-passing schematic."
+
+**Anchor to MFML W4.** If the MLP / backprop / convolution stack is fuzzy, revisit the MFML W4 deck tonight. We use the same notation: $\mathbf{x}$ inputs, $\mathbf{W}$ weights, $\sigma$ activations, $\nabla$ gradients. No new symbols today except the irrep channel index $\ell$ in §F.
+
+**Forward link, said aloud.** "In §G I will preview Matformer and OMat24-style foundation models. Those use attention. Attention is MFML W10's central topic. Today you get the materials-specific version of the picture; next semester MFML gives you the math."
+:::
+
+## 03. Learning Outcomes
+
+By the end of 90 minutes, you can:
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+1. Explain why a generic MLP is the wrong model class for an atomic system, and name the four symmetries that must be respected.
+2. Describe **SchNet's** continuous-filter convolution and why a discrete kernel is inadequate for atoms.
+3. Implement, conceptually, a **CGCNN** message-passing step on a crystal graph and connect it to MG U6.
+4. Place **MEGNet, ALIGNN, M3GNet** in the atom–bond–angle hierarchy and identify which target each is best for.
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+5. Explain why **E(3)-equivariance** matters for forces and name the **NequIP / Allegro / MACE** family.
+6. Describe the role of **transformer-style attention** and **foundation models** (Matformer, OMat24, GNoME) for materials in 2024–2026.
+7. Choose an architecture for a given problem based on dataset size, target type, and physics constraint.
+8. Articulate the bridge to Unit 10: foundation-model embeddings as the central object of representation learning.
+:::
+:::
+:::
+
+::: {.notes}
+**Frame the exam contract.** Outcomes 1, 3, 4, 7 are exam-weight; outcomes 2, 5, 6 are skill-weight (the exercise and the reading); outcome 8 is forward-pointer (Unit 10 follows up).
+
+**Five "must-know" statements that come up in the exam (introduce now, repeat at the end).**
+
+1. The four symmetries of an atomic-system property: translation, rotation, permutation, periodicity. A network must respect all four.
+2. A continuous-filter convolution evaluates a learned function $W(r)$ at the actual interatomic distance — atoms are not on a grid.
+3. CGCNN is a message-passing GNN on a crystal graph; the gating $\sigma \odot g$ is its core innovation.
+4. ALIGNN injects bond angles via a *line graph* whose nodes are bonds; this is the standard fix for "CGCNN has no angles."
+5. True E(3)-equivariance buys data efficiency for forces — NequIP/MACE win in small-data MLIP regimes; foundation models win when data is abundant.
+
+**Tell them where outcome 8 lives.** Outcome 8 sets up Unit 10. After Unit 9 they should hold a single thought: *"foundation models output an embedding; Unit 10 studies what to do with that embedding."*
+:::
+
+# §A · Context recap {.section}
+
+## 04. NN basics from MFML W4 — what we are *not* re-deriving
+
+::: {.columns}
+::: {.column width="50%"}
+**Assumed primitives**
+
+- **Neuron:** $y = \sigma(\mathbf{w}^\top \mathbf{x} + b)$.
+- **MLP:** stacked neurons; universal approximator under mild conditions [@goodfellow2016deep].
+- **Backprop:** gradient via chain rule on a differentiable loss.
+- **Convolution:** translation-equivariant linear map on a regular grid.
+:::
+::: {.column width="50%"}
+**Why "regular grid" is the catch today**
+
+- Convolutions exploit *translation* on a grid: pixel $(i, j)$ + offset $(u, v) \to$ pixel $(i+u, j+v)$.
+- An atom at position $\mathbf{r}_i$ has *no grid neighbour* at fixed offsets.
+- Two oxygens 2.3 Å apart and 2.7 Å apart need *different kernels* — but a discrete CNN has no slot for either.
+- This is the central reason atomic-system NNs need a different convolution.
+:::
+:::
+
+::: {.notes}
+**MFML W4 cross-reference.** The MFML W4 lecture covers the neuron, MLP, activation choice (ReLU/GELU/softmax), forward-pass computation graph, backward-pass gradient computation, and 2D convolutions for images. We assume all of that. If a student needs a refresher, the MFML W4 slide deck is the right place — not this lecture.
+
+**The single new idea today's lecture starts from.** A regular-grid convolution is *translation-equivariant on a discrete lattice*. Atomic systems live in continuous 3D space, so we need a *continuous-coordinate* generalisation of the convolution. SchNet (§C) is exactly that generalisation: $W$ becomes a function of distance $r$, evaluated at the actual interatomic distance.
+
+**Where MFML W4 stops and MG U9 starts.** MFML stops at "MLP on a feature vector" and "CNN on an image." Both inputs are tensors of fixed shape on a regular grid. MG U9 starts where the input is a *variable-size, irregular, periodic graph of atoms* — a fundamentally different data type.
+
+**One-sentence summary to put on the board.** "MFML W4 gives us NN primitives; MG U9 composes them on atomic systems."
+:::
+
+## 05. Crystals as graphs (recap from MG U6)
+
+::: {.columns}
+::: {.column width="55%"}
+**The graph encoding**
+
+- **Nodes:** atoms with chemistry features ($Z$, oxidation state, electronegativity).
+- **Edges:** neighbour relationships under PBC, found by a cutoff radius or k-nearest-neighbours search across periodic images.
+- **Edge attributes:** interatomic distances $r_{ij}$, optionally angles or bond types.
+- **Global state (optional):** crystal system, density, temperature.
+:::
+::: {.column width="45%"}
+```{mermaid}
+graph TD
+    A((Atom i)) -- "$r_{ij}$" --> B((Atom j))
+    B -- "$r_{jk}$" --> C((Atom k))
+    A -- "$r_{ik}$" --> C
+    style A fill:#f9f,stroke:#333
+    style B fill:#bbf,stroke:#333
+    style C fill:#fbb,stroke:#333
+```
+:::
+:::
+
+::: {.fragment}
+> **MG U6 contract still holds today.** PBC are enforced at graph-construction time; cutoff and RBF parameters are documented; reproducibility starts with a deterministic graph.
+:::
+
+::: {.notes}
+**Recap, not re-derivation.** The MG U6 deck spent twelve slides on graph construction, PBC handling, cutoff vs k-NN, RBF expansion of distances, and reproducibility. Today we use that graph as the *input data type*. If a student is shaky on PBC graph construction, the MG U6 slides are the recovery path.
+
+**Why we recap this at all.** Because every architecture in §C–§G operates on this graph. SchNet's continuous filter eats $r_{ij}$. CGCNN's gated convolution eats $[\mathbf{v}_i, \mathbf{v}_j, u_{ij}]$. ALIGNN's line graph eats *triplets* $(i, j, k)$. MEGNet's global state $u$ is a fourth element of the tuple $(V, E, u)$. M3GNet adds three-body interactions on top of the graph. They are all variants of the same input.
+
+**Notational fix.** $\mathbf{v}_i$ for atom features, $u_{ij}$ for edge features, $u$ for global state. We will not change this notation today.
+
+**Common student question.** "What's the right cutoff?" Answer: it depends. 4–6 Å is a common default. Always document it. We will see in §C.7 that cutoff sensitivity is a real failure mode.
+:::
+
+## 06. Local atomic environments (recap from MG U7)
+
+::: {.columns}
+::: {.column width="50%"}
+**The MG U7 picture**
+
+- A property of a material often depends on **local motifs**: coordination, bond lengths, bond angles, elemental neighbourhoods.
+- MG U7 introduced **fixed** local descriptors: SOAP, ACSF, Voronoi statistics — invariant by construction, hand-engineered.
+- Pooled into a material-level vector for downstream regression.
+:::
+::: {.column width="50%" .fragment}
+**Today's question**
+
+- What if the network *learns* the local descriptor itself, end-to-end with the predictor?
+- That is exactly what a message-passing layer does: each atom's hidden state $\mathbf{v}_i^{(t)}$ at layer $t$ is a *learned* descriptor of its $t$-hop environment.
+- SOAP/ACSF were hand-crafted; SchNet/CGCNN/ALIGNN are learned.
+:::
+:::
+
+::: {.notes}
+**The single conceptual leap from MG U7 to MG U9.** MG U7 said: pick a fixed function $\phi(\text{local env}) \to \mathbb{R}^d$, pool, then regress. MG U9 says: let $\phi$ be a *learnable* neural network, train it jointly with the predictor, and the network will discover the right local descriptor for the target.
+
+**Why this is not a free lunch.** A learnable $\phi$ has thousands of parameters and needs more data to fit. A hand-crafted $\phi$ has zero parameters and works in small-data regimes. The right choice depends on dataset size — a recurring theme today, made explicit in §H.
+
+**Continuity with MG U8.** MG U8 taught grouped splits and residual analysis. *Every* claim in this lecture about "architecture X beats architecture Y" must be filtered through MG U8's discipline. A network that wins on a random split but loses on a chemistry-grouped split is *not* the better model. We will repeat this in §H.3.
+
+**One-sentence handoff.** "MG U7 gave us hand-crafted local descriptors; MG U9 gives us learned ones. The rest is plumbing."
+:::
+
+# §B · Why generic NNs are not enough for atomic systems {.section}
+
+## 07. The MLP-on-Magpie failure
+
+::: {.columns}
+::: {.column width="50%"}
+**Setup**
+
+- **Input:** Magpie vector $\mathbf{x} \in \mathbb{R}^{132}$ — pooled elemental statistics from a chemical formula.
+- **Model:** MLP with two hidden layers.
+- **Target:** band gap, formation energy, etc.
+- This is a strong, common baseline (MG U7 / U8).
+:::
+::: {.column width="50%"}
+**The failure mode**
+
+- The Magpie vector depends *only on composition*.
+- Two polymorphs with the same composition but different crystal structures map to the **same input** — and therefore the **same prediction**.
+- Cubic vs hexagonal? Diamond vs graphite? Identical Magpie vector.
+- For motif-sensitive properties (band gap, modulus, conductivity), this is a structural blind spot.
+:::
+:::
+
+::: {.notes}
+**The diamond-vs-graphite example, said aloud.** Same composition (pure carbon), wildly different properties (band gap of 5.5 eV vs 0 eV). A Magpie-MLP cannot tell them apart. Anything that depends on geometry, coordination, or local symmetry runs into this wall.
+
+**Why we still teach Magpie.** Composition is cheap and surprisingly strong as a *baseline* for many properties — see MG U7's Magpie discussion. The point of today is not to dismiss Magpie. The point is to recognise its ceiling. When that ceiling matters, we move to structure-aware architectures.
+
+**Pre-empt.** "Can I just add structural features to the Magpie vector?" Answer: yes — that is what SOAP, ACSF, and pooled local environments do (MG U7). They climb the ceiling but never quite remove it. The natural endpoint is to let the network *itself* read the structure: that is SchNet, CGCNN, etc.
+
+**Forward link.** "Slide 14 — SchNet's continuous-filter conv reads the actual interatomic distances $r_{ij}$ and therefore distinguishes diamond from graphite without any hand-engineered descriptor. That is the payoff."
+:::
+
+## 08. The four symmetries we must respect
+
+::: {.columns}
+::: {.column width="50%"}
+**The four physical symmetries of an atomic-system property**
+
+::: {.incremental}
+1. **Translation:** $f(\{\mathbf{r}_i + \mathbf{t}\}) = f(\{\mathbf{r}_i\})$.
+2. **Rotation:** $f(\{R\mathbf{r}_i\}) = f(\{\mathbf{r}_i\})$ for invariant scalars; equivariant transform for vectors/tensors.
+3. **Permutation:** $f(\pi(\{\mathbf{r}_i\})) = f(\{\mathbf{r}_i\})$ — atom labels are arbitrary.
+4. **Periodicity:** $f$ is invariant under cell translation by lattice vectors.
+:::
+:::
+::: {.column width="50%" .fragment}
+**Two ways to handle a symmetry**
+
+- **Bake it in** (architectural):
+  the network is *exactly* invariant by construction.
+  *Cost:* design constraint.
+  *Benefit:* zero data spent learning the symmetry.
+- **Learn it** (data-augmentation):
+  rotate the inputs, retrain.
+  *Cost:* much more data.
+  *Benefit:* none for materials, where data is scarce.
+:::
+:::
+
+::: {.notes}
+**The data-efficiency argument, said aloud.** A network with $\sim 10^6$ parameters, trained on $\sim 10^4$ structures, has no chance of learning rotational invariance from data alone. Every invariance you bake into the architecture is invariance you *do not* need to learn — that is data-efficiency, full stop.
+
+**Translation is easy; rotation is hard.** Convolutions handle translation for free. Rotation is the difficult one: it requires either (a) using only invariant features like distances and angles, or (b) carrying explicit irrep features through every layer (NequIP, MACE — §F).
+
+**Permutation by sum/mean.** Permutation invariance is the easiest of the four — sum or mean over atoms (or messages) does the job. This is why GNN message passing is permutation-invariant by default.
+
+**Periodicity at graph-construction time.** PBC are not a network constraint; they are a graph-construction constraint. The neighbour search runs across periodic images, and the resulting graph encodes the periodicity. The architecture inherits it.
+
+**The exam phrasing.** "Name the four symmetries of an atomic-system property and one architectural choice for each." Answer: translation $\to$ relative coordinates / distances; rotation $\to$ scalar invariants or irrep features; permutation $\to$ sum / mean pooling; periodicity $\to$ PBC-aware graph construction.
+:::
+
+## 09. Invariance vs equivariance
+
+::: {.columns}
+::: {.column width="50%"}
+**Scalar property: invariance**
+
+- $f(R \cdot \text{input}) = f(\text{input})$.
+- Examples: total energy $E$, formation energy, band gap, bulk modulus.
+- Implementation: build the network from rotationally invariant inputs (distances, angles, scalars).
+:::
+::: {.column width="50%"}
+**Vector / tensor property: equivariance**
+
+- $f(R \cdot \text{input}) = R \cdot f(\text{input})$.
+- Examples: forces $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$, dipole moments, stress tensor.
+- Implementation: carry vector / tensor features through the layers, with strict equivariance constraints.
+:::
+:::
+
+::: {.fragment}
+> **Cardinal rule.** A scalar-only architecture *can* produce forces — via autograd through the energy. A vector-only architecture *can* produce energies — via an invariant readout. But mixing the two carelessly breaks physics.
+:::
+
+::: {.notes}
+**Why this distinction is load-bearing today.** SchNet, CGCNN, MEGNet, ALIGNN are *invariant* architectures. Their forces come from autograd through the energy: $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$. This is correct but data-hungry. NequIP, Allegro, MACE are *equivariant*: forces come out of the network as native vector outputs, with one to two orders of magnitude better data efficiency.
+
+**The autograd shortcut and its cost.** "I'll just take the gradient of my SchNet energy through PyTorch autograd to get forces." Yes — and you will need 10–100× more training structures to reach the same force MAE that NequIP gets natively. In small-data MLIP regimes (catalyst datasets, alloy DFT datasets) this is the difference between a usable model and an unusable one.
+
+**Pre-empt.** "Why not just always use equivariant architectures?" Answer: implementation complexity (irrep tensor products, Clebsch-Gordan coefficients, e3nn library) and per-step compute cost. For a scalar property on $10^5$+ structures, an invariant CGCNN is simpler, faster, and competitive. Equivariance pays off most where forces matter and data is scarce.
+
+**One-sentence summary to leave on the board.** "Invariant for scalars; equivariant for vectors/tensors; do not confuse the two."
+:::
+
+## 10. The symmetry group E(3) / SE(3)
+
+::: {.columns}
+::: {.column width="50%"}
+**E(3): the Euclidean group in 3D**
+
+- Translations $\mathbf{t} \in \mathbb{R}^3$.
+- Rotations $R \in O(3)$ (including reflections).
+- E(3) = translations $\rtimes$ O(3).
+
+**SE(3): orientation-preserving subgroup**
+
+- Translations $\mathbf{t} \in \mathbb{R}^3$.
+- Rotations $R \in SO(3)$ (no reflections).
+- SE(3) = translations $\rtimes$ SO(3).
+:::
+::: {.column width="50%"}
+**Why this matters for materials**
+
+- Most properties are invariant under SE(3): rotation alone leaves them unchanged.
+- **Chiral** materials (some spirals, twisted heterostructures) are *not* invariant under reflection — those need SE(3), not full E(3).
+- Modern equivariant networks (§F) are precisely E(3)- or SE(3)-equivariant, with the choice driven by the physics.
+:::
+:::
+
+::: {.notes}
+**Why we mention the group at all.** Because the literature does. Every paper in §F (NequIP, Allegro, MACE) carries the phrase "E(3)-equivariant" in its title. Students who do not recognise the symmetry group will skip those papers as "too mathematical" — and miss the central modern advance in atomic-system NN.
+
+**The math behind the group, in one paragraph.** A representation of SO(3) decomposes into irreducible representations (irreps) labelled by integer $\ell = 0, 1, 2, \ldots$. The $\ell = 0$ irrep is a scalar; $\ell = 1$ is a 3-vector; $\ell = 2$ is a rank-2 tensor; higher $\ell$ are higher tensors. An equivariant network carries features in each irrep channel separately and combines them via tensor products that respect the group action. We will not go deeper today; the e3nn library and NequIP papers do the math.
+
+**Chirality is not a side remark.** For most crystals reflection is fine. For helical structures, twisted bilayers, optically active materials, reflection is a *real* symmetry to break. SE(3) (no reflection) is the right group there. The choice E(3) vs SE(3) is a physics decision, not a math fashion.
+
+**Forward link to MFML W10.** "Attention is permutation-equivariant by default — that is one of its strengths. We will see in §G how Matformer extends attention to be SE(3)-equivariant on crystal graphs."
+:::
+
+## 11. Permutation invariance and PBC inside the network
+
+::: {.columns}
+::: {.column width="50%"}
+**Permutation invariance via aggregation**
+
+- The hidden representation of atom $i$ is updated by *aggregating* messages from its neighbours:
+  $$ \mathbf{v}_i^{(t+1)} = U^{(t)}\!\left( \mathbf{v}_i^{(t)},\; \bigoplus_{j \in N(i)} \mathbf{m}_{ij}^{(t)} \right) $$
+- $\bigoplus$ is sum / mean / max — *symmetric* under permutation of $N(i)$.
+- Stacking layers preserves permutation invariance.
+:::
+::: {.column width="50%"}
+**PBC at graph-construction time**
+
+- Build the neighbour list across periodic images of the cell.
+- Edges encode displacement vectors $\mathbf{r}_{ij}$ that may span image boundaries.
+- The network sees only the graph; PBC are inherited automatically.
+- *Common bug:* forget to enumerate periodic images $\to$ disconnected graphs $\to$ wrong predictions on the cell boundary.
+:::
+:::
+
+::: {.notes}
+**Why aggregation is sum / mean / max and not, say, the first element.** Because the first element depends on the labelling of neighbours, which is arbitrary. A symmetric aggregator is the *only* permutation-invariant choice. (Technically, set transformers and similar use attention-based aggregators that are also permutation-invariant; we will see those in §G.)
+
+**Sum vs mean: an extensive vs intensive choice.**
+- **Sum** is appropriate for *extensive* properties: total energy, total magnetisation. Doubling the cell doubles the readout.
+- **Mean** is appropriate for *intensive* properties: band gap, average density of states. Doubling the cell leaves the readout unchanged.
+- Choosing the wrong pooling silently breaks transferability across cell sizes — a recurring failure mode.
+
+**The PBC bug, war-storied.** A common error in early CGCNN training notebooks: cutoff radius set, but neighbour search performed only on the primitive cell. Atoms near the cell boundary lose half their neighbours; predictions degrade on those atoms; the user blames the network. Always sanity-check by doubling the cell and verifying that predictions are stable.
+
+**One-sentence summary.** "Permutation invariance comes from sum/mean/max aggregation; PBC comes from the graph builder."
+:::
+
+# §C · SchNet and continuous-filter convolutions {.section}
+
+## 12. The SchNet idea
+
+::: {.columns}
+::: {.column width="50%"}
+**Setting [@schutt2017schnet; @schutt2018schnet]**
+
+- Input: a molecule — a set of atoms $\{Z_i, \mathbf{r}_i\}_{i=1}^N$ in 3D.
+- Goal: predict total energy $E$ (and, via autograd, forces).
+- Constraint: invariance under translation, rotation, and permutation; *no hand-crafted descriptors*.
+:::
+::: {.column width="50%" .fragment}
+**The central object: a continuous-filter convolution**
+
+- Atoms are not on a grid $\to$ no discrete kernel.
+- Replace the discrete kernel with a *function* $W(r)$ — itself a small neural network of the interatomic distance $r$.
+- Evaluate $W$ at the actual $r_{ij}$ of each pair.
+- This is the prototype "neural network on atoms."
+:::
+:::
+
+::: {.notes}
+**Why SchNet matters historically.** SchNet (and its predecessor DTNN) is the first widely-adopted neural network designed *natively* for atomic systems. Before SchNet: hand-crafted descriptors (SOAP, ACSF, Coulomb matrix) + MLP. After SchNet: end-to-end learning from atomic positions and atomic numbers. The architecture is now the conceptual ancestor of CGCNN, MEGNet, ALIGNN, and all subsequent work.
+
+**Why we teach SchNet first.** It is the simplest non-trivial architecture in the family. One core idea (continuous-filter conv), three kinds of layers (embedding, interaction, readout), and a clean training story on QM9. CGCNN, MEGNet, ALIGNN are all variations on this template — once SchNet is clear, the others read as patches.
+
+**Pre-empt.** "Why is it called a convolution if there's no grid?" Answer: because it inherits the *defining property* of a convolution — a translation-equivariant linear operation. The "grid" is replaced by the continuous coordinate space of atoms; the kernel is replaced by a learnable function of distance. Same algebra, no grid.
+:::
+
+## 13. Why a continuous filter
+
+::: {.columns}
+::: {.column width="50%"}
+**The discrete-CNN obstruction**
+
+- A 2D CNN kernel has slots at fixed offsets: $(\Delta x, \Delta y) \in \{-1, 0, +1\}^2$.
+- For atoms, no such fixed-offset structure exists. Two oxygens at 2.3 Å and 2.7 Å are different physical neighbours.
+- Quantising $r_{ij}$ to bins is lossy and breaks differentiability.
+:::
+::: {.column width="50%"}
+**The continuous-filter answer**
+
+$$ W(r) = \text{MLP}\!\left(\text{RBF}(r)\right) \in \mathbb{R}^F $$
+
+- $\text{RBF}(r)$ is a vector of Gaussian basis functions in $r$.
+- $\text{MLP}$ is a small fully-connected network mapping the RBF expansion to $F$ filter channels.
+- $W(r)$ is differentiable in $r$ — gradients flow back to atomic positions for force prediction.
+:::
+:::
+
+::: {.notes}
+**RBF expansion, intuition.** A Gaussian basis $\{\exp(-\beta(r - \mu_k)^2)\}_{k=1}^K$ with centres $\mu_k$ spaced from 0 to $r_{\rm cut}$ acts as a smooth one-hot encoding of the distance. The MLP that follows can then learn arbitrary smooth functions of $r$.
+
+**Why not just feed $r$ directly into an MLP?** You can, but the optimisation is much harder. RBF expansion gives the MLP a pre-localised representation: small changes in $r$ produce small changes in only a few RBF channels. This is a standard trick (it appears in Coulomb-matrix descriptors and in ACSF too).
+
+**Force differentiability matters.** SchNet's energy $E$ is computed as a sum of atom contributions; each contribution depends on $\{r_{ij}\}$ via $W(r_{ij})$; therefore $\partial E / \partial \mathbf{r}_i$ is well-defined and computed by autograd. This is how SchNet outputs forces. The continuous-filter design is what makes this clean.
+
+**Cutoff and smoothness.** Most implementations multiply $W(r)$ by a smooth cutoff envelope $f_{\rm cut}(r)$ that goes to zero at $r_{\rm cut}$. Without that envelope, atoms popping in and out of the cutoff create discontinuities in energy and unstable forces — a real failure mode.
+:::
+
+## 14. The SchNet update equation
+
+::: {.columns}
+::: {.column width="55%"}
+**Interaction block**
+
+For each atom $i$ and each interaction layer $t = 1, \ldots, T$:
+
+$$ \mathbf{x}_i^{(t+1)} = \mathbf{x}_i^{(t)} + \sum_{j \in N(i)} \mathbf{x}_j^{(t)} \odot W^{(t)}\!\left(r_{ij}\right) $$
+
+- $\mathbf{x}_i^{(t)} \in \mathbb{R}^F$: atom $i$'s feature vector at layer $t$.
+- $W^{(t)}(r_{ij}) \in \mathbb{R}^F$: continuous filter at this layer, evaluated at $r_{ij}$.
+- $\odot$: element-wise (Hadamard) product.
+- $+$: residual connection.
+:::
+::: {.column width="45%"}
+**Initialisation and readout**
+
+- $\mathbf{x}_i^{(0)} = \text{Embed}(Z_i)$ — atom-type embedding.
+- After $T$ interactions, atom-wise MLP gives per-atom contributions $E_i$.
+- Total energy $E = \sum_i E_i$ — extensive by construction.
+- Forces $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$ via autograd.
+:::
+:::
+
+::: {.notes}
+**Read the equation aloud.** "Atom $i$'s new state is its old state plus a sum over neighbours $j$, where each neighbour's contribution is a *gated* version of $j$'s state — gated element-wise by the continuous filter evaluated at $r_{ij}$."
+
+**Three properties of the update.**
+1. **Permutation invariance.** $\sum_{j}$ is symmetric under permutation of $N(i)$.
+2. **Translation invariance.** $W$ depends only on $r_{ij} = |\mathbf{r}_i - \mathbf{r}_j|$.
+3. **Rotation invariance.** Same — $r_{ij}$ is rotation-invariant.
+
+So the entire network is invariant to the three required symmetries by construction, and for periodic systems we add PBC at neighbour-search time.
+
+**Number of parameters.** A typical SchNet has $\sim 10^5$ parameters. Small by modern standards. The continuous-filter MLP is the bulk of them; the atom-wise MLPs are small.
+
+**Why residual connections.** The $+$ in $\mathbf{x}_i^{(t+1)} = \mathbf{x}_i^{(t)} + \ldots$ is a residual (ResNet-style) update. It stabilises training across many interaction layers and lets early layers commit to a representation that later layers refine.
+
+**Receptive-field intuition.** $T$ interaction layers $\to$ atom $i$ sees up to $T$ hops away. Typical $T = 3$–$6$. Beyond that, over-smoothing dominates (MG U6 already covered this).
+:::
+
+## 15. Training on QM9
+
+::: {.columns}
+::: {.column width="50%"}
+**QM9 — the canonical molecular benchmark**
+
+- ~134k small organic molecules (up to 9 heavy atoms: C, N, O, F).
+- DFT-computed properties: total energy, atomisation energy, HOMO/LUMO gap, dipole moment, polarisability, ZPVE, …
+- Single-target regression on each property.
+- Standard random or scaffold split.
+:::
+::: {.column width="50%"}
+**SchNet's QM9 result**
+
+- MAE on **atomisation energy** at chemical accuracy ($\sim 1$ kcal/mol $\approx 0.043$ eV).
+- This level was previously reachable only via *manually* constructed feature pipelines.
+- SchNet hit it *end-to-end from atomic numbers and positions*. That is the headline.
+:::
+:::
+
+::: {.notes}
+**Why QM9 matters historically.** Before QM9 + SchNet, "neural networks for molecules" was a niche subfield. After: it became the standard approach. Every architecture in §C–§F was benchmarked on QM9 in its founding paper.
+
+**What QM9 does *not* tell us.** QM9 is in-distribution: ~134k similar small organic molecules, all relaxed at the same DFT level. A SchNet that hits chemical accuracy on QM9 may or may not transfer to drug-like molecules, peptides, or anything beyond 9 heavy atoms. The MG U8 lesson — *the split defines the claim* — applies forcefully here.
+
+**The transition from QM9 to materials.** SchNet was published with molecular benchmarks. Adapting it to crystals requires PBC-aware neighbour search and a sum readout for extensive properties. Several papers did this in 2018–2019; the resulting "SchNet-for-materials" was competitive on Materials Project formation-energy tasks but was rapidly overtaken by CGCNN's gated convolutions, which we will see in §D.
+
+**Pre-empt.** "Why teach SchNet at all if CGCNN superseded it?" Answer: SchNet is the *conceptual prototype*. CGCNN's gating, MEGNet's global state, ALIGNN's line graph are all *patches* on top of the SchNet template. Once SchNet is clear, the others are short variations.
+:::
+
+## 16. What SchNet captures and what it misses
+
+::: {.columns}
+::: {.column width="50%"}
+**Captures**
+
+::: {.incremental}
+- Translation, rotation, permutation invariance by construction.
+- Smooth, differentiable energy in $\{\mathbf{r}_i\}$ $\to$ usable forces via autograd.
+- Local geometric environment via continuous distance filter.
+- Extensive scaling via sum readout.
+:::
+:::
+::: {.column width="50%"}
+**Misses**
+
+::: {.incremental}
+- **Bond angles** are not directly accessible (only via stacked distance filters that learn three-body indirectly).
+- **Forces are autograd-derived** — correct, but not data-efficient.
+- **Long-range** interactions need many interaction layers $\to$ over-smoothing.
+- **Crystal-specific structure** (lattice symmetry, unit-cell awareness) is not first-class.
+:::
+:::
+:::
+
+::: {.notes}
+**Each "miss" maps to a successor architecture.**
+- Bond angles missing $\to$ ALIGNN (line graph, §E.3).
+- Forces not data-efficient $\to$ NequIP / MACE (equivariance, §F).
+- Long-range $\to$ Matformer / attention (§G).
+- Crystal-specific structure $\to$ CGCNN / MEGNet (§D, §E.1).
+
+This is the road map for the rest of the lecture: each section addresses one SchNet limitation.
+
+**The honest summary.** SchNet was a breakthrough in 2017–2018. By 2024–2026 it is *not* the architecture you would deploy for a new project — but it is the *cleanest pedagogical entry point*. We teach it not because it is the state of the art but because it is the ancestor of the state of the art.
+
+**Forward link.** "Slide 19 — CGCNN. Same idea, gated, designed for crystals."
+:::
+
+## 17. Cutoff sensitivity and the smooth envelope
+
+::: {.columns}
+::: {.column width="50%"}
+**The cutoff problem**
+
+- Neighbour search uses a hard cutoff $r_{\rm cut}$.
+- An atom drifting just past $r_{\rm cut}$ disappears from the neighbour list — discontinuously.
+- Energy $E$ jumps; forces $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$ blow up at the cutoff.
+- This is a *real* MD failure mode.
+:::
+::: {.column width="50%"}
+**The fix: a smooth envelope**
+
+- Multiply the filter by an envelope $f_{\rm cut}(r)$ that goes smoothly to zero at $r_{\rm cut}$:
+  $$ W_{\rm smooth}(r) = W(r) \cdot f_{\rm cut}(r) $$
+- Standard choices: cosine envelope, polynomial envelope.
+- Now $E$ and $\mathbf{F}_i$ are continuous through the cutoff transition.
+:::
+:::
+
+::: {.notes}
+**Why this slide is in the lecture.** Because students will hit this exact bug when they implement an MLIP for the exercise. A SchNet-derivative without a smooth envelope produces unstable MD trajectories — atoms oscillate or fly apart whenever a neighbour crosses the cutoff. Always check that the envelope is in place.
+
+**The envelope is also a symmetry-preserving choice.** $f_{\rm cut}(r)$ depends only on $r$, so it preserves all the SchNet symmetries. No new symmetry consideration is introduced.
+
+**Cutoff selection.** Typical $r_{\rm cut} = 4$–6 Å. Larger cutoffs $\to$ more neighbours $\to$ more compute and more chance of over-smoothing. Smaller cutoffs $\to$ fewer neighbours $\to$ might miss second-shell physics. The trade-off is dataset-dependent; document the choice.
+
+**Cross-reference to MG U6.** This was already covered in U6 slide 27 (cutoff artefacts). We re-mention it here because in the MLIP context (§E, §F), continuity of forces is non-negotiable — it is what makes the model usable in actual MD.
+:::
+
+## 18. SchNet recap and bridge to CGCNN
+
+::: {.columns}
+::: {.column width="50%"}
+**One-slide SchNet summary**
+
+::: {.incremental}
+1. Atoms $\{Z_i, \mathbf{r}_i\}$ in.
+2. Atom embeddings $\mathbf{x}_i^{(0)} = \text{Embed}(Z_i)$.
+3. $T$ interaction layers with continuous-filter convolutions.
+4. Atom-wise MLP $\to$ per-atom contributions.
+5. Sum $\to$ total energy; autograd $\to$ forces.
+:::
+:::
+::: {.column width="50%"}
+**The SchNet $\to$ CGCNN move**
+
+- SchNet treats each atom as identical except for its embedding.
+- CGCNN adds explicit *edge features* and a *gated* update — the GNN-native version of SchNet.
+- And CGCNN is designed from the start for **crystals** (PBC, periodic graphs).
+- Same conceptual scaffold, more crystal-specific.
+:::
+:::
+
+::: {.notes}
+**The clean way to think of it.** SchNet is "MLP with continuous-filter convs." CGCNN is "GNN with gated convs and explicit edge features." The two architectures are siblings, not parent-child. Both are invariant; both use distance-based filters; CGCNN adds gating and a crystal-graph framing.
+
+**Why we are spending an entire next section on CGCNN.** Because CGCNN is the workhorse architecture for materials property prediction in 2018–2022 and remains a strong baseline today. Every MG U8 benchmark plot has a CGCNN bar in it.
+
+**Forward link.** "Slide 19 — meet CGCNN. The first GNN designed for crystals [@xie2018cgcnn]. It is what you will benchmark against on the exercise."
+:::
+
+# §D · CGCNN and message passing on crystal graphs {.section}
+
+## 19. From molecules to crystals: CGCNN
+
+::: {.columns}
+::: {.column width="50%"}
+**The CGCNN setting [@xie2018cgcnn]**
+
+- Input: a *crystal* — atoms in a unit cell with PBC.
+- Graph: atoms as nodes, bonds (within a cutoff) as edges, including periodic-image bonds.
+- Goal: predict a scalar property of the whole crystal.
+- Foundational benchmark: Materials Project formation energy.
+:::
+::: {.column width="50%" .fragment}
+**Why CGCNN matters**
+
+- First GNN designed *natively for crystals* — PBC are first-class.
+- Achieved MAE of $\sim 0.04$ eV/atom on formation energy on MP — close to DFT precision for many systems.
+- Publicly released code + Materials Project hooks $\to$ became the *de facto* benchmark for materials NN papers 2018–2022.
+:::
+:::
+
+::: {.notes}
+**Historical anchor.** The CGCNN paper [@xie2018cgcnn] is the single most-cited materials-NN paper of its generation. Whatever architecture a student picks up later, they should know what CGCNN is and what CGCNN can do — it is the baseline every successor architecture compares against.
+
+**Why "crystal graph" instead of "molecular graph."** Molecular GNNs (SchNet, DTNN, MPNN) assume a finite, non-periodic system. Crystal GNNs must handle:
+- Periodic boundary conditions across cell boundaries.
+- Variable-size unit cells (primitive cell, conventional cell, supercell).
+- Edge multiplicity (the same atom pair may have multiple periodic-image edges with different distances).
+
+CGCNN bakes all three into the graph builder.
+
+**MG U6 cross-reference.** The graph construction we are reusing here is exactly the one we built in MG U6: PBC neighbour search, cutoff radius, distance encoding. We do not redo it.
+:::
+
+## 20. Edge attributes carry the geometry
+
+::: {.columns}
+::: {.column width="50%"}
+**Edge feature vector $u_{ij}$**
+
+- For each edge $(i, j)$, encode the interatomic distance $r_{ij}$ via an RBF expansion (just like SchNet):
+  $$ u_{ij} = [\exp(-\beta(r_{ij} - \mu_1)^2), \dots, \exp(-\beta(r_{ij} - \mu_K)^2)] $$
+- $K$ basis centres $\mu_k$ spaced from $0$ to $r_{\rm cut}$.
+- $u_{ij} \in \mathbb{R}^K$.
+:::
+::: {.column width="50%"}
+**Atom feature vector $\mathbf{v}_i$**
+
+- Initialised from the atomic number $Z_i$ via a *one-hot table* (or learned embedding).
+- Optionally enriched with chemistry priors (group, period, electronegativity, atomic radius) — see MG U6 slide 22.
+- $\mathbf{v}_i \in \mathbb{R}^F$.
+:::
+:::
+
+::: {.fragment}
+> **The split.** *Chemistry* enters via $\mathbf{v}_i$. *Geometry* enters via $u_{ij}$. The message-passing step on the next slide is what *combines* them.
+:::
+
+::: {.notes}
+**Why the split matters.** It is what lets CGCNN generalise across the periodic table. The chemistry channel ($\mathbf{v}_i$) carries identity information that is independent of geometry; the geometry channel ($u_{ij}$) carries distance information that is independent of identity. The network learns the coupling at training time.
+
+**Embedding choice.** In CGCNN's original paper, $\mathbf{v}_i$ is initialised from a hand-curated 92-dimensional one-hot vector encoding nine periodic-table properties (group, period, electronegativity, etc.). Subsequent work showed that a learned embedding from $Z_i$ alone is competitive — the curated table was not load-bearing.
+
+**RBF expansion choice.** Same intuition as SchNet (slide 13): a smooth one-hot encoding of distance, allowing the downstream MLP to learn arbitrary smooth functions of $r_{ij}$. $K = 40$–60 RBFs from 0 to 8 Å is a common default.
+
+**Why no angle features here.** CGCNN deliberately keeps edge features distance-only. ALIGNN (slide 28) is the architecture that adds angles via a line graph. CGCNN is intentionally simpler — and that simplicity is a feature: fewer choices, more transferable.
+:::
+
+## 21. The CGCNN gated convolution
+
+::: {.columns}
+::: {.column width="55%"}
+**The update**
+
+For each atom $i$, layer $t$:
+
+$$ z_{ij} = [\mathbf{v}_i^{(t)} \,\|\, \mathbf{v}_j^{(t)} \,\|\, u_{ij}] $$
+
+$$ \mathbf{v}_i^{(t+1)} = \mathbf{v}_i^{(t)} + \sum_{j \in N(i)} \sigma\!\left(W_z\, z_{ij} + b_z\right) \odot g\!\left(W_s\, z_{ij} + b_s\right) $$
+
+- $\sigma$: sigmoid (the gate).
+- $g$: nonlinearity (e.g. softplus).
+- $\odot$: Hadamard product.
+- $\|$: vector concatenation.
+:::
+::: {.column width="45%"}
+**Reading the equation**
+
+- $\sigma(W_z z_{ij} + b_z)$ is a **gate** in $[0, 1]^F$ — it decides *how much* of the message to pass.
+- $g(W_s z_{ij} + b_s)$ is the **content** of the message.
+- The gate is per-channel, per-edge.
+- Sum over neighbours $\to$ permutation invariant.
+- Residual $+$ $\to$ stable training across $T$ layers.
+:::
+:::
+
+::: {.notes}
+**This is the central equation of the lecture's middle section.** Walk through it carefully on the board:
+1. Concatenate atom $i$, atom $j$, edge $ij$ features.
+2. Run two parallel linear layers — one for the gate, one for the content.
+3. Apply sigmoid to the gate; apply nonlinearity to the content; multiply element-wise.
+4. Sum over neighbours $j$.
+5. Add residual.
+
+If the students leave with this equation in their notebooks, the §D section has done its job.
+
+**Why a gate at all.** Without a gate, every neighbour contributes a full message — which over-smooths quickly and forces the network to compromise across very different bonding geometries. With a gate, the network can *suppress* irrelevant neighbours (e.g. distant atoms past a cutoff) while preserving relevant ones (e.g. first-shell bonds). It is the GNN counterpart of an LSTM forget-gate.
+
+**Comparison to SchNet update.** SchNet:
+$$ \mathbf{x}_i^{(t+1)} = \mathbf{x}_i^{(t)} + \sum_j \mathbf{x}_j^{(t)} \odot W^{(t)}(r_{ij}) $$
+CGCNN:
+$$ \mathbf{v}_i^{(t+1)} = \mathbf{v}_i^{(t)} + \sum_j \sigma(W_z z_{ij}) \odot g(W_s z_{ij}) $$
+The difference: SchNet's "filter" depends only on $r_{ij}$; CGCNN's "filter" depends on $\mathbf{v}_i, \mathbf{v}_j, u_{ij}$ jointly. That is the gain — the message can adapt to the *chemistry* of the atom pair, not only to the distance.
+
+**Number of parameters.** A standard CGCNN has $\sim 10^5$–$10^6$ parameters. Modest. Trains in a few hours on a single GPU on the Materials Project formation-energy task.
+:::
+
+## 22. Pooling: from atom features to a crystal property
+
+::: {.columns}
+::: {.column width="50%"}
+**Per-atom contributions**
+
+- After $T$ message-passing layers, each atom has a feature $\mathbf{v}_i^{(T)} \in \mathbb{R}^F$.
+- An atom-wise MLP maps each $\mathbf{v}_i^{(T)}$ to a per-atom contribution $E_i \in \mathbb{R}$ (or to a per-atom feature for downstream pooling).
+:::
+::: {.column width="50%"}
+**Crystal-level readout**
+
+- **Sum** for extensive properties (total energy, total magnetisation):
+  $$ E = \sum_{i=1}^N E_i $$
+- **Mean** for intensive properties (band gap, formation energy *per atom*, density of states):
+  $$ \bar{E} = \frac{1}{N} \sum_i E_i $$
+- **Set2Set / attention** for more flexible pooling (used in some MEGNet variants).
+:::
+:::
+
+::: {.notes}
+**The intensive-vs-extensive choice is a physics decision.** Get it wrong and the network will silently fail on cells of different sizes:
+- Train on primitive cells, test on conventional cells (factor of 2× in atom count).
+- Train on $N$-atom supercells, deploy on a $2N$-atom defect cell.
+
+Mean readout collapses both correctly for intensive properties; sum readout collapses both correctly for extensive properties. Anything else is a bug.
+
+**Formation energy is per-atom.** This is a recurring source of confusion. The Materials Project's formation_energy_per_atom column is *intensive* — use mean readout. Total formation energy of the cell would be extensive — use sum. Always check the column definition before training.
+
+**Why Set2Set.** A learned permutation-invariant aggregator that uses attention (LSTM with content-based addressing). More expressive than sum/mean; more parameters. MEGNet uses Set2Set as one of its readout options. We mention it here, deploy it implicitly in §E.
+
+**Forward link to §G.** Set2Set is essentially attention over atoms — and attention over atoms is exactly what Matformer does end-to-end. The pooling layer of CGCNN/MEGNet foreshadows the architecture of Matformer.
+:::
+
+## 23. Connection back to MG U6
+
+::: {.columns}
+::: {.column width="50%"}
+**MG U6 sketched the schematic**
+
+- Crystal $\to$ graph (PBC).
+- Atom features $\mathbf{v}_i$, edge features $u_{ij}$.
+- Message $\to$ aggregate $\to$ update.
+- Repeat for $T$ layers.
+- Pool $\to$ property.
+:::
+::: {.column width="50%"}
+**CGCNN instantiates each piece**
+
+- Graph: PBC neighbour search, $r_{\rm cut} = 8$ Å typical.
+- $\mathbf{v}_i$: 92-dim curated atom embedding.
+- $u_{ij}$: 41-dim Gaussian RBF of $r_{ij}$.
+- Message: $\sigma(W_z z_{ij}) \odot g(W_s z_{ij})$.
+- Pool: sum (energy) or mean (band gap).
+:::
+:::
+
+::: {.fragment}
+> **The pedagogical reason for ordering MG U6 before MG U9.** U6 builds the *interface*; U9 fills in the *implementation*. Once a student has the U6 schematic, every architecture in §D–§F is a different way of filling slots in that schematic.
+:::
+
+::: {.notes}
+**Repeat this connection out loud.** The MG U6 message-passing schematic is the *pattern*; CGCNN/MEGNet/ALIGNN/M3GNet/NequIP are *patterns instantiated*. Same five slots — graph, node features, edge features, message function, readout — different choices in each slot.
+
+**The exam framing.** "For each of CGCNN, MEGNet, ALIGNN, name what each architecture *adds* to the SchNet/CGCNN baseline." Expected answers: MEGNet adds a global state variable; ALIGNN adds a line graph for bond angles; M3GNet adds three-body terms and an MLIP-grade force/stress contract.
+
+**Why this matters for the exercise.** When the students implement a CGCNN baseline, they will need to fill exactly these five slots. If MG U6's schematic is in their head, the implementation is a matter of plugging in the slots — not learning a new framework.
+:::
+
+## 24. Results: formation energy and beyond
+
+::: {.columns}
+::: {.column width="50%"}
+**Materials Project benchmarks (2018–2020)**
+
+- **Formation energy:** MAE $\sim 0.04$ eV/atom on a random split; close to DFT precision for many systems.
+- **Band gap:** MAE $\sim 0.4$ eV — usable for screening, not for accurate prediction.
+- **Bulk / shear modulus:** competitive with descriptor + RF baselines.
+- Single trunk + multiple property heads $\to$ multi-task variants.
+:::
+::: {.column width="50%"}
+**Industrial use cases**
+
+- **Battery cathode voltage** screening (CGCNN, originally [@xie2018cgcnn]).
+- **Catalyst formation-energy** ranking on the Open Catalyst dataset (CGCNN as a baseline that newer architectures beat).
+- **High-throughput stability filter** for ICSD- or MP-derived candidate lists.
+:::
+:::
+
+::: {.notes}
+**The MAE numbers cited here are deliberately approximate.** They depend on dataset version, split protocol, and hyperparameters. Cite them as "around 0.04 eV/atom" not "0.039 eV/atom." The MG U8 lesson — *the split defines the claim* — applies forcefully: random-split MAE flatters CGCNN; chemistry-grouped split MAE is meaningfully larger.
+
+**Why band-gap MAE is so much worse than formation-energy MAE.** Formation energy is a *bulk thermodynamic* quantity that depends on local bonding; CGCNN's message passing captures local bonding well. Band gap depends on *electronic-structure* details — degeneracies, band crossings, symmetry — that are not directly accessible from the atomic graph. CGCNN can interpolate; it cannot solve the Schrödinger equation. The 0.4 eV MAE is a fundamental ceiling for a graph-only model on band gap.
+
+**The Open Catalyst caveat.** The Open Catalyst Project (OC20, OC22) is a 1M+-structure dataset on which newer architectures (DimeNet++, GemNet, EquiformerV2) beat CGCNN. CGCNN is the historical baseline; the literature has moved past it. We teach it as a starting point, not as a state-of-the-art recommendation.
+
+**Forward link.** "Slide 28 — ALIGNN, the angle-aware extension. ALIGNN cuts CGCNN's band-gap MAE by roughly half on the same MP benchmark."
+:::
+
+## 25. CGCNN's blind spots
+
+::: {.columns}
+::: {.column width="50%"}
+**What CGCNN does *not* see**
+
+::: {.incremental}
+- **Bond angles** (only pairwise distances).
+- **Three-body and higher correlations** (no triplet edges).
+- **Long-range physics** beyond $T \cdot r_{\rm cut}$ (limited by depth and cutoff).
+- **Lattice-level symmetries** beyond what is encoded in graph topology.
+:::
+:::
+::: {.column width="50%"}
+**Why these blind spots matter**
+
+::: {.incremental}
+- Band-gap and elastic-modulus prediction strongly benefit from angles.
+- Force prediction benefits from explicit three-body terms.
+- Long-range Coulomb and dispersion physics need explicit handling.
+- Each successor architecture in §E and §F addresses one or more of these.
+:::
+:::
+:::
+
+::: {.notes}
+**Map blind-spots to fixes.**
+- Angles missing $\to$ ALIGNN's line graph (§E.3).
+- Three-body missing $\to$ M3GNet's three-body interactions (§E.5).
+- Long-range missing $\to$ Matformer's global attention (§G.2) or explicit Coulomb / dispersion corrections (out of scope today).
+- Lattice symmetry $\to$ E(3)-equivariant features (§F).
+
+This is the road map of the rest of the lecture.
+
+**The honest framing.** CGCNN is *not* the architecture you would deploy for a brand-new project in 2026. ALIGNN, M3GNet, NequIP, MACE all beat it on most benchmarks. We teach CGCNN because it is (a) the cleanest entry point to crystal GNNs, (b) the conceptual ancestor of every architecture we will see today, and (c) still a strong, honest baseline that papers compare against.
+
+**Pre-empt.** "Why not just stack more CGCNN layers to capture longer range?" Answer: over-smoothing. Past $T \approx 6$, atom features become indistinguishable across the cell, and the network's effective expressivity *decreases*. This is not a CGCNN-specific bug; it is a general GNN phenomenon. MG U6 slide 17 covered it.
+:::
+
+# §E · MEGNet, ALIGNN, M3GNet — the atom-bond-angle hierarchy {.section}
+
+## 26. MEGNet: a set-of-graphs framing
+
+::: {.columns}
+::: {.column width="55%"}
+**The MEGNet generalisation [@chen2019megnet]**
+
+- Crystal as a tuple $(V, E, u)$:
+  - $V = \{\mathbf{v}_i\}$: atom features.
+  - $E = \{\mathbf{e}_{ij}\}$: *bond features* (full vectors, not just distances).
+  - $u$: a **global state vector** (temperature, pressure, or learned token).
+- Messages flow: atom $\to$ bond $\to$ atom $\to$ global $\to$ bond $\to$ atom.
+- Each round updates all three components.
+:::
+::: {.column width="45%"}
+```{mermaid}
+graph LR
+    V[Atom features<br>V] -->|message| E[Bond features<br>E]
+    E -->|message| V
+    V -->|aggregate| U[Global state<br>u]
+    E -->|aggregate| U
+    U -->|broadcast| V
+    U -->|broadcast| E
+    style U fill:#fbb,stroke:#333
+```
+:::
+:::
+
+::: {.notes}
+**The MEGNet generalisation in one sentence.** "CGCNN treats edges as carriers of distance attributes; MEGNet treats edges as full first-class feature vectors and adds a global state vector." Both extensions cost parameters; both buy expressivity.
+
+**Why bond features as first-class objects.** In CGCNN, the edge feature $u_{ij}$ is fixed (the RBF expansion of $r_{ij}$) and does not get updated by message passing. In MEGNet, the edge feature $\mathbf{e}_{ij}$ has its *own* hidden state that gets updated each layer — so the network can learn a richer per-edge representation than just "this distance with this gate."
+
+**Why a global state.** Two reasons:
+1. *Conditioning:* feed in temperature, pressure, or other extensive system parameters as $u^{(0)}$. The same architecture then predicts state-conditioned properties (formation energy as a function of temperature, for example).
+2. *Readout:* after $T$ message-passing rounds, $u^{(T)}$ is itself the crystal embedding — no separate pooling needed.
+
+**Forward link.** "$u^{(T)}$ is the seed of the foundation-embedding view in §G. A pretrained MEGNet's $u$ is, conceptually, an OMat24-style materials embedding — modulo dataset scale."
+:::
+
+## 27. Why the global state matters
+
+::: {.columns}
+::: {.column width="50%"}
+**Conditioning on external state**
+
+- $u^{(0)}$ can carry: temperature $T$, pressure $P$, doping concentration, applied field.
+- The same trunk then predicts $E(T, P, \ldots)$, $K(T, P, \ldots)$, etc.
+- Multi-property heads share the trunk $\to$ data efficiency for related properties.
+:::
+::: {.column width="50%"}
+**Readout via the global state**
+
+- After $T$ rounds, $u^{(T)} \in \mathbb{R}^G$ is the crystal-level summary.
+- A small MLP maps $u^{(T)}$ to the predicted property.
+- No separate pooling step — $u$ does both jobs (state input *and* readout).
+:::
+:::
+
+::: {.fragment}
+> **MEGNet on Materials Project [@chen2019megnet].** Multi-property heads (formation energy, band gap, bulk modulus, shear modulus) from a single trunk; competitive or better MAE than CGCNN on each.
+:::
+
+::: {.notes}
+**Multi-task learning in MEGNet, said carefully.** MEGNet's multi-property heads work *because* the targets share physical drivers. Formation energy and bulk modulus both depend on local bonding strength; sharing a trunk helps. Pairing formation energy with, say, magnetic ordering temperature would not help, because the targets depend on different physics — this is the MG U8 multi-target lesson.
+
+**Conditioning, said cleanly.** When MEGNet is trained on data that varies a state parameter (say, finite-temperature DFT runs at multiple T), feeding $T$ into $u^{(0)}$ lets the network learn $E(T)$ explicitly. Without this channel, the network would have to *infer* T from the structure, which is impossible if the structure is the same equilibrium geometry at different temperatures.
+
+**Forward link to §G.** $u^{(T)}$ is conceptually identical to a foundation-model embedding: a fixed-dimensional crystal-level vector, in principle transferable across downstream tasks. The 2019 MEGNet was small ($\sim 10^6$ parameters, $\sim 10^5$ training crystals); 2024 OMat24 is large ($\sim 10^8$ parameters, $\sim 10^8$ training crystals). The architecture is the same family.
+:::
+
+## 28. ALIGNN: injecting bond angles via a line graph
+
+::: {.columns}
+::: {.column width="55%"}
+**The ALIGNN trick [@choudhary2021alignn]**
+
+- The original crystal graph $G$ has nodes = atoms, edges = bonds.
+- Construct the **line graph** $L(G)$: nodes = bonds of $G$, edges = pairs of bonds sharing an atom.
+- A node of $L(G)$ corresponds to a bond $(i, j)$; an edge of $L(G)$ corresponds to a triplet $(i, j, k)$.
+- Message passing on $L(G)$ propagates *angle* information between bonds that share an atom.
+- Alternate convolutions on $G$ and $L(G)$ to couple atom and angle channels.
+:::
+::: {.column width="45%"}
+```{mermaid}
+graph TD
+    A((Atom i)) --- B((Atom j))
+    B --- C((Atom k))
+    A --- C
+    Bij[Bond i-j]
+    Bjk[Bond j-k]
+    Bik[Bond i-k]
+    Bij -- "angle (i,j,k)" --- Bjk
+    style Bij fill:#fbb,stroke:#333
+    style Bjk fill:#fbb,stroke:#333
+    style Bik fill:#fbb,stroke:#333
+```
+:::
+:::
+
+::: {.notes}
+**The line-graph construction, said clearly.** Take any graph $G$ with nodes $V$ and edges $E$. The line graph $L(G)$ is the graph whose nodes are the edges of $G$ — and two nodes of $L(G)$ are connected if the corresponding edges of $G$ share an endpoint. So a node of $L(G)$ "is" a bond; an edge of $L(G)$ "is" an angle (a pair of bonds meeting at an atom). Message passing on $L(G)$ therefore propagates angle information.
+
+**Why this is elegant.** Adding three-body (angle) information to a GNN naively requires a triplet-indexed message function $m_{ijk}$, which is expensive ($O(N \cdot \bar{d}^2)$ messages instead of $O(N \cdot \bar{d})$). The line-graph construction recasts the same computation as edge-edge message passing on a derived graph, which fits the standard GNN machinery exactly. Same complexity; new geometric channel.
+
+**The angle feature.** For each line-graph edge (= triplet), encode the angle $\theta_{ijk}$ via a basis expansion (cosine basis, RBF on $\theta$, etc.). The angle feature feeds the line-graph message function, just like the distance feature feeds the original graph's message function.
+
+**Result on MP.** ALIGNN cuts CGCNN's band-gap MAE roughly in half on the same MP benchmark; comparable improvements on elastic constants and formation-energy-of-defect tasks. The cost: roughly 2× compute per training step.
+:::
+
+## 29. The atom-bond-angle hierarchy
+
+::: {.columns}
+::: {.column width="50%"}
+**Increasing geometric resolution**
+
+| Architecture | Distances | Global state | Angles |
+|---|:---:|:---:|:---:|
+| SchNet | yes | — | — |
+| CGCNN | yes | — | — |
+| MEGNet | yes | yes | — |
+| ALIGNN | yes | — | yes |
+| M3GNet | yes | — | yes (3-body) |
+
+- Each row adds at least one geometric channel.
+- Each addition costs compute and parameters.
+- Each addition pays off on the *right* property.
+:::
+::: {.column width="50%"}
+**Which channel matters for which target**
+
+- **Distances alone:** good for formation energy, average bonding strength.
+- **+ angles:** crucial for band gap (depends on local symmetry), elastic moduli (depend on bond angles), defect stabilities.
+- **+ global state:** state-conditioned properties.
+- **+ three-body terms:** fine-grained MLIP forces, especially at finite T.
+:::
+:::
+
+::: {.notes}
+**The hierarchy in one sentence.** "Each architecture in this section is the previous one + one new geometric channel."
+
+**Pedagogical use.** This table is the cheat sheet a student should memorise from §E. Given a target property, point at the right row. Band gap $\to$ ALIGNN or beyond. Catalyst formation energy with thermal effects $\to$ M3GNet. Single-temperature MP formation energy $\to$ MEGNet or even CGCNN.
+
+**The trade-off, made explicit.** Each new channel costs roughly 1.5–2× compute. On a fixed compute budget, a deeper CGCNN may outperform a shallow ALIGNN. The right choice is dataset-dependent and target-dependent — a recurring theme.
+
+**Forward pointer.** "Slide 35 — equivariant networks add another axis: rotational covariance of *features*, not just inputs. That brings vector and tensor channels into the network internals. The atom-bond-angle hierarchy lives on top of that — equivariance and geometric resolution are orthogonal axes."
+:::
+
+## 30. M3GNet: a foundation MLIP
+
+::: {.columns}
+::: {.column width="50%"}
+**M3GNet [@chen2022m3gnet]**
+
+- A *universal* machine-learning interatomic potential (MLIP).
+- Trained across the periodic table on ~10⁵ MP relaxation trajectories (~10⁷ structures).
+- Outputs **energy + forces + stresses** for arbitrary chemistry.
+- Drop-in replacement for DFT in geometry optimisation and short MD.
+:::
+::: {.column width="50%"}
+**Architectural extensions over MEGNet**
+
+- Explicit **three-body** interactions (atom–bond–bond triplets, like ALIGNN).
+- Strict translation, rotation, permutation invariance for the energy.
+- Forces and stresses obtained by **autograd** through positions and lattice.
+- Smooth cutoffs to ensure physical force continuity.
+:::
+:::
+
+::: {.notes}
+**Why M3GNet is a step change.** Before M3GNet (and similar foundation MLIPs of the same generation, like CHGNet), training a usable MLIP for a new system required curating a system-specific DFT dataset (often 10³–10⁴ structures of one chemistry). M3GNet is *transferable*: it works zero-shot or with light fine-tuning on chemistries it never saw in training. This is the MLIP analogue of foundation-model pretraining in NLP.
+
+**The energy-force-stress contract.** A genuine MLIP must produce all three because:
+- *Energy* drives geometry optimisation.
+- *Forces* drive MD.
+- *Stresses* drive cell relaxation (volume, shape).
+
+A model that outputs only energy is not deployable for full structural relaxation. M3GNet (and successors) deliver all three from a single trunk.
+
+**The autograd point, repeated.** M3GNet is *invariant*, not equivariant. Its forces come from $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$ via autograd. This is correct but data-hungry. NequIP (slide 37) gives equivariant forces natively, with one to two orders of magnitude better data efficiency. So M3GNet's strategy — go invariant, scale up the data — *only works because* the MP relaxation database is huge. In small-data regimes, the trade flips.
+:::
+
+## 31. The energy-force-stress contract
+
+::: {.columns}
+::: {.column width="50%"}
+**The three coupled outputs of an MLIP**
+
+- **Energy:** $E(\{\mathbf{r}_i\}, \mathcal{L}) \in \mathbb{R}$ — invariant scalar.
+- **Forces:** $\mathbf{F}_i = -\dfrac{\partial E}{\partial \mathbf{r}_i} \in \mathbb{R}^3$ — equivariant vectors.
+- **Stress:** $\sigma = -\dfrac{1}{V}\dfrac{\partial E}{\partial \boldsymbol{\epsilon}} \in \mathbb{R}^{3 \times 3}$ — equivariant tensor.
+:::
+::: {.column width="50%"}
+**Why the coupling is non-trivial**
+
+- All three must come from the *same* energy, by autograd.
+- $E$ must be smooth in $\{\mathbf{r}_i\}$ and in lattice strains.
+- Discontinuities in $E$ $\to$ blow-up in $\mathbf{F}_i$ and $\sigma$ $\to$ MD crashes.
+- Smooth-cutoff envelope, careful initialisation, force-stress-weighted loss.
+:::
+:::
+
+::: {.fragment}
+> **The three-term loss.**
+> $$\mathcal{L} = \lambda_E \|E - E^{\rm DFT}\|^2 + \lambda_F \sum_i \|\mathbf{F}_i - \mathbf{F}_i^{\rm DFT}\|^2 + \lambda_\sigma \|\sigma - \sigma^{\rm DFT}\|^2$$
+:::
+
+::: {.notes}
+**The three-term loss is load-bearing.** Each of $\lambda_E, \lambda_F, \lambda_\sigma$ is a hyperparameter; their relative weighting controls what the network learns first. A common starting point is $\lambda_E = 1, \lambda_F = 100, \lambda_\sigma = 1$ — forces dominate because force errors per atom are typically larger in absolute terms than energy errors per cell.
+
+**Why forces are the hardest target.** Energies are smooth, low-frequency functions of the structure. Forces are derivatives — they pick up high-frequency components and noise that the energy alone might never expose. A network that gives 1 meV/atom energy MAE may have 100 meV/Å force MAE if forces were not in the loss.
+
+**Stress targets and lattice relaxation.** Stress training is essential for any MLIP that will be used in NPT or variable-cell MD. Without stress in the loss, the predicted equilibrium volume drifts — sometimes by 5–10% — and the structures refusing to relax to the DFT minimum are common.
+
+**Forward link.** "Slide 37 — NequIP and friends remove the autograd-only force pathway. They produce forces as native equivariant outputs of the network, and the data efficiency for forces improves by orders of magnitude. That is what we move to next."
+:::
+
+## 32. What each architecture is best at
+
+| Architecture | Best for | Cost |
+|---|---|---|
+| **CGCNN** | Scalar property prediction; cheap workhorse baseline. | Low. |
+| **MEGNet** | State-conditioned properties; multi-task heads from a shared trunk. | Low–medium. |
+| **ALIGNN** | Properties depending on bond angles (band gap, elastic constants). | Medium. |
+| **M3GNet** | Universal MLIP across the periodic table; energy + forces + stress. | High (deployment). |
+| **NequIP / MACE / Allegro** (§F) | Small-data MLIP; force-accurate models from $\sim 10^4$ structures. | High (per step). |
+
+::: {.notes}
+**This table is a deployment cheat sheet.** Tell the students to take a screenshot. Given a problem, look up the row.
+
+**Important caveat.** The table is *typical* deployment guidance, not a leaderboard ranking. On any specific dataset, a careful CGCNN can beat a sloppy MACE; a pretrained foundation model (§G) can beat all of them; the MG U8 split discipline still applies. The table is for *first* architecture choice, not final model selection.
+
+**Compute cost rows, in numbers.**
+- CGCNN: $\sim 10^5$ params, single GPU train in hours.
+- MEGNet: $\sim 10^6$ params, similar.
+- ALIGNN: $\sim 10^6$ params, $\sim 2\times$ compute due to line graph.
+- M3GNet: $\sim 10^7$ params; pretraining requires multi-GPU days.
+- NequIP / MACE: $\sim 10^6$–$10^7$ params; per-step cost dominated by tensor products; small-batch inference.
+
+**Forward link.** "Slide 35 — we move to equivariance. So far every architecture in §E is invariant. The §F architectures are equivariant. The accuracy / data-efficiency story changes substantially in the small-data regime."
+:::
+
+## 33. What they share
+
+::: {.columns}
+::: {.column width="50%"}
+**Shared scaffolding**
+
+::: {.incremental}
+- All operate on a (PBC-aware) crystal graph.
+- All are translation-, rotation-, permutation-invariant for scalar outputs.
+- All use distance-based filters or messages.
+- All produce forces by autograd through energy.
+- All scale linearly with the number of atoms (for fixed cutoff).
+:::
+:::
+::: {.column width="50%"}
+**Shared limitation**
+
+- None carries explicit *vector* or *tensor* features in its hidden layers.
+- All vector/tensor outputs (forces, stresses) come from autograd through invariant energy.
+- This works, but is data-hungry — you need enough structures to *imply* the geometric covariance from energy variation alone.
+- The §F architectures fix exactly this.
+:::
+:::
+
+::: {.notes}
+**The "hidden invariant features" framing.** SchNet/CGCNN/MEGNet/ALIGNN/M3GNet all carry hidden features that are *scalars* — they look the same under rotation. To predict a *vector* (force), the network has to differentiate the scalar energy with respect to atomic positions. The differentiation injects vector character at the very end, but the network never carries vector character internally.
+
+**Why this is data-inefficient.** The network has to learn that small changes in $\{\mathbf{r}_i\}$ produce specific changes in $E$ — and the *direction* of those changes (the force vector) has to be implicit in the energy landscape. Learning the directional information from energy variation alone requires a lot of structures.
+
+**The equivariant alternative.** NequIP/MACE/Allegro carry vector and tensor features at every layer. Forces come out of the network as a native vector output. The network "knows" about vectors throughout, not just at the readout. This is the data-efficiency win — and it is the central topic of §F.
+
+**Forward link, said aloud.** "If the project at hand has 10 million MP structures, M3GNet's invariance + autograd works fine. If the project has 10 thousand DFT structures of a specific catalyst system, NequIP/MACE will deliver the same force accuracy with $\sim 10\times$ less data. The choice depends on the data regime."
+:::
+
+## 34. Materials-Project-scale results
+
+::: {.columns}
+::: {.column width="50%"}
+**Where the leaderboard sits in 2022–2023**
+
+- Formation energy: MAE $\sim 0.02$ eV/atom (ALIGNN, M3GNet on MP-2021).
+- Band gap: MAE $\sim 0.25$ eV (ALIGNN).
+- Elastic moduli: $R^2 \sim 0.9$ on $\sim 10^4$ training structures.
+- Universal MLIP: M3GNet relaxes arbitrary MP entries to DFT minima zero-shot for most chemistries.
+:::
+::: {.column width="50%"}
+**The ceiling shifted from model to data**
+
+- By 2022, MAE-on-random-split was *not* the bottleneck.
+- The bottleneck became:
+  - DFT-functional inconsistency across MP versions.
+  - Polymorph aliasing in the dataset.
+  - Chemistry-grouped split degradation.
+  - **Generalisation, not fitting.**
+- The MG U8 lesson became dominant.
+:::
+:::
+
+::: {.notes}
+**Why this slide exists.** To prevent the natural student reaction "great, MAE is below 0.05 eV/atom, we're done." We are not done. The MAE-on-random-split number is misleading; it reflects in-distribution interpolation across very similar crystals.
+
+**The honest 2022–2026 picture.** The architecture gains from CGCNN to M3GNet are real but smaller than the dataset-quality gains and the chemistry-grouped-split degradation. A CGCNN on a clean grouped split often beats an ALIGNN on a leaky random split. The MG U8 split discipline is what separates a paper that ages well from one that does not.
+
+**Where the field is heading.** Foundation models (§G) push the MAE numbers down further by training on much larger datasets — but they also raise the same question of in-distribution vs out-of-distribution behaviour. The MG U8 discipline becomes *more*, not less, important in the foundation-model era.
+
+**Forward link.** "§F — equivariance done right. The architectures we move to next are not (mainly) about lower MAE on MP. They are about lower MAE on small, force-rich datasets where M3GNet's invariance is too data-hungry."
+:::
+
+# §F · Equivariance done right {.section}
+
+## 35. Why true equivariance matters
+
+::: {.columns}
+::: {.column width="50%"}
+**The autograd-from-invariants pathway**
+
+- Energy $E$ is an invariant scalar.
+- Forces $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$ — derived by autograd.
+- *Correct* by construction.
+- But: the network has no internal vector representation; it must *infer* directional information from the energy landscape variation.
+:::
+::: {.column width="50%"}
+**The equivariant pathway**
+
+- Hidden features carry irrep labels: $\ell = 0$ (scalars), $\ell = 1$ (vectors), $\ell = 2$ (rank-2 tensors), …
+- Forces are *native vector outputs* from $\ell = 1$ channels.
+- Data efficiency improves by **one to two orders of magnitude** for force-rich tasks.
+- Architectures: NequIP, Allegro, MACE.
+:::
+:::
+
+::: {.fragment}
+> **The headline.** For small-data MLIP regimes (~10⁴ structures, force labels), equivariant networks are *the* state of the art.
+:::
+
+::: {.notes}
+**Where the data-efficiency gain comes from.** The invariant-with-autograd approach throws away the rotational structure of the data: every rotated copy of the same structure looks like a different scalar input. The equivariant approach exploits the rotational structure: rotated copies are recognised as rotations of the same configuration, and the model only has to learn the rotation-quotient of the energy landscape.
+
+**Why this matters in catalyst / battery / alloy datasets.** These are the canonical "small-data" MLIP regimes — a few thousand DFT structures of one chemistry, computed at significant cost. NequIP/MACE/Allegro routinely deliver force MAE comparable to DFT-functional uncertainty (~10–30 meV/Å) on such datasets, where invariant networks would need ~30k–100k structures for the same accuracy.
+
+**Why this matters less for foundation MLIPs.** When training data is $10^7$+ structures (M3GNet, OMat24), the invariant-with-autograd approach has enough data to *effectively* learn the rotational structure. The equivariant gain shrinks. But: the equivariant gain in *inference-time* physical correctness (smooth force fields, no spurious oscillations) is independent of dataset size.
+
+**Pre-empt.** "Why isn't every MLIP equivariant then?" Answer: implementation complexity (irrep tensor products, e3nn library, Clebsch-Gordan coefficients) and per-step compute cost. The fields' standard is converging to "equivariant for force-rich tasks, invariant for energy-only tasks at scale."
+:::
+
+## 36. Irreducible-representation features
+
+::: {.columns}
+::: {.column width="55%"}
+**The irrep stack**
+
+- A representation of SO(3) decomposes into irreducible representations labelled by $\ell = 0, 1, 2, \ldots$.
+- $\ell = 0$ — scalar (1-dimensional).
+- $\ell = 1$ — vector (3-dimensional).
+- $\ell = 2$ — symmetric traceless tensor (5-dimensional).
+- An equivariant feature is a **stack of irrep channels**: $\mathbf{x}_i = (x_i^{(0)}, x_i^{(1)}, x_i^{(2)}, \ldots)$.
+:::
+::: {.column width="45%"}
+**Tensor products mix irreps**
+
+- Combining two irreps $\ell_1 \otimes \ell_2$ produces a sum:
+  $$\bigoplus_{|\ell_1 - \ell_2|}^{\ell_1 + \ell_2} \ell$$
+- The Clebsch-Gordan coefficients control the mixing.
+- The e3nn library implements all of this.
+:::
+:::
+
+::: {.notes}
+**The e3nn library is the practical entry point.** Mario Geiger and collaborators released e3nn around 2020; NequIP, MACE, Allegro, EquiformerV2 all build on it. A student wanting to implement an equivariant model today does not derive Clebsch-Gordan coefficients by hand — they use e3nn.
+
+**Why irreducible representations.** Irreps are the *atoms* of group representation theory: any representation of SO(3) decomposes as a direct sum of irreps. Building network features from irreps means every layer respects rotation by construction; you do not need data augmentation or training tricks.
+
+**Concrete example.** A vector-valued atom feature $\mathbf{x}_i \in \mathbb{R}^3$ that rotates as a vector under SO(3) is an $\ell = 1$ feature. A scalar atom feature like atomic number is $\ell = 0$. A bond-stress contribution is $\ell = 2$. NequIP typically uses up to $\ell = 1$ or $\ell = 2$; higher $\ell$ improves accuracy but costs compute (number of channels grows like $(2\ell + 1)$).
+
+**The math is heavy; the implementation is not.** Conceptually, this is the heaviest mathematical content of the lecture. Operationally — given e3nn — it is similar to a CGCNN/SchNet implementation. Students should know the words ("irrep," "tensor product," "Clebsch-Gordan") even if they never derive them.
+:::
+
+## 37. NequIP
+
+::: {.columns}
+::: {.column width="50%"}
+**NequIP [@batzner2022nequip]**
+
+- The first widely-used E(3)-equivariant MLIP.
+- Hidden features: scalars + vectors + tensors (irreps up to $\ell \in \{1, 2\}$).
+- Message passing: Clebsch-Gordan tensor products of irrep features.
+- Forces: native $\ell = 1$ output (no autograd-only pathway).
+:::
+::: {.column width="50%"}
+**The data-efficiency claim**
+
+- On force-rich catalyst and bulk-material datasets:
+  $\sim 1$–2 orders of magnitude fewer training structures than non-equivariant baselines for the same force MAE.
+- Now the standard small-data MLIP architecture.
+- Codebase + tutorials at `mir-group/nequip`.
+:::
+:::
+
+::: {.notes}
+**Why NequIP was a turning point.** Before NequIP, equivariant networks for atomic systems existed (Tensor Field Networks, Cormorant) but were either expensive, hard to train, or not applied to MLIPs. NequIP made E(3)-equivariant MLIPs *practical* — comparable training time to non-equivariant baselines, with the data-efficiency gain.
+
+**Where NequIP wins.** Force-rich, small-data MLIPs. Examples from the literature:
+- Catalyst surface adsorption with $10^3$–$10^4$ DFT structures.
+- Alloy MD with limited DFT trajectories.
+- Reactive chemistry where forces are critical and data is expensive.
+
+**Where NequIP is overkill.** Energy-only large-scale prediction (formation energy on the entire MP). M3GNet / CGCNN / ALIGNN are simpler and competitive there.
+
+**Pre-empt.** "Is NequIP the state of the art?" Answer: as of 2024–2026, NequIP is a strong baseline. Allegro and MACE refine the architecture in different directions (slide 38). The equivariant family as a whole is the small-data MLIP standard.
+:::
+
+## 38. Allegro and MACE
+
+::: {.columns}
+::: {.column width="50%"}
+**Allegro [@musaelian2023allegro]**
+
+- *Strictly local*: each atom's prediction depends only on its neighbourhood — no message passing across the graph.
+- Trades expressiveness for parallelism.
+- Scales to **millions of atoms** on a single GPU node.
+- Right choice for *large-cell* MD where graph-wide message passing would exhaust memory.
+:::
+::: {.column width="50%"}
+**MACE [@batatia2022mace]**
+
+- Replaces iterative message passing with **higher-body-order** tensor products in a single layer.
+- 4-body and 5-body terms appear naturally.
+- Comparable accuracy to NequIP at a fraction of the inference cost.
+- Now the most popular small-data MLIP architecture.
+:::
+:::
+
+::: {.notes}
+**Allegro's strict locality, said aloud.** Each atom's energy contribution depends *only* on atoms within $r_{\rm cut}$ — no information propagation beyond one hop. This sounds restrictive and *is* — but for short-range interactions (most molecular and bulk physics), it is sufficient. The payoff is parallelism: each atom's contribution is independent, so cells with millions of atoms run on a single GPU.
+
+**MACE's body-order argument.** Iterative message passing builds up many-body correlations layer by layer: $T$ layers $\to$ effective body order $T+1$. MACE replaces $T$ layers of message passing with a single layer of tensor products that explicitly builds, say, 5-body correlations directly. Same effective body order, fewer layers, faster inference. Surprisingly, this also improves accuracy because each tensor product is exact, while iterative message passing accumulates approximation error.
+
+**Which one to use today.** As of 2024–2026, MACE is the default small-data MLIP for most groups, with NequIP and Allegro chosen for specific use cases (NequIP for the most-accurate-possible regime, Allegro for million-atom MD). Codebases and pretrained models exist for all three.
+
+**Forward link.** "Slide 39 — the trade-off. Equivariance buys data efficiency and physical correctness; it costs implementation complexity. The right choice is dataset-dependent."
+:::
+
+## 39. The trade-off
+
+::: {.columns}
+::: {.column width="50%"}
+**When to go equivariant**
+
+::: {.incremental}
+- Small or medium dataset ($\sim 10^3$–$10^5$ structures).
+- Forces and stresses are central, not optional.
+- Off-distribution chemistry expected at deployment.
+- Implementation cost is acceptable (e3nn ecosystem).
+:::
+:::
+::: {.column width="50%"}
+**When invariance + autograd is enough**
+
+::: {.incremental}
+- Large dataset ($\sim 10^6$+ structures).
+- Energy-only or energy-dominant target.
+- Inference latency must be minimal.
+- Foundation-model pretraining available.
+:::
+:::
+:::
+
+::: {.fragment}
+> **Rule of thumb.** Crossover around $\sim 10^5$ structures with strong force labels. Below: NequIP / MACE. Above: M3GNet / OMat24-style invariant + scale.
+:::
+
+::: {.notes}
+**The cross-over is not sharp.** It depends on (a) the diversity of the training set, (b) the importance of forces vs energy, (c) the chemistry coverage at deployment, and (d) the engineering budget. The $10^5$ threshold is a rough guideline, not a hard rule.
+
+**Why this slide is useful.** It is the deployment-decision summary of §F. A student who walks out remembering only this rule of thumb has the most actionable takeaway from the section.
+
+**The honest framing.** Both invariant-at-scale (M3GNet, OMat24) and equivariant-with-data-efficiency (NequIP, MACE) are on the 2024–2026 frontier. Neither has won outright. The frontier in 2026 is *combining* equivariance with foundation-scale pretraining — see EquiformerV2 and similar architectures, which we will not cover today but which are the natural next step.
+
+**Forward link.** "§G — transformers and foundation models. Now we shift from architectural symmetry to architectural *attention* — and from small/medium-data to large-data, pretrained models. This is the forward-link to MFML W10."
+:::
+
+# §G · Transformer-based variants and foundation models {.section}
+
+## 40. Forward link to MFML W10
+
+::: {.columns}
+::: {.column width="50%"}
+**This section is a preview.**
+
+- MFML W10 will derive attention, multi-head attention, and transformer architectures.
+- Today: how those primitives are *applied* to atomic systems.
+- The goal: when MFML W10 lands, students recognise the materials use case.
+:::
+::: {.column width="50%"}
+**What attention buys for crystals**
+
+- **Long-range** information without stacking many GNN layers.
+- **Global** context: every atom can attend to every other atom in the cell.
+- **Pretraining + fine-tuning** scales naturally: same primitives as NLP / vision foundation models.
+- **Foundation embeddings** for materials become a tractable goal.
+:::
+:::
+
+::: {.notes}
+**This is the explicit MFML-W10 forward link.** State it out loud. Students who have not yet seen attention will be lost on the math but should still take away the *applications* — Matformer, OMat24, GNoME — and the framing ("foundation models for materials").
+
+**The attention primitive in one paragraph (for those without W10 yet).** Attention is a learnable, content-aware aggregation: each query computes weighted averages over keys/values, where weights depend on query-key similarity. For atoms, the query is one atom's state; the keys/values are all other atoms in the cell; the weighted average becomes the atom's new state. Permutation-equivariance is automatic. Translation-equivariance and rotation-invariance need extra work.
+
+**Why this connects to the rest of MG U9.** Pre-attention crystal GNNs are *local* (CGCNN, MEGNet, ALIGNN, M3GNet, NequIP, Allegro, MACE) — they aggregate over an $r_{\rm cut}$ neighbourhood. Attention generalises to *global* aggregation. The two regimes differ in receptive field, compute cost, and scaling behaviour with dataset size.
+
+**The forward-link discipline.** Today we cover Matformer, OMat24, GNoME, MatBERT — *as applications*. We do not derive multi-head attention, positional encoding, or transformer block structure. Those derivations belong in MFML W10. State this boundary clearly so the lecture stays under time.
+:::
+
+## 41. Matformer and Graphormer-style attention on crystals
+
+::: {.columns}
+::: {.column width="50%"}
+**Matformer [@yan2022matformer]**
+
+- Transformer-style self-attention applied to crystal graphs.
+- Each atom attends to all other atoms inside the cell.
+- PBC-aware *distance-based* positional encoding (instead of NLP-style absolute position).
+- Long-range interactions captured *without* stacking many message-passing layers.
+:::
+::: {.column width="50%"}
+**Graphormer [@ying2021graphormer]**
+
+- Originally for molecular graphs; adapted to crystals in 2022–2023.
+- Uses attention bias terms encoding shortest-path distances and bond features.
+- Strong performance on both molecular and crystal benchmarks.
+- Foundational for several 2024 materials transformers.
+:::
+:::
+
+::: {.fragment}
+> **The architectural shift.** Local message passing $\to$ global attention. Receptive field = entire cell, in one layer. Compute cost scales as $O(N^2)$ in atoms — manageable for typical unit cells, expensive for large supercells.
+:::
+
+::: {.notes}
+**The receptive-field argument, said aloud.** A 6-layer CGCNN with $r_{\rm cut} = 5$ Å has receptive field $\sim 30$ Å. A single attention layer has receptive field = entire cell. For long-range physics (Coulomb, dispersion, charge transfer), this is a big deal.
+
+**Why $O(N^2)$ is acceptable here.** Materials cells are typically $N \sim 10$–$10^3$ atoms. $N^2$ attention is $10^2$–$10^6$ pairwise ops — manageable. Compare NLP, where $N \sim 10^4$ tokens and $N^2$ is $10^8$ — there, sparse / linear attention is essential.
+
+**The PBC positional encoding.** This is the materials-specific twist. NLP transformers use absolute or relative position in a 1D sequence; image transformers use 2D grid positions. Crystal transformers use *PBC-aware distance-based encodings* — the position of an atom is its 3D location, modulo lattice vectors. Done correctly, the architecture is translation-invariant by construction.
+
+**Pre-empt.** "Why not just use a fully-connected GNN?" Answer: a fully-connected GNN is a transformer minus the learned attention weights — i.e. uniform-weight aggregation. Attention's content-dependent weights are exactly what makes it more expressive than a fully-connected GNN.
+:::
+
+## 42. The OMat24 / GNoME / MatBERT generation
+
+::: {.columns}
+::: {.column width="50%"}
+**Foundation models reach materials (2023–2024)**
+
+- **GNoME** [@merchant2023gnome]: graph network trained on $\sim 380$k DFT structures, scaled iteratively via active learning to propose 2.2 million stable crystals.
+- **OMat24** [@barrosoluque2024omat24]: the Open Materials 2024 dataset (~118 million DFT calculations) plus matching pretrained models for energy/force/stress.
+- **CHGNet, MatterSim, MACE-MP-0** [@batatia2024macemp]**:** foundation MLIPs covering the periodic table, distributed openly with Python APIs.
+:::
+::: {.column width="50%"}
+**Multi-modal materials models**
+
+- **MatBERT-style models:** language-model pretraining on materials literature; produce text-side embeddings of materials concepts.
+- **Image + structure** alignment: micrographs aligned with crystal structures via contrastive pretraining (analogue of CLIP for materials).
+- **Crystal + property + literature** triples: the next generation of multi-modal foundation models for materials.
+:::
+:::
+
+::: {.notes}
+**Why we mention specific names.** The students will encounter these in 2026 papers and benchmarks. Knowing the names — what they are, what they were trained on, what they output — is part of materials-NN literacy. The architecture details are out of scope today; the *positioning* of each model is in scope.
+
+**The GNoME story.** DeepMind's 2023 paper [@merchant2023gnome] trained a graph network on MP-derived data, used the model to propose new candidate crystals, ran DFT on them, retrained — iterative active learning at industrial scale. The headline number — 2.2 million predicted stable crystals — was widely contested (many were duplicates or near-duplicates of known phases), but the *workflow* (foundation model + active DFT) is now the standard discovery pattern.
+
+**The OMat24 dataset.** Meta released OMat24 in 2024 [@barrosoluque2024omat24]: 118 million DFT calculations across the periodic table, designed specifically for foundation MLIP training. Models trained on OMat24 (CHGNet variants, EquiformerV2 variants, MACE-MP-0 [@batatia2024macemp]) reach state-of-the-art transferability on benchmarks like Matbench Discovery.
+
+**The text-side angle.** MatBERT and successors apply BERT-style pretraining to materials literature. This produces embeddings of materials *concepts* (compositions, phases, processing conditions) that align with structure-side embeddings — opening the door to cross-modal materials search and inverse design from natural-language queries. Out of scope today; mentioned because it is a 2024–2026 frontier.
+
+**Forward link to Unit 10.** "Unit 10 picks up here. The foundation-model embedding becomes the central object: how is it trained, what is its geometry, how do we use it for similarity search, transfer learning, generative design?"
+:::
+
+## 43. Pretraining vs fine-tuning for materials
+
+::: {.columns}
+::: {.column width="50%"}
+**The standard recipe (NLP-style)**
+
+1. **Pretrain** on a broad corpus (~$10^6$–$10^8$ DFT structures, energy + forces + stresses).
+2. **Freeze** or partially freeze the backbone.
+3. **Fine-tune** a small downstream head on the target dataset (~$10^2$–$10^4$ labels).
+4. **Deploy** with task-specific calibration.
+:::
+::: {.column width="50%"}
+**Why this works for materials**
+
+- Pretraining captures *transferable physics*: bonding, periodicity, local-environment statistics, force fields.
+- Fine-tuning specialises to the *idiosyncrasies* of the target dataset (specific functional, specific chemistry, specific property).
+- Data efficiency in fine-tuning rivals task-specific equivariant models.
+:::
+:::
+
+::: {.fragment}
+> **The 2024–2026 default.** New project? Start with a foundation-model checkpoint, fine-tune for a few hours. Train from scratch only if no relevant checkpoint exists.
+:::
+
+::: {.notes}
+**The shift in default workflow.** As recently as 2022, the default for a new materials property prediction project was "train a CGCNN or ALIGNN from scratch on the target data." As of 2024, the default is "download a pretrained M3GNet / CHGNet / MACE-MP-0 / OMat24 checkpoint, fine-tune on the target data, evaluate." The fine-tuning approach typically beats from-scratch training even on $10^4$+ structure datasets.
+
+**Why fine-tuning works.** The pretraining corpus exposes the model to broad bonding patterns, local environments, and force field structure — the materials counterpart of language models learning syntax and semantics from web-scale text. Fine-tuning then specialises this general representation to the target property. The pretraining provides a good *initialisation*; fine-tuning navigates the task-specific basin.
+
+**When fine-tuning fails.** When the target system is genuinely off-distribution: a chemistry never seen in pretraining, a property class with no analogue in pretraining (rare physics like superconductivity). Foundation models extrapolate poorly outside their pretraining distribution — the same lesson as the MG U8 grouped-split discipline, scaled up.
+
+**Cross-reference to Unit 10.** Representation learning is exactly this picture, generalised: the foundation model's embedding *is* the learned representation; fine-tuning is one way to *use* the representation; similarity search and generative design are others.
+:::
+
+## 44. The 2024–2026 state of the art
+
+::: {.columns}
+::: {.column width="50%"}
+**Where we are in 2026 (as of this lecture)**
+
+- **Universal MLIPs** at near-DFT force MAE on most chemistries.
+- **Foundation embeddings** for materials available openly (OMat24, MACE-MP-0).
+- **Scaling laws** apply: more data + more parameters = lower MAE.
+- **Multi-modal** materials models (structure + text + property) emerging.
+:::
+::: {.column width="50%"}
+**What is still missing**
+
+::: {.incremental}
+- Reliable extrapolation to genuinely novel chemistry / phases.
+- Calibrated uncertainty for foundation-model predictions.
+- Long-range physics beyond what attention captures (charge transfer, magnetism).
+- Standardised benchmarks at MG U8 discipline level — the field is still catching up to grouped-split norms.
+:::
+:::
+:::
+
+::: {.notes}
+**The honest 2026 picture.** Foundation models are real, useful, and reshaping the field. They are not a finished story. Several open problems remain — extrapolation to truly novel chemistry, calibrated uncertainty, long-range / strongly-correlated physics, and benchmark hygiene at the MG U8 standard.
+
+**Cross-reference to Unit 13.** Uncertainty quantification on foundation-model predictions is a major open problem, and Unit 13 of this course covers it. Today: name the gap; do not pretend it is solved.
+
+**Cross-reference to MG U8.** The field's benchmark norms are still catching up to MG U8 discipline. Many foundation-model papers report MAE on random splits without grouped-split sanity checks. Students should reflexively re-evaluate any leaderboard claim against MG U8 norms.
+
+**Forward link to Unit 10.** "We are out of new architectures. The next thing to learn is what to *do* with the foundation-model embedding — that is Unit 10. Representation learning is the umbrella term."
+
+**Said aloud at the section close.** "Do not memorise OMat24 hyperparameters. Do remember: foundation models exist, they output transferable embeddings, and the right starting point for a new materials NN project in 2026 is almost always a pretrained checkpoint plus fine-tuning."
+:::
+
+# §H · Wrap-up {.section}
+
+## 45. Decision tree: which architecture for which problem
+
+::: {.columns}
+::: {.column width="50%"}
+**By data regime**
+
+- **Tens of structures:** Magpie + RF / linear baseline; do *not* train a deep model.
+- **Hundreds–thousands:** equivariant networks (NequIP, MACE, Allegro) or fine-tune a foundation model.
+- **Tens of thousands–millions:** ALIGNN / M3GNet / Matformer; fine-tune a foundation model.
+- **Tens of millions+:** train a foundation model from scratch (rarely justified at university scale).
+:::
+::: {.column width="50%"}
+**By target type**
+
+- **Composition-only properties:** Magpie + MLP / RF.
+- **Scalar structure-dependent (formation energy, band gap):** CGCNN / MEGNet / ALIGNN.
+- **Energy + forces (small data):** NequIP / MACE / Allegro.
+- **Universal MLIP:** M3GNet / CHGNet / MACE-MP-0 / OMat24.
+- **Long-range / global:** Matformer / pretrained foundation model.
+:::
+:::
+
+::: {.notes}
+**This is the cheat sheet of the lecture.** If a student remembers only one slide from the wrap-up, this should be it. Cross-reference both axes: data regime *and* target type. Both matter; neither alone determines the right architecture.
+
+**The "rarely justified at university scale" line.** Foundation-model pretraining requires multi-GPU days to weeks plus a high-quality dataset. For most academic projects, downloading a checkpoint and fine-tuning is the right move. Pretraining from scratch is the move of large industrial labs (DeepMind, Meta, Microsoft) or well-funded national consortia.
+
+**The exam framing.** "Given a project (X structures, Y target type, Z constraints), which architecture would you start with and why?" This is the kind of question where MG U9 expects students to *reason* — not to memorise architecture names. The decision tree above is the reasoning scaffold.
+:::
+
+## 46. Small-data vs large-data regimes
+
+::: {.columns}
+::: {.column width="50%"}
+**Small-data ($\sim 10^3$–$10^4$)**
+
+- Symmetry is the cheapest inductive bias.
+- Equivariant networks dominate.
+- Hand-crafted descriptors (MG U7) competitive.
+- Fine-tuning a foundation model often beats both.
+:::
+::: {.column width="50%"}
+**Large-data ($\sim 10^5$–$10^8$)**
+
+- Symmetry still useful, often subsumed by data.
+- Transformer-style attention competitive.
+- Foundation-model pretraining dominates.
+- The bottleneck shifts to data quality and split discipline (MG U8).
+:::
+:::
+
+::: {.fragment}
+> **The crossover.** Around $\sim 10^5$ structures with strong force labels. Below: equivariance + handcrafted features. Above: pretrained foundation models + scale.
+:::
+
+::: {.notes}
+**Why this slide matters.** Architecture choice is dominated by the data regime, not by which paper has the lowest leaderboard MAE. A student who internalises this — and refuses to deploy a foundation-model fine-tune on a 50-structure dataset, or a hand-crafted descriptor pipeline on a 50-million-structure dataset — has internalised the central pragmatic message of §F and §G.
+
+**The data quality point.** As data scales up, *quality* becomes the bottleneck. DFT-functional inconsistency, polymorph aliasing, label noise, leakage across train/test — these dominate the MAE landscape past $10^5$ structures. Architecture improvements buy diminishing returns; data hygiene buys most of the headroom.
+
+**Cross-reference to MG U8.** This is exactly the MG U8 lesson, scaled up. Grouped splits, residual analysis, careful label curation — these are *more*, not less, important in the foundation-model era.
+:::
+
+## 47. What we still inherit from MG U8
+
+::: {.columns}
+::: {.column width="50%"}
+**The MG U8 contract**
+
+- Grouped splits over chemistry / prototype.
+- Residual analysis, not only scalar MAE.
+- Skepticism of leaderboard scores.
+- Effective sample size, not raw row count.
+:::
+::: {.column width="50%"}
+**Applied to MG U9 architectures**
+
+- A Matformer that beats CGCNN on a random split but loses on a chemistry-grouped split is *not* the better model.
+- A foundation model with $10^8$ params and 0.02 eV/atom random-split MAE may have 0.20 eV/atom grouped-split MAE — and that 10× degradation matters.
+- Architecture choice is a hypothesis to test, not a fashion to follow.
+:::
+:::
+
+::: {.notes}
+**Repeat the MG U8 discipline.** Every time we mention an architecture today, the implicit benchmark protocol is grouped, not random. Students who left MG U8 with the random-split habit will systematically over-estimate every architecture in this lecture.
+
+**The fashion warning.** Foundation models are 2024–2026's hot architecture. CGCNN was 2018–2020's. NequIP/MACE was 2021–2023's. Each was overhyped at its peak and is now used in its proper niche. The same will happen to whatever 2027–2028 architecture comes next. The MG U8 discipline is what protects students from architecture-of-the-month thinking.
+
+**Pre-empt.** "Should I just always use the newest architecture?" Answer: no. Use the architecture that fits your data regime, target type, and deployment constraint. The MG U8 split discipline is what tells you whether the architecture you picked actually works.
+
+**Forward link.** "Unit 10 — representation learning. Once we have a foundation embedding, what do we do with it? That is the next lecture."
+:::
+
+## 48. Bridge to Unit 10
+
+::: {.columns}
+::: {.column width="50%"}
+**Where we are**
+
+- §G ended with foundation models that output a transferable **embedding** for any atomic system.
+- That embedding is a vector $\mathbf{z} \in \mathbb{R}^d$ — the materials counterpart of an NLP word embedding.
+- Today we *trained* it (via foundation-model pretraining); we did not *study* it.
+:::
+::: {.column width="50%" .fragment}
+**Unit 10 picks up here**
+
+- **Representation learning** as the central object.
+- The geometry of $\mathbf{z}$-space: similarity, clustering, manifold structure.
+- Foundation embeddings for downstream tasks: similarity search, transfer learning, generative design.
+- The bridge to the second half of the course.
+:::
+:::
+
+::: {.fragment}
+> **The single sentence to leave with.** *Unit 9 produces the embedding; Unit 10 studies it.*
+:::
+
+::: {.notes}
+**This is the lecture's closing through-line.** Unit 8 was about benchmark discipline. Unit 9 was about architectures for atomic systems. Unit 10 will be about what those architectures' embeddings *mean*. The arc is: data $\to$ model $\to$ representation $\to$ deployment.
+
+**Why the embedding is the right object to organise the next units around.** Because it ties together everything that comes next:
+- Similarity search and clustering — Unit 11 territory.
+- Transfer learning and fine-tuning — already discussed in §G.3.
+- Generative design (sample new $\mathbf{z}$, decode to a structure) — Unit 12 territory.
+- Uncertainty quantification on $\mathbf{z}$-space neighbours — Unit 13 territory.
+- Active learning loops driven by $\mathbf{z}$ — Unit 14.
+
+**The single-sentence summary.** Repeat it three times before closing the lecture: "Unit 9 produces the embedding; Unit 10 studies it."
+
+**Closing exhortation.** "What you learned today — the architectures designed for atomic systems — is the *engine* of modern materials ML. What Unit 10 will teach is what the engine *outputs* and how to use that output. Do the reading."
+:::
+
+<!-- BEGIN prev-next -->
+
+## Continue
+
+- &larr; Previous: [Unit 08 &mdash; Regression and Generalization in Materials Data](../08_regression_and_generalization_in_materials_data/01_intro.html)
+- &rarr; Next: [Unit 10 &mdash; Representation Learning and Feature Discovery](../10_representation_learning_and_feature_discovery/01_intro.html)
+- [All courses](../../index.html)
+
+<!-- END prev-next -->
+
+## 49. References + reading map
+
+::: {.columns}
+::: {.column width="50%"}
+**Reading for next week**
+
+- **@sandfeld_materials_data_science**, Ch 2.2 (graph encodings), Ch 4.5 (GNN architectures for materials).
+- **@neuer2024machine**, Ch 4.5.1–4.5.4 (engineering perspective on GNNs).
+- **@goodfellow2016deep**, Ch 6 + Ch 9 if MFML W4 still feels shaky.
+- **@bishop2006pattern** §5.5–5.6 for backprop recap.
+:::
+::: {.column width="50%"}
+**Recommended primary papers**
+
+- *SchNet* [@schutt2017schnet; @schutt2018schnet].
+- *CGCNN* [@xie2018cgcnn].
+- *MEGNet* [@chen2019megnet].
+- *ALIGNN* [@choudhary2021alignn].
+- *M3GNet* [@chen2022m3gnet].
+- *NequIP* [@batzner2022nequip].
+- *MACE* [@batatia2022mace].
+- *Matformer* [@yan2022matformer].
+- *Open Materials 2024 (OMat24)* [@barrosoluque2024omat24].
+:::
+:::
+
+::: {#refs}
+:::
+
+::: {.notes}
+**Reading priorities.**
+1. If they read one thing this week: Sandfeld Ch 4.5 — covers CGCNN/MEGNet/ALIGNN with a materials-engineering framing in our textbook's vocabulary.
+2. If they read two: + the original CGCNN paper [@xie2018cgcnn]. It is short, well-written, and is *the* foundational paper for crystal GNNs.
+3. If they read three: + the MACE paper [@batatia2022mace] for a state-of-the-art equivariant architecture.
+
+**The honest meta-message.** Materials NN is a fast-moving field. Any reading list will be slightly out of date by the time students read it. The *foundational* papers (SchNet, CGCNN, NequIP) are durable; the *frontier* papers (OMat24, GNoME) will be superseded. Read both, but invest more in the foundations.
+:::
+
+## 50. Exercise + Reading Assignment
+
+::: {.columns}
+::: {.column width="50%"}
+**Exercise (90 min, this afternoon)**
+
+1. **Build a CGCNN baseline** on a curated Materials Project subset (formation energy or band gap). Use the MG U6 graph constructor; reuse MG U8's grouped-split protocol.
+2. **Compare against a Magpie + MLP** baseline on the same grouped split. Report MAE, residuals by chemistry family, and one failure mode (e.g. cutoff sensitivity, polymorph aliasing).
+3. **Bonus.** Fine-tune a pretrained MACE-MP-0 checkpoint on the same task. Compare against your CGCNN.
+:::
+::: {.column width="50%"}
+**Reading for next week**
+
+- **@sandfeld_materials_data_science**, Ch 4.5 (must read).
+- **@neuer2024machine**, Ch 4.5 (recommended).
+- *CGCNN* [@xie2018cgcnn] (recommended).
+- *MACE* [@batatia2022mace] (optional).
+
+**Next week (Unit 10):** representation learning — what to do with foundation-model embeddings. The supervised-architecture toolkit you learned today becomes the encoder for everything that follows.
+:::
+:::
+
+::: {.notes}
+**Set expectations for the exercise.** Part 1 (CGCNN baseline) is the must-finish; Part 2 (Magpie comparison) is the new-content stretch; Part 3 (MACE-MP-0 fine-tune) is the reach goal. Students who finish 1 in an hour and reach for 2 will grasp the lecture's content much better than those who only do 1 carefully. Students who reach Part 3 will be ready for Unit 10's foundation-embedding workflow.
+
+**The grouped-split protocol from MG U8.** Reiterate: do *not* use a random split. Use a chemistry-family grouped split (MG U8 protocol). The whole point of comparing CGCNN to Magpie+MLP is meaningful only under a grouped split.
+
+**Hand-off cues.** "The MP subset, the CGCNN scaffold, and the Magpie + MLP baseline are on the course Git. The MACE-MP-0 checkpoint is on Hugging Face — fine-tuning instructions are in the bonus notebook."
+
+**Reading priority.** Sandfeld Ch 4.5 *first*; the CGCNN paper *second* if there is time. Skip the MACE paper unless reaching for the bonus exercise — it is heavy on group-theory math that will not click without MFML W10.
+
+**Closing sentence.** "Next week: representation learning. The architectures from today become encoders; the encoders' outputs become the central object of the second half of the course. Take the embedding seriously; it is what holds everything together." End there. Take questions.
+:::
+
+## Example Notebook
+
+::: {.callout-note icon=false}
+## Week 10: Regression on Nanoindentation data — baseline NN models
+[Open rendered notebook →](https://eclipse-lab.github.io/Ai4MatLectures/notebooks/MG/week08_regression_nanoindentation.html)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ECLIPSE-Lab/Ai4MatLectures/blob/main/notebooks/MG/week08_regression_nanoindentation.ipynb)
+:::

@@ -55,20 +55,27 @@ format:
 
 ## Curriculum Mapping
 
+Post-realignment (2026-05-13): ML-PC W7 (26.05.2026) is cancelled (public
+holiday). The original Time-series unit is demoted to optional self-study
+(`unit07_time_series_supplementary/`, marked `published: false` in
+`units.yml`) and the schedule shifts down by one. Folder index now matches
+delivered-lecture index.
+
 - unit01_intro -> Week 1: What makes materials data special?
 - unit02_physics_of_data -> Week 2: Physics of data formation
 - unit03_data_quality -> Week 3: Data quality, labels, and leakage
 - unit04_microstructure_representations -> Week 4: From classical microstructure metrics to learned representations
-- unit05_microstructure_cnns -> Week 5: Neural networks for microstructure images
+- unit05_unsupervised_learning -> Week 5: Unsupervised methods for materials — clustering & autoencoders
 - unit06_transfer_learning -> Week 6: Data scarcity & transfer learning
-- unit07_time_series -> Week 7: Time-series and process monitoring
-- unit08_generalization_robustness -> Week 8: Generalization, robustness, and process windows
-- unit09_inverse_problems -> Week 9: Inverse problems and process maps
-- unit10_characterization_signals -> Week 10: ML for characterization signals
-- unit11_automation -> Week 11: Automation in microscopy and characterization
-- unit12_uncertainty_gp -> Week 12: Uncertainty-aware regression & Gaussian Processes
-- unit13_pinns -> Week 13: Physics-informed and constrained ML
-- unit14_reflection -> Week 14: Integration, limits, and reflection
+- unit07_time_series_supplementary -> (not delivered; optional self-study after W7 cancellation)
+- unit07_generalization_robustness -> Week 7 (delivered W8): Generalization, robustness, and process windows
+- unit08_inverse_problems -> Week 8 (delivered W9): Inverse problems and process maps
+- unit09_characterization_signals -> Week 9 (delivered W10): ML for characterization signals
+- unit09b_transformers_for_materials -> Companion deck within Week 9: Transformers for materials (ViT, Flash Attention, Mamba)
+- unit10_automation -> Week 10 (delivered W11): Automation in microscopy and characterization
+- unit11_uncertainty_gp -> Week 11 (delivered W12): Uncertainty-aware regression & Gaussian Processes
+- unit12_pinns -> Week 12 (delivered W13): Physics-informed and constrained ML
+- unit13_reflection -> Week 13 (delivered W14): Integration, limits, and reflection
 
 ## Development Workflow
 1.  Check `unitN_plan.md` for the pedagogical structure.
