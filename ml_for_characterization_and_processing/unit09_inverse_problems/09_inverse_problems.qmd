@@ -53,6 +53,10 @@ After this unit, you will be able to:
 5. **Explain** the SINDy algorithm and its use for discovering governing equations from data
 :::
 
+::: {.fragment}
+6. **Sketch** how flow matching and consistency models turn inverse design into a conditional generative-sampling problem
+:::
+
 # Section 1: Forward / Inverse Duality {background-color="#1a1a2e"}
 
 ::: {.r-fit-text}
@@ -1300,7 +1304,105 @@ A discovered equation like $\dot{d} = k_0 d^{-1} e^{-Q/RT}$ tells you about the 
 Putting It All Together
 :::
 
-## 43. Designing Experiments for Inversion
+## 43. Flow Matching for Microstructure Inverse Design
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**The principle.** Train a network $u_\theta(x_t, t)$ to predict the **velocity field** of a Gaussian probability path from prior $p_0 = \mathcal{N}(0, I)$ to data distribution $p_1$ [@lipman_2023_flow_matching].
+:::
+
+::: {.fragment}
+Linear interpolant: $x_t = (1-t)\,x_0 + t\,x_1$ with $x_0 \sim p_0$, $x_1 \sim p_1$.
+:::
+
+::: {.fragment}
+Conditional flow-matching loss:
+
+$$\mathcal{L}_{\mathrm{CFM}} = \mathbb{E}_{t, x_0, x_1}\,\bigl\|u_\theta(x_t, t) - (x_1 - x_0)\bigr\|^2$$
+:::
+
+::: {.fragment}
+- **Simulation-free** training — no SDE rollout, no score-network detour
+- **ODE sampling** at inference: 10 Heun steps and you have a microstructure
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**Why this beats score-matching / DDPM** for materials inverse design:
+
+- No SDE — deterministic ODE sampler
+- **Closed-form regression target** $(x_1 - x_0)$, not a learned score
+- Numerically stable; works at low NFE
+:::
+
+::: {.fragment}
+**Materials hook.** Stable Diffusion 3 ships flow matching; the generative-models community is migrating away from DDPM. The same machinery applied to microstructure patches gives a generative prior over admissible structures.
+:::
+
+::: {.callout-note .fragment}
+**Inverse design as conditional flow matching.** Condition on target property $y$ and sample
+
+$$x \sim u_\theta(\cdot, t;\, y)$$
+
+— the trained velocity field becomes a property-conditioned microstructure generator.
+:::
+:::
+:::
+
+::: notes
+30-second derivation: with the linear interpolant $x_t = (1-t)x_0 + t x_1$, the conditional vector field along that path is exactly $x_1 - x_0$ — no derivation of a score function needed, it falls out by differentiating in $t$. Conditioning: same trick as in diffusion — classifier-free guidance still applies, drop the condition with some probability during training and at sampling time blend the conditional and unconditional velocities. 1080Ti budget: small U-Net on a low-resolution microstructure grid is fine, the loss is just an MSE. Full SD3-scale ($\sim$ B params, latent space at $1024^2$) is not what we are doing — we are using the same recipe on 64×64 or 128×128 phase-field patches.
+:::
+
+## 44. Consistency Models — One-Step Inverse Sampling
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Motivation.** 10-step Heun is fast, but **not real-time**. Operator-in-the-loop process tuning wants sub-100 ms feedback.
+:::
+
+::: {.fragment}
+**Consistency models** [@song_2023_consistency] distil a flow-matching (or diffusion) **teacher** into a **one-step student** $f_\phi(x_t, t)$ that maps *any point on the trajectory back to the data endpoint* $x_1$.
+:::
+
+::: {.fragment}
+Consistency loss enforces
+
+$$f_\phi(x_t, t) \approx f_\phi(x_{t'}, t')$$
+
+for any two points on the same trajectory — so the student learns a trajectory-consistent shortcut to $x_1$.
+:::
+
+::: {.fragment}
+- Trajectory regularises the loss — easier than training a one-step generator from scratch
+- Quality vs NFE trade-off is explicit
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**Materials use case: real-time process-parameter recommendation.**
+
+Operator twists a knob (laser power, scan speed); the consistency model immediately returns the predicted microstructure / property — no 10-step rollout in the inner loop.
+:::
+
+::: {.fragment}
+**Where it scales.** Latent Consistency Models (LCM, Luo et al. 2023) lift the consistency idea into a learned latent space — fewer pixels, same trajectory consistency, deployable on a workstation GPU.
+:::
+
+::: {.callout-note .fragment}
+**Practical recipe.** Train a flow-matching teacher first (slide 43). Distil into a consistency student. Ship the student to the lab — keep the teacher around for re-distillation when the data distribution drifts.
+:::
+:::
+:::
+
+::: notes
+The consistency loss as written here is the self-consistency form — in practice you train against a target network (EMA copy of $f_\phi$) along adjacent points on the trajectory, which is what makes the loss well-conditioned. NFE = number of function evaluations: a flow-matching model takes 10–50 NFE for good samples, a consistency model takes 1–4. Why this is more practical than directly training a one-step generator: a raw one-step generator (GAN-style) has no trajectory to regularise the optimisation — the consistency loss inherits the implicit regularisation of the diffusion / flow-matching trajectory, which is why it trains stably where naïve one-step distillation does not. Real-time caveat: even 1-step inference at 128×128 on a 1080Ti is $\sim$ 30 ms — fast enough for interactive sliders, not fast enough for closed-loop laser control at kHz.
+:::
+
+## 45. Designing Experiments for Inversion
 
 ### Not All Data Is Equally Informative
 
@@ -1332,7 +1434,7 @@ If $\frac{\partial y_\text{obs}}{\partial \theta}$ is large, the observation $y_
 - Measure at **multiple spatial locations** — not just the surface
 :::
 
-## 44. Limitations of ML-Based Inversion
+## 46. Limitations of ML-Based Inversion
 
 ### Knowing What Can Go Wrong
 
@@ -1364,7 +1466,7 @@ If $\frac{\partial y_\text{obs}}{\partial \theta}$ is large, the observation $y_
 **The responsible approach:** Always validate inversions against independent data, report uncertainties, and state the assumptions explicitly.
 :::
 
-## 45. Unit Summary & Key Takeaways
+## 47. Unit Summary & Key Takeaways
 
 ::: {.fragment}
 ### The Inverse Problem Landscape
@@ -1376,6 +1478,7 @@ If $\frac{\partial y_\text{obs}}{\partial \theta}$ is large, the observation $y_
 | **Process maps** | Feasible regions | Manufacturing process design |
 | **PINNs (inverse)** | Parameters + fields | Multi-physics, complex geometry |
 | **SINDy** | Governing equations | Interpretable dynamics models |
+| **Flow matching / consistency models** | Property-conditioned samples | Generative inverse design, real-time recommendation |
 :::
 
 ::: {.fragment}
@@ -1386,9 +1489,10 @@ If $\frac{\partial y_\text{obs}}{\partial \theta}$ is large, the observation $y_
 3. **Process maps** translate inverse problem solutions into engineering decisions
 4. **PINNs** unify forward and inverse problems in a single optimization framework
 5. **SINDy** discovers interpretable equations from data — Occam's Razor as mathematics
+6. **Flow matching** + **consistency models** reframe inverse design as conditional sampling — a generative prior over admissible microstructures, distilled to one-step for real-time use [@lipman_2023_flow_matching; @song_2023_consistency]
 :::
 
-## 46. Looking Ahead: Unit 10
+## 48. Looking Ahead: Unit 10
 
 ::: {.fragment}
 **Next unit: Uncertainty Quantification and Bayesian Methods**
@@ -1419,7 +1523,7 @@ If $\frac{\partial y_\text{obs}}{\partial \theta}$ is large, the observation $y_
 
 <!-- END prev-next -->
 
-## 47. References
+## 49. References
 
 ::: {.fragment}
 **Textbooks:**

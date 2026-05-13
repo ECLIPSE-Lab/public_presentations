@@ -306,7 +306,53 @@ $$
 4. **Non-dimensionalise**: rescale $x \to x/L$, $t \to t/\tau$, $T \to T/T_0$ — turns the PDE coefficients into $\mathcal{O}(1)$ Péclet/Stefan numbers and directly addresses scale mismatch.
 :::
 
-# 04. Pattern C — Symmetry-aware NN for the elastic tensor
+# 04. Beyond PINN — Neural-operator surrogates
+
+## Beyond PINN — Physics-Informed Neural Operators (PINO)
+
+::: {.columns}
+::: {.column width="55%"}
+- A vanilla PINN is trained on a **single** PDE instance: one set of boundary conditions, one source term, one geometry. Change any of those and you re-train.
+- For a **family** of PDE problems (parametric BCs, swept geometries, varying source terms), the right object to learn is the *solution operator*
+$$
+\mathcal{G}_\theta : \text{inputs} \;\longmapsto\; \text{solution field}.
+$$
+- **Neural operators** (FNO; Li et al. 2020) learn $\mathcal{G}_\theta$ directly: trained once, then evaluated on any new instance in milliseconds.
+- **PINO** [@li_2024_pino] = FNO + the PINN residual loss. The operator both *fits* training solution pairs (data loss) and *satisfies* the PDE residual at sampled collocation points (physics loss).
+:::
+
+::: {.column width="45%"}
+- LPBF thermal-field prediction: train PINO once on simulated $(P, v, \text{geometry}) \to T(x,t)$ tuples; deploy on novel build geometries with **no re-solve** of the heat equation.
+- Inference: milliseconds per build vs. minutes per FEM run — a regime change for in-loop process control.
+- Same trick generalises to any parametric PDE the group already solves with FEM: thermal, diffusion, linear elasticity, phase-field.
+:::
+:::
+
+::: {.notes}
+30-second derivation: an FNO layer replaces the kernel integral $\int K(x,y)\,u(y)\,dy$ with a learned multiplication in Fourier space — FFT, point-wise complex weight, inverse FFT. The PINN residual is then computed on the *output field* of the operator. Why this composes cleanly: the operator is differentiable w.r.t. its inputs, so $\partial_t u$ and $\nabla^2 u$ at collocation points are just autodiff outputs of the operator forward pass. Anti-pattern: applying PINO to geometries far outside the training set — like any operator method, it extrapolates poorly; the PDE residual buys some regularization but does not turn a finite operator class into a universal solver. MFML W13 cross-reference: the PINO slide there derives the Fourier-layer math; here we just consume the result.
+:::
+
+## GNN PDE Solvers — MeshGraphNets for Irregular Materials Meshes
+
+::: {.columns}
+::: {.column width="55%"}
+- FNO assumes a **regular grid** (FFT lives there). Many materials problems do not: polycrystalline grain-boundary networks, finite-element meshes for composite micromechanics, foamed-cell topologies — these all live on **irregular meshes**.
+- **MeshGraphNets** (Pfaff et al. 2021) [@pfaff_2021_meshgraphnets] treat the mesh as a graph: nodes carry physical state (displacement, temperature, stress), edges carry connectivity, and a GNN learns local **message-passing** updates that approximate one PDE time-step.
+- Trained once on a few thousand FEM-simulated mesh / field pairs; generalises across meshes of different sizes and topologies.
+:::
+
+::: {.column width="45%"}
+- Materials use case: predict stress fields on a polycrystal grain network *without* solving the elasticity FEM each time.
+- Training data: a few $10^3$ FEM-simulated grain meshes plus their stress fields.
+- Inference: one GNN forward pass, $\mathcal{O}(\text{edges})$ — fits the inner loop of a microstructure-aware design optimisation.
+:::
+:::
+
+::: {.notes}
+One message-passing step (the recipe): (i) edge update — each edge embedding is a learned function of its two endpoint node states and any static edge features (rest-length, normal); (ii) aggregate — each node sums (or means) the incoming edge messages; (iii) node update — each node embedding is a learned function of its old state and the aggregated message. Stack a handful of these steps and you have one PDE update. Why this beats FNO on irregular meshes: FNO needs a regular grid for the FFT; a GNN is grid-free by construction. Accuracy bar reported in the literature: GNN solvers reach FEM-level RMSE with roughly an order-of-magnitude shorter training-to-inference cycle. MFML W13 reference for the GNN-layer math. Anti-pattern: train on tetrahedral solid meshes, deploy on a triangulated foam — different topology class, expect generalisation to fail. 1080Ti budget: comfortably handles $\sim 10^4$-node meshes in training; larger meshes need gradient checkpointing or mini-batching by sub-graph.
+:::
+
+# 05. Pattern C — Symmetry-aware NN for the elastic tensor
 
 ## Setup: predict $C_{ij}$ from a structure descriptor
 
@@ -382,7 +428,7 @@ Pick by deployment scenario. Screening 10$^5$ candidates? Augmentation. Generati
 - The symmetry constraint is what makes the predictions *trustworthy enough* to feed into the next stage of an inverse-design loop, instead of being treated as unverified guesses.
 :::
 
-# 05. Pattern D — Physics-regularized time series for process drift
+# 06. Pattern D — Physics-regularized time series for process drift
 
 ## Setup: in-situ stress–strain during forming
 
@@ -450,7 +496,7 @@ Easier to add, but only approximate; behaves badly near the yield transition whe
 - Why "physics-aware": the underlying mechanical state is observable from any **one** of several physically equivalent signals. The masking does not invent redundancy that isn't there — it forces the network to *use* redundancy that is.
 :::
 
-# 06. What still goes wrong
+# 07. What still goes wrong
 
 ## Constraint conflicts
 
@@ -515,12 +561,12 @@ For the *math behind* the patterns we used today:
 Today we used the *results*. The derivations live there.
 :::
 
-# 07. Wrap
+# 08. Wrap
 
 ## Recap: Unit 13
 
 ::: {.fragment}
-1. **Pick the right pattern per task**: soft constraint (Pattern A), full PINN (B), symmetry architecture (C), structural monotonicity + masking (D).
+1. **Pick the right pattern per task**: soft constraint (Pattern A), full PINN (B), neural-operator surrogate (PINO / MeshGraphNets) when you need a *family* of PDE instances, symmetry architecture (C), structural monotonicity + masking (D).
 :::
 
 ::: {.fragment}

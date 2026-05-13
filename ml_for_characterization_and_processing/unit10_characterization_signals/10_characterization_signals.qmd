@@ -796,6 +796,75 @@ $$\mathcal{L}_{\text{VAE}} = \underbrace{\|\mathbf{x} - \hat{\mathbf{x}}\|^2}_{\
 - **Best practice**: Always compare AE results against PCA as a baseline
 :::
 
+## 31. MAE Pretraining on Unlabelled Spectra
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**The masking trick.** Masked Autoencoder [@he_2022_mae] adapted to 1-D spectra.
+
+- Split each spectrum into **64 patches** (e.g., 32 bins each on a 2048-channel spectrum).
+- **Randomly mask 75%** — keep only 16 patches as visible input.
+- Encode the visible patches with a **small transformer** (4 layers, 128 dim).
+- A **lightweight decoder** sees encoder outputs + mask tokens, predicts the masked bins.
+:::
+
+::: {.fragment}
+**Loss.** MSE on **masked bins only**:
+$$\mathcal{L}_{\text{MAE}} = \frac{1}{|\mathcal{M}|}\sum_{j \in \mathcal{M}} (x_j - \hat{x}_j)^2$$
+The visible bins do not contribute — the model is forced to reconstruct what it has not seen.
+:::
+
+::: {.fragment}
+**Pretrain on all unlabelled spectra** the lab has — EELS, Raman, XRD pooled together. No labels needed.
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+**Why this is the natural materials move.**
+
+- Lab inventory: $10^4$–$10^5$ **unlabelled** spectra accumulating on the file server, $10^2$ **labelled** ones (peak areas, phase tags, valence).
+- Classical pipeline wastes the unlabelled bulk — PCA/AE use it only for compression, not for downstream task transfer.
+- MAE turns the unlabelled bulk into a **feature extractor**: freeze the encoder, attach a linear probe or LoRA head, fine-tune on the 100 labelled spectra.
+:::
+
+::: {.fragment}
+**Downstream wins.**
+
+- Peak-area regression (small-data).
+- Phase classification (few-shot).
+- Anomaly detection in latent space (no labels at all).
+:::
+
+::: {.callout-note .fragment}
+**Numerical example.** A 200 k-spectrum pretraining corpus + 100-labelled-spectrum fine-tuning typically beats a from-scratch CNN by **5–15 points** on a small-data benchmark, depending on signal-to-noise.
+:::
+:::
+:::
+
+::: {.notes}
+**Why this slide exists.** Sections 2 and 3 covered PCA and AE — both **purely unsupervised compression**. Neither one uses the unlabelled bulk to *improve* a downstream supervised task. MAE is the bridge: it is self-supervised pretraining, not just compression. The encoder learned on unlabelled spectra becomes the initialisation for the labelled task.
+
+**One-sentence definition.** Masked Autoencoder is an autoencoder where the **input is corrupted by hiding 75% of the signal**, and the loss is computed only on the hidden part — forcing the encoder to learn structure that *generalises across the spectrum*, not just memorises local intensity.
+
+**Why mask 75% and not 50%.** Empirical finding from the original vision paper, confirmed for 1-D spectra in subsequent work. At 50%, the network can interpolate masked bins from immediate neighbours — the task is too easy and the encoder learns a low-level smoothing function. At 75%, only a quarter of the spectrum is visible; the encoder must learn **what a spectrum of this class looks like** to fill in the gaps. Higher (90%) starts to underfit. Sweet spot is 75% for spectra with smooth + peak structure.
+
+**Connection to the Unit-5 vanilla autoencoder.** Same MSE loss structure; same encoder–decoder architecture. The **only architectural change** is the input-side masking + mask tokens on the decoder side. The reason the result is dramatically better is that the loss is *self-supervised on hidden bins*, not *self-supervised on the full input* — the latter rewards trivial copying through the bottleneck, the former rewards modelling spectral structure.
+
+**1080Ti budget.** A 4-layer, 128-dim transformer with 64 patches per spectrum has $\sim 1$M parameters. On 200 k spectra, batch 256, AdamW, $\sim 100$ epochs → trains **overnight on a single 1080Ti** (or in $\sim 2$ h on an A100). The fine-tuning step on the 100 labelled spectra takes minutes.
+
+**Materials hook.** Every spectroscopy lab has years of archived data that was never labelled because labelling is the expensive step (an expert annotates each spectrum's phase / peak / valence by hand). MAE finally gives a reason to pay the storage cost: those archives become the pretraining corpus for *every future supervised task* the lab will run.
+
+**Anti-pattern.** Applying MAE directly to a **labelled-but-scarce** dataset (100 spectra, no unlabelled bulk). The whole value proposition is *leveraging unlabelled data*. With only 100 spectra total, MAE gives you nothing — the encoder cannot learn spectral structure from 100 examples. In that regime, a simple CNN with strong augmentation or a Gaussian-process classifier beats MAE. **Rule of thumb: you need $\geq 10\times$ more unlabelled than labelled spectra before MAE pretraining pays off.**
+
+**MFML W9 cross-reference.** The SSL refresh slide (MAE / DINOv2 / I-JEPA) introduced this family abstractly — masking-based self-supervision, contrastive self-supervision, joint-embedding predictive architectures. Today's slide is the **spectra-specific deployment** of the MAE branch. DINOv2 / I-JEPA would also work on spectra and are arguably better for very small downstream sets; we pick MAE here because reconstruction loss is the natural progression from PCA → AE → MAE in this unit's story.
+
+**Chalkboard suggestion.** Draw a 64-bin toy spectrum on the board. Hatch out 48 of the bins (75%). Ask the class: "What information would you need to reconstruct the hatched parts?" — guide them to: peak positions, peak shapes, baseline. That **is** the spectral structure the encoder is forced to learn.
+
+**Forward link.** The MAE encoder reappears in Unit 11 (Automation) as the on-the-fly feature extractor that an active-learning loop queries to decide which spectrum to label next.
+:::
+
 ## {background-color="#1a1a2e"}
 
 ::: {.r-fit-text}
@@ -1300,11 +1369,15 @@ Combining real-time ML with instrument control creates **self-driving microscope
 :::
 
 ::: {.fragment}
-5. The **latent space** is the universal interface: it enables compression, denoising, clustering, anomaly detection, and visualization
+5. **Masked Autoencoders** [@he_2022_mae] turn the lab's $10^4$–$10^5$ **unlabelled** spectra into a pretrained feature extractor — small-data property prediction with linear probing or LoRA
 :::
 
 ::: {.fragment}
-6. **Practical pipelines** require careful normalization, validation, and robustness to instrumental shifts
+6. The **latent space** is the universal interface: it enables compression, denoising, clustering, anomaly detection, and visualization
+:::
+
+::: {.fragment}
+7. **Practical pipelines** require careful normalization, validation, and robustness to instrumental shifts
 :::
 
 ::: {.fragment}
@@ -1316,7 +1389,7 @@ Combining real-time ML with instrument control creates **self-driving microscope
 ## Continue
 
 - &larr; Previous: [Unit 09 &mdash; Inverse problems and process maps](../unit09_inverse_problems/09_inverse_problems.html)
-- &rarr; Next: [Unit 11 &mdash; Automation in microscopy and characterization](../unit11_automation/11_automation.html)
+- &rarr; Next: [Unit 10b &mdash; Transformers for materials (ViT, Flash Attention, Mamba)](../unit10_transformers_for_materials/transformers_for_materials.html)
 - [All courses](../../index.html)
 
 <!-- END prev-next -->

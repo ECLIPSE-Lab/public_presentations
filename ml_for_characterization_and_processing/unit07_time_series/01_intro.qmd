@@ -222,7 +222,7 @@ We need an architecture with **memory** — a hidden state $h_t$ updated as new 
 
 **Where CNNs win.** Pre-segmented melt-pool snippets of fixed window length, where every sample is the same shape and the relevant pattern is local — a 1-D CNN with global average pooling will outperform an LSTM in both accuracy and training time.
 
-**Where RNNs win.** Online inference where you must produce $\hat x_{t+1}$ as soon as $x_t$ arrives, without re-running a windowed convolution; long, irregular sequences; tasks where the *state* of the process matters (think Kalman filter — Slide 36).
+**Where RNNs win.** Online inference where you must produce $\hat x_{t+1}$ as soon as $x_t$ arrives, without re-running a windowed convolution; long, irregular sequences; tasks where the *state* of the process matters (think Kalman filter — Slide 38).
 
 **Forward link.** Transformers (W10) eventually subsume both — attention is *global* receptive field with *no* state. Mention but do not dwell. The pedagogical sequence is: RNN → LSTM → probabilistic LSTM → transformer; they should leave today owning the first three.
 :::
@@ -290,7 +290,7 @@ We need an architecture with **memory** — a hidden state $h_t$ updated as new 
 
 1. *Threshold tuning becomes a heuristic.* Engineers pick "alarm if $\hat x_{t+1} > \theta$" by eyeballing — no statistical guarantee.
 2. *No principled active sampling.* You cannot rank candidate inspections by epistemic uncertainty if you do not have one.
-3. *No anomaly detection that scales.* The "anomaly = low likelihood" recipe (Slide 37) needs a likelihood.
+3. *No anomaly detection that scales.* The "anomaly = low likelihood" recipe (Slide 39) needs a likelihood.
 
 **Say this aloud.** "If I leave you with one slide today, this is it: deterministic forecasts under-report risk because they have no risk to report."
 :::
@@ -463,7 +463,7 @@ $$\hat y_t = W_{hy} h_t + b_y$$
 - Stationary signals.
 - Short horizons (single-digit steps).
 - Low-noise sensors.
-- Educational examples (sine recovery — Slide 42).
+- Educational examples (sine recovery — Slide 44).
 :::
 
 ::: {.column width="50%"}
@@ -699,7 +699,7 @@ $$h_t = (1-z_t) \odot h_{t-1} + z_t \odot \tilde h_t$$
 
 **Stacking pitfall.** Each LSTM layer adds $\sim 4dh$ parameters (where $d$ is the input dim and $h$ the hidden size). Stacking three layers of size 128 on a 16-channel input gives $\sim 200$k parameters — fine for most process logs but enough to overfit a 1-hour dataset.
 
-**Forward link to Slide 31.** The "dropout between layers but not within" rule has an exception: MC dropout (used at inference for epistemic uncertainty) needs *recurrent* dropout that is consistent across time. This is a non-trivial implementation detail; most published MC-dropout-LSTM papers get it wrong. We will see this on Slide 31.
+**Forward link to Slide 32.** The "dropout between layers but not within" rule has an exception: MC dropout (used at inference for epistemic uncertainty) needs *recurrent* dropout that is consistent across time. This is a non-trivial implementation detail; most published MC-dropout-LSTM papers get it wrong. We will see this on Slide 32.
 :::
 
 ## 22. Stacked encoders and seq-to-seq
@@ -734,9 +734,53 @@ $$h_t = (1-z_t) \odot h_{t-1} + z_t \odot \tilde h_t$$
 **Heads up for §4.** From the next section onwards, every architecture choice (RNN/LSTM/GRU/stacked/bidirectional) is **orthogonal** to the choice of head (deterministic / Gaussian / MDN). We will fix the architecture (LSTM, single-layer) and vary the head.
 :::
 
+## 23. State-Space Models (Mamba) — linear-time sequence modelling
+
+::: {.columns}
+::: {.column width="50%"}
+**Why look past LSTM at all.**
+
+- LSTM is $\mathcal{O}(L)$ but **strictly sequential** — no parallel training across time.
+- Transformer is parallel in training but $\mathcal{O}(L^2)$ memory in attention.
+- **Mamba** [@gu_2023_mamba] is $\mathcal{O}(L)$ at *inference* with **parallel training** via the selective scan.
+
+**Materials hook.** LPBF melt-pool monitoring at 10 kHz over a 100-layer build $\Rightarrow 10^7$+ frames per part. Both LSTM (slow to train) and Transformer (memory blowup) choke. Mamba does not.
+:::
+
+::: {.column width="50%"}
+**The selective-scan trick.**
+
+- State-space recurrence $h_t = A h_{t-1} + B x_t$, output $y_t = C h_t$.
+- In Mamba, $A, B, C$ become **input-dependent** — the model can "ignore" boring frames and focus on transitions (keyhole onset, spatter event).
+- Selective parameterisation breaks the linearity that made classical SSMs blind to content.
+
+**Practical recipe.**
+
+- `mamba_ssm` on PyPI; drop-in PyTorch module.
+- Fits a 1080 Ti for sequences up to $\sim 2^{16}$ steps.
+- Pre-norm + residual, just like a Transformer block.
+:::
+:::
+
+::: {.fragment}
+**The shape of the trade-off.** For *long* process streams: Mamba. For *short* windows (a few hundred frames): a small Transformer is still competitive.
+:::
+
+::: {.notes}
+**The derivation in one minute.** A continuous-time linear system $\dot h(t) = A h(t) + B x(t)$, $y(t) = C h(t)$ discretises (zero-order hold) to $h_t = \bar A\,h_{t-1} + \bar B\,x_t$, $y_t = C h_t$ with $\bar A = \exp(\Delta A)$, $\bar B = (\Delta A)^{-1}(\bar A - I)\,\Delta B$. Classical SSMs fix $A, B, C$. Mamba makes $\Delta, B, C$ *functions of $x_t$* — the "selection mechanism". Same closed-form scan; now content-aware.
+
+**Why it beats Transformer-based melt-pool monitoring.** A Transformer over $10^6$ frames is infeasible — quadratic attention. Truncated windows lose long-range thermal context (heat lingers across layers). Mamba carries state across the whole build at linear cost; in our internal benchmarks it matches a windowed Transformer on per-frame F1 while training $\sim 4\times$ faster on the same GPU.
+
+**MFML W10 reference.** The MFML W10 deck has the recent SSM update — the formal derivation of $\bar A, \bar B$, the parallel-scan algorithm, and the selectivity argument. Point students there for the theory; we are using it as a tool here.
+
+**Anti-pattern.** Replacing every RNN with Mamba because it is fashionable. For short sequences (< few hundred frames) — diffractogram traces, single-layer melt-pool windows, RUL on a 50-cycle battery dataset — a small Transformer or even a vanilla LSTM beats Mamba in wall-clock and in tuning friction. Use Mamba *when the sequence is long*. That is the whole pitch.
+
+**Forward link.** W10 (Transformers) covers attention; W11 (Automation) wraps any of these — LSTM, Mamba, Transformer — in a closed loop. Architecture is the dial; the probabilistic head story (§4) is orthogonal and applies to all three.
+:::
+
 # §4 · Probabilistic Sequence Modelling — the centre of gravity {.section}
 
-## 23. Recap: why probabilistic?
+## 24. Recap: why probabilistic?
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -763,19 +807,19 @@ A 90 % prediction interval is what a control engineer actually needs.
 ::: {.notes}
 **Re-anchor before the heavy material.** This section is 15 slides — the longest in the deck. Tell students explicitly: "We are now in the part of the unit that the exam tests hardest. If you have been note-taking selectively, switch on now."
 
-**MFML W8 callback.** Everything in this section assumes MFML W8 vocabulary: aleatoric, epistemic, MLE for Gaussian likelihood, MDN, calibration plot, KL divergence. If the audience is rusty, do a 60-second whiteboard recap of the Gaussian NLL — the formula on Slide 28 is otherwise opaque.
+**MFML W8 callback.** Everything in this section assumes MFML W8 vocabulary: aleatoric, epistemic, MLE for Gaussian likelihood, MDN, calibration plot, KL divergence. If the audience is rusty, do a 60-second whiteboard recap of the Gaussian NLL — the formula on Slide 29 is otherwise opaque.
 
 **Shape of the section.**
 
-1. *Why two kinds of uncertainty?* (slides 24–26)
-2. *How do I get a predictive distribution?* (heteroscedastic Gaussian, MDN — slides 27–30)
-3. *How do I get epistemic uncertainty?* (MC dropout, ensembles — slides 31–32)
-4. *Is my predictive distribution any good?* (calibration, recalibration, sharpness — slides 33–35)
-5. *What about the classical view?* (Kalman — slide 36)
-6. *Application: anomaly detection* (slide 37)
+1. *Why two kinds of uncertainty?* (slides 25–27)
+2. *How do I get a predictive distribution?* (heteroscedastic Gaussian, MDN — slides 28–31)
+3. *How do I get epistemic uncertainty?* (MC dropout, ensembles — slides 32–33)
+4. *Is my predictive distribution any good?* (calibration, recalibration, online conformal, sharpness — slides 34–37)
+5. *What about the classical view?* (Kalman — slide 38)
+6. *Application: anomaly detection* (slide 39)
 :::
 
-## 24. Aleatoric vs epistemic in sensor streams
+## 25. Aleatoric vs epistemic in sensor streams
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -806,12 +850,12 @@ $$\sigma_\mathrm{total}^2(x_{t+1}) = \underbrace{\sigma_\mathrm{aleatoric}^2}_{\
 
 **Operational decisions follow directly.** A monitoring system whose dominant uncertainty is *aleatoric* will not improve with more training data — you need a better thermocouple. A system dominated by *epistemic* uncertainty needs more representative builds in the training set, not a fancier LSTM. Most engineers conflate the two; calling it out is the lecture's biggest practical contribution.
 
-**MFML W8 callback.** This is the same picture they saw two days ago in MFML W8 (and in MFML's W3 "Aleatoric vs Epistemic" slide and Unit 2 of THIS course Slide 24). Do not re-derive — confirm the recall.
+**MFML W8 callback.** This is the same picture they saw two days ago in MFML W8 (and in MFML's W3 "Aleatoric vs Epistemic" slide and Unit 2 of THIS course Slide 25). Do not re-derive — confirm the recall.
 
 **Avoid this rookie mistake.** Some treatments call these "data uncertainty" and "model uncertainty". Avoid this in lectures: students confuse "data uncertainty" with "uncertainty about the data labels", which is something different (label noise). Stick with aleatoric/epistemic.
 :::
 
-## 25. Worked example — separating the two
+## 26. Worked example — separating the two
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -825,7 +869,7 @@ $$\sigma_\mathrm{total}^2(x_{t+1}) = \underbrace{\sigma_\mathrm{aleatoric}^2}_{\
 ::: {.column width="50%"}
 **Decomposition recipe.**
 
-1. Train $K$ models with different seeds (or use MC dropout — Slide 31).
+1. Train $K$ models with different seeds (or use MC dropout — Slide 32).
 2. At each $t$, model $k$ outputs $(\mu_k, \sigma_k)$ — heteroscedastic Gaussian head.
 3. Aleatoric: $\bar\sigma^2_a = \tfrac{1}{K}\sum_k \sigma_k^2$.
 4. Epistemic: $\sigma^2_e = \mathrm{Var}_k(\mu_k)$.
@@ -848,7 +892,7 @@ $$\sigma_\mathrm{total}^2(x_{t+1}) = \underbrace{\sigma_\mathrm{aleatoric}^2}_{\
 **Image note.** `images/meltpool_signal.png` exists in this folder; if it is missing, swap for a chalkboard sketch.
 :::
 
-## 26. From point prediction to predictive distribution
+## 27. From point prediction to predictive distribution
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -865,8 +909,8 @@ $$p_\theta(x_{t+1}\mid x_{1:t})$$
 ::: {.column width="50%"}
 **Two parameterisations we will cover.**
 
-- **Heteroscedastic Gaussian** (Slide 27): $\mathcal{N}(\mu_t, \sigma_t^2)$.
-- **Mixture density** (Slides 29–30): $\sum_k \pi_{k,t}\,\mathcal{N}(\mu_{k,t}, \sigma_{k,t}^2)$.
+- **Heteroscedastic Gaussian** (Slide 28): $\mathcal{N}(\mu_t, \sigma_t^2)$.
+- **Mixture density** (Slides 30–31): $\sum_k \pi_{k,t}\,\mathcal{N}(\mu_{k,t}, \sigma_{k,t}^2)$.
 
 Both use the same LSTM body; only the final layer changes.
 :::
@@ -893,7 +937,7 @@ That is the entire change for the heteroscedastic-Gaussian upgrade. Students who
 **Why two parameterisations?** Gaussian is the right answer when the predictive distribution is unimodal — most of process monitoring. MDN is the right answer when there are multiple plausible futures — process bifurcations, regime switches. We will see when each applies on the case-study slides.
 :::
 
-## 27. Heteroscedastic Gaussian head
+## 28. Heteroscedastic Gaussian head
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -912,7 +956,7 @@ $$p_\theta(x_{t+1}\mid x_{1:t}) = \mathcal{N}(\mu_t, \sigma_t^2)$$
 
 - $\sigma_t$ is allowed to vary with $t$ — that is what *heteroscedastic* means.
 - Captures **aleatoric** uncertainty only.
-- Add MC dropout / ensembles (Slides 31–32) for epistemic.
+- Add MC dropout / ensembles (Slides 32–33) for epistemic.
 :::
 :::
 
@@ -926,7 +970,7 @@ $$p_\theta(x_{t+1}\mid x_{1:t}) = \mathcal{N}(\mu_t, \sigma_t^2)$$
 **Failure mode to flag.** If $\sigma_t$ blows up to compensate for poor mean prediction, the loss gets *small* but the model is useless. This is "variance escape" — a classic failure of heteroscedastic regression. Mitigation: warm-start with the deterministic head, then unfreeze the variance head.
 :::
 
-## 28. Training with Gaussian NLL
+## 29. Training with Gaussian NLL
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -960,10 +1004,10 @@ This is the **MLE objective from MFML W8**, applied at every step.
 
 **Connection to MFML W8 Slide on MLE.** This loss *is* the MLE objective — slide-for-slide. If the audience has not absorbed the MFML W8 derivation, this is a small disaster. Spend 60 s recapping if needed.
 
-**Calibration is not yet guaranteed.** Even with a perfectly trained heteroscedastic Gaussian head, the predictive *distribution* is only as well-calibrated as the model is correct. We will measure it explicitly on Slides 33–34.
+**Calibration is not yet guaranteed.** Even with a perfectly trained heteroscedastic Gaussian head, the predictive *distribution* is only as well-calibrated as the model is correct. We will measure it explicitly on Slides 34–35.
 :::
 
-## 29. Mixture density network (MDN) head — architecture
+## 30. Mixture density network (MDN) head — architecture
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -999,7 +1043,7 @@ $$h_t \to \{\,\pi_{k,t},\, \mu_{k,t},\, \log\sigma_{k,t}^2\,\}_{k=1}^K$$
 **A worked example to keep in your back pocket.** Predicting the next melt-pool radius given the last 10 ms of photodiode trace, in a regime where a pore is about to form: the MDN will reliably show $\pi_1 \approx 0.85$ on the "no-pore" mode and $\pi_2 \approx 0.15$ on a "pore-forming" mode that is several standard deviations away. A unimodal Gaussian would average these and report nonsense.
 :::
 
-## 30. MDN — training, inference, and mode collapse
+## 31. MDN — training, inference, and mode collapse
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1034,10 +1078,10 @@ $$\mathcal L = -\sum_t \log \sum_{k=1}^K \pi_{k,t}\,\mathcal{N}(x_{t+1}\mid \mu_
 
 **Forward link.** The KL/entropy primer in MFML W8 is the bridge — entropy bonuses on $\pi$ are direct applications of W8 vocabulary.
 
-**For the case studies.** When we get to melt-pool monitoring (Slide 39), the MDN will be the head that makes the difference. Tease this now.
+**For the case studies.** When we get to melt-pool monitoring (Slide 41), the MDN will be the head that makes the difference. Tease this now.
 :::
 
-## 31. MC dropout for epistemic uncertainty
+## 32. MC dropout for epistemic uncertainty
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1070,7 +1114,7 @@ $$\sigma^2_\mathrm{total} = \underbrace{\tfrac{1}{T}\sum_j \sigma^{(j)\,2}_t}_{\
 **Honest caveats.** MC dropout is a *biased* approximation to the posterior; it tends to under-estimate epistemic variance. Deep ensembles (next slide) are almost always better when you can afford them.
 :::
 
-## 32. Deep ensembles for epistemic uncertainty
+## 33. Deep ensembles for epistemic uncertainty
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1104,7 +1148,7 @@ $$\sigma^2 = \underbrace{\tfrac{1}{K}\sum_k \sigma_k^2}_{\text{aleatoric}} + \un
 **Connection to next.** With aleatoric (head) and epistemic (ensemble) both estimated, we have a full predictive distribution. Now: is it *calibrated*?
 :::
 
-## 33. Calibration plots
+## 34. Calibration plots
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1143,7 +1187,7 @@ For a held-out test set:
 **MFML W8 callback.** They saw this exact plot in W8. The point here is: it applies to *forecasts*, not just static classifiers — the only difference is that the test points are time-indexed.
 :::
 
-## 34. Recalibration — Platt and isotonic
+## 35. Recalibration — Platt and isotonic
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1184,10 +1228,59 @@ For a held-out test set:
 
 Conflating any two of these gives optimistic numbers and a deployment surprise.
 
-**Beyond Platt and isotonic.** Quantile regression, conformal prediction (which also gives finite-sample guarantees), and Beta calibration are all in scope of UQ research. We mention only the two classical ones; W12 (Uncertainty + GPs) develops more.
+**Beyond Platt and isotonic.** Quantile regression and Beta calibration are also in scope of UQ research. The next slide picks up the conformal thread — finite-sample guarantees that survive distribution shift. W12 (Uncertainty + GPs) develops more.
 :::
 
-## 35. Sharpness vs calibration trade-off
+## 36. Online conformal — coverage under drift
+
+::: {.columns}
+::: {.column width="50%"}
+**The problem with vanilla split conformal.**
+
+- Assumes calibration and test data are **exchangeable**.
+- A melt-pool monitor is not exchangeable: camera ages, powder lot changes, build geometry shifts.
+- Empirical coverage silently drops below the nominal 90 %.
+
+**Adaptive Conformal Inference (ACI).** Gibbs & Candès [@gibbs_2021_aci] update the miscoverage level *online*:
+$$\alpha_t \leftarrow \alpha_{t-1} + \gamma\,\big(\mathbf{1}[Y_t \notin C_t] - \alpha\big).$$
+
+After each observed outcome, $\alpha_t$ moves up if we just missed, down if we just covered. **Long-run target coverage is guaranteed under *arbitrary* drift** — no exchangeability needed.
+:::
+
+::: {.column width="50%"}
+**Materials picture.**
+
+- Run ACI on LPBF melt-pool predictions across a multi-day build.
+- Coverage stays near 90 % even as the camera ages and the powder lot changes mid-build.
+- Fixed-$\alpha$ split conformal: coverage drifts down to $\sim 70$ % over the same window — silently.
+
+**The only knob.** The step size $\gamma$, typically $0.005$–$0.05$.
+
+- Small $\gamma$ ⇒ slow tracking, smoother intervals.
+- Large $\gamma$ ⇒ fast tracking, noisier intervals.
+- Choose by validation on a held-out segment.
+:::
+:::
+
+::: {.fragment}
+**The contract.** Long-run coverage, not per-step coverage. Intervals can be wide; they will not be wrong on average.
+:::
+
+::: {.notes}
+**The formal guarantee.** $\frac{1}{T}\sum_{t=1}^T \mathbf{1}[Y_t \in C_t] \to 1 - \alpha$ as $T \to \infty$, for *any* sequence of distributions $P_t$ — adversarial, drifting, regime-switching. The price is that the *width* of $C_t$ can fluctuate; ACI guarantees coverage, not sharpness. **MFML W12 reference.** The formal proof lives in W12; we use it operationally here.
+
+**When ACI helps.** Long-running deployments (days to weeks) with slow drift; production monitors where the cost of false-negative coverage is high (safety-critical control); pipelines where you can observe outcomes within a usable latency (otherwise the update lags).
+
+**When ACI just hides the underlying drift.** ACI will *cover* the new distribution by inflating intervals — it does not *tell* you the model is degrading. If your $\alpha_t$ has drifted from $0.10$ to $0.30$ to maintain coverage, your model is broken; ACI is bandaging it. You should *also* be tracking distribution shift independently (Unit 8) and triggering retraining when ACI's $\alpha_t$ drifts.
+
+**Implementation note.** One line of code on top of any conformal predictor — split, full, or jackknife+. `mapie` exposes it; rolling your own is six lines. The hard part is getting a stream of labelled outcomes back to the predictor; in melt-pool monitoring this is post-build CT, so the update lag is one build, not one frame. ACI tolerates that lag — proofs go through with delayed feedback.
+
+**Anti-pattern.** Picking $\gamma$ too small "to keep the intervals smooth" — you end up tracking nothing. Pick by *validation*, not by aesthetics.
+
+**Forward link.** W12 develops the conformal toolbox fully (split, full, jackknife+, CV+, ACI, PI-aware variants); for today, the take-home is "online updates with one parameter, guaranteed coverage under drift". This is the right thing to deploy alongside your heteroscedastic LSTM or Mamba.
+:::
+
+## 37. Sharpness vs calibration trade-off
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1223,7 +1316,7 @@ A constant predictor with infinitely wide intervals is perfectly calibrated and 
 **For the exam.** Students should be able to (a) recite the trade-off, (b) name two proper scoring rules, (c) explain why MSE on the mean is *not* a proper scoring rule for distributions.
 :::
 
-## 36. State-space view — Kalman as the linear-Gaussian limit
+## 38. State-space view — Kalman as the linear-Gaussian limit
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1259,7 +1352,7 @@ If your problem is well-described by linear dynamics and Gaussian noise, do *not
 **Forward link to W12.** Gaussian processes (W12) are *another* way to obtain a predictive distribution, with even stronger formal guarantees but cubic cost. The Kalman filter is the bridge: it is a Gaussian process with a Markov structure that gives linear-cost inference. Tease this without developing.
 :::
 
-## 37. Anomaly detection via predictive likelihood
+## 39. Anomaly detection via predictive likelihood
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1286,7 +1379,7 @@ $$s_t = -\log p_\theta(x_{t+1}\mid x_{1:t})$$
 ::: {.notes}
 **Why predictive likelihood is the natural anomaly score for streaming data.** Reconstruction-based anomaly detection (W5 autoencoder) needs to *re-encode* an input to evaluate it; predictive-likelihood detection just runs the forward pass that the model is already doing. For a 10 kHz photodiode trace, that is the difference between "fits in 10 ms" and "does not".
 
-**Calibration matters here too.** A predictive-likelihood anomaly detector is only as good as its calibration. If the model is over-confident, *every* observation looks anomalous — false-alarm rate is unusable. This is the tightest practical reason to spend time on calibration plots (Slides 33–34).
+**Calibration matters here too.** A predictive-likelihood anomaly detector is only as good as its calibration. If the model is over-confident, *every* observation looks anomalous — false-alarm rate is unusable. This is the tightest practical reason to spend time on calibration plots (Slides 34–35).
 
 **Connection to MFML W8 KL primer.** Why is $-\log p$ the right anomaly score and not, say, $|x - \hat x|$? Because under MLE, $-\log p$ *is* the discrepancy from the true distribution that the model is approximating — Kullback–Leibler divergence to a Dirac. The KL/entropy primer in MFML W8 is the bridge to seeing this rigorously.
 
@@ -1297,7 +1390,7 @@ $$s_t = -\log p_\theta(x_{t+1}\mid x_{1:t})$$
 
 # §5 · Case Studies {.section}
 
-## 38. Melt-pool monitoring (1/2) — deterministic baseline
+## 40. Melt-pool monitoring (1/2) — deterministic baseline
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1329,7 +1422,7 @@ $$s_t = -\log p_\theta(x_{t+1}\mid x_{1:t})$$
 **Anchor for the next slide.** Establish that this baseline is the thing the MDN-LSTM has to beat — both in MSE *and* in calibrated coverage.
 :::
 
-## 39. Melt-pool monitoring (2/2) — MDN-LSTM with uncertainty
+## 41. Melt-pool monitoring (2/2) — MDN-LSTM with uncertainty
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1360,7 +1453,7 @@ $$s_t = -\log p_\theta(x_{t+1}\mid x_{1:t})$$
 **Forward link.** This case study is the basis of the exercise sheet — they will reproduce a stripped-down version on synthetic data.
 :::
 
-## 40. RUL prediction (1/2) — point vs interval
+## 42. RUL prediction (1/2) — point vs interval
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1391,7 +1484,7 @@ $$s_t = -\log p_\theta(x_{t+1}\mid x_{1:t})$$
 **The data subtlety.** Failure events are rare; survival-curve analysis (next slide) is the right way to think about the target.
 :::
 
-## 41. RUL prediction (2/2) — survival-curve view
+## 43. RUL prediction (2/2) — survival-curve view
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1424,7 +1517,7 @@ $$S(t) = P(\Delta T > t \mid x_{1:T_\mathrm{now}})$$
 **For the exam.** Students should be able to articulate: (a) the survival curve, (b) why a deep ensemble produces it naturally, (c) why calibration of the curve matters more than point-RUL accuracy.
 :::
 
-## 42. Recovering frequency from a noisy sine — McClarren example
+## 44. Recovering frequency from a noisy sine — McClarren example
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1460,7 +1553,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 **Hand-off to the exercise.** This is the recommended starting point. Build the pipeline on the noisy sine first; once calibrated, port to the melt-pool synthetic.
 :::
 
-## 43. Sensor fusion over time
+## 45. Sensor fusion over time
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1492,7 +1585,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 **A war story.** A previous student tried to fuse 12 thermocouples with a Kalman filter assuming i.i.d. Gaussian noise. The covariance estimates were wildly off because two thermocouples were on a shared bus and their noise was correlated. A probabilistic LSTM with heteroscedastic head recovered the correlated-noise structure implicitly — sometimes the data-driven approach is just less brittle than getting all the priors right.
 :::
 
-## 44. Real-time feedback loops with risk thresholds
+## 46. Real-time feedback loops with risk thresholds
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1522,7 +1615,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 **Forward link.** This is what W11 (Automation) builds on — closed-loop control of microscopy and characterisation. Today's lecture provides the per-step machinery; W11 wraps it in a control architecture.
 :::
 
-## 45. Case-study summary
+## 47. Case-study summary
 
 - Probabilistic forecasting changes what a control loop **can do**: not just go / no-go, but **risk-weighted action**.
 - Calibrated predictive distributions $\Rightarrow$ thresholds become *parameters of a decision*, not heuristics.
@@ -1537,7 +1630,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 
 **Repeat the take-home line aloud.** "Deterministic for prototypes, probabilistic for control." Tell them this is one of the three sentences they should leave the lecture with.
 
-**The other two sentences** (preview of Slide 49):
+**The other sentences** (preview of Slide 51):
 
 - "Aleatoric is irreducible noise; epistemic is reducible knowledge."
 - "Calibration is a separate axis from accuracy."
@@ -1545,7 +1638,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 
 # §6 · Practical Implementation {.section}
 
-## 46. Preparing sequential data
+## 48. Preparing sequential data
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1584,7 +1677,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 **Leakage-safe windowing.** Critical: split *before* you window. If you split after windowing, two windows separated by one step land in train and test respectively, and they are nearly identical. This is the leakage failure mode from last week's Unit 7.
 :::
 
-## 47. Feature scaling and leakage
+## 49. Feature scaling and leakage
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1614,7 +1707,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 **For the probabilistic head.** Standardisation matters even more for variance prediction — predicting $\sigma$ on un-standardised data with a scale mismatch of $10^3$ between channels means the optimiser cannot find a single learning rate that works.
 :::
 
-## 48. Evaluation — horizon and proper scoring
+## 50. Evaluation — horizon and proper scoring
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1636,7 +1729,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 :::
 
 ::: {.fragment}
-**The mantra (Slide 35 reprise).** Use proper scoring rules. MSE on the mean is *not* one.
+**The mantra (Slide 37 reprise).** Use proper scoring rules. MSE on the mean is *not* one.
 :::
 
 ::: {.notes}
@@ -1651,18 +1744,22 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 
 # §7 · Wrap-Up {.section}
 
-## 49. Summary — three sentences to take home
+## 51. Summary — four sentences to take home
 
 ::: {.fragment}
 1. **Sequences encode the physics of processing.** Deterministic RNN/LSTM/GRU is the baseline; vanishing gradients are why we needed gates.
 :::
 
 ::: {.fragment}
-2. **Probabilistic heads (Gaussian, MDN) + ensembles / MC dropout deliver predictive distributions.** Aleatoric is irreducible; epistemic is reducible.
+2. **For long streams, look past LSTM.** Mamba (selective SSM) gives linear-time inference and parallel training where Transformer attention blows up and LSTM is too sequential.
 :::
 
 ::: {.fragment}
-3. **Calibration is a separate axis from accuracy.** Measure it, recalibrate if needed, and *then* tune thresholds. The Kalman filter is the linear-Gaussian classical limit.
+3. **Probabilistic heads (Gaussian, MDN) + ensembles / MC dropout deliver predictive distributions.** Aleatoric is irreducible; epistemic is reducible.
+:::
+
+::: {.fragment}
+4. **Calibration is a separate axis from accuracy.** Measure it, recalibrate if needed, and use **online conformal (ACI)** to keep coverage under drift. The Kalman filter is the linear-Gaussian classical limit.
 :::
 
 ::: {.notes}
@@ -1688,7 +1785,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 
 <!-- END prev-next -->
 
-## 50. References, forward look, exercise hand-off
+## 52. References, forward look, exercise hand-off
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1700,12 +1797,14 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 - Goodfellow ch. 10 (RNN/LSTM details) [@goodfellow2016deep].
 - Neuer ch. 6 (process-control context, MDN) [@neuer2024machine].
 - Sandfeld — sequence vocabulary [@sandfeld_materials_data_science].
+- Mamba / selective SSM [@gu_2023_mamba].
+- Adaptive Conformal Inference under drift [@gibbs_2021_aci].
 
 **Forward links.**
 
-- W10: attention / transformers — long-sequence successor.
+- W10: attention / transformers — long-sequence successor; MFML W10 covers SSM theory.
 - W11: automation — closed-loop control with the heads we built today.
-- W12: GPs — another route to predictive distributions.
+- W12: GPs and the full conformal toolbox — formal coverage guarantees.
 :::
 
 ::: {.column width="50%"}
@@ -1723,7 +1822,7 @@ $$y(t) = \sin(\omega t) + \varepsilon, \quad \varepsilon \sim \mathcal N(0, \sig
 ::: {.notes}
 **Final words to the audience.** "Three exercises, one notebook. By Friday I want to see three calibration curves on the same axis: baseline, heteroscedastic, MC-dropout. If any one of them is below the diagonal, recalibrate and re-submit."
 
-**Office-hours preview.** The most common question this exercise generates is "why is my MC-dropout LSTM still over-confident?" Answer: PyTorch's built-in LSTM dropout does not implement variational dropout correctly (Slide 31 note); use a custom cell. This is the trap the bonus question reveals.
+**Office-hours preview.** The most common question this exercise generates is "why is my MC-dropout LSTM still over-confident?" Answer: PyTorch's built-in LSTM dropout does not implement variational dropout correctly (Slide 32 note); use a custom cell. This is the trap the bonus question reveals.
 
 **For the next lecture (W9 — Inverse problems and process maps).** We move from "predict the next step given the past" to "infer process parameters given an observation". Same probabilistic vocabulary; very different inference machinery (variational inference, simulation-based inference). Today's MFML W8 / Unit 8 toolkit is the foundation.
 

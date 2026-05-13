@@ -238,6 +238,55 @@ The CI growth is **only honest if the kernel is correct**. A too-long $\ell$ wil
 - Caveat: the GP **does not replace** verification at the spec extremes. It replaces redundant tests in the smooth interior of the process window.
 :::
 
+## Modern small-tabular alternative: TabPFN
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **TabPFN** [@hollmann_2025_tabpfn] is a transformer **pre-trained on millions of synthetic tabular tasks** to do in-context prediction — no per-task fitting.
+- Pass your $\sim 30$ rows + new query → it returns a **calibrated posterior predictive** in one forward pass.
+- 2025 version (`v2`) handles up to $\sim 10\,000$ rows and is competitive with tuned XGBoost on small-tabular benchmarks.
+:::
+
+::: {.fragment}
+**When to reach for TabPFN over a GP on the 21CrMoV5-7 task:**
+
+- $d > 1$: multiple input features (temper $T$, hold time, prior austenite grain size). GP kernel design gets hard, TabPFN ingests it.
+- **Mixed continuous + categorical inputs** (alloy family, oil vs gas quench). Out of the box.
+- You want a baseline in 10 lines without picking a kernel or running marginal-likelihood optimisation.
+:::
+:::
+::: {.column width="45%"}
+::: {.fragment}
+**When the GP still wins:**
+
+- 1-D smooth process variable + interpretable hyperparameters (length scale = physical correlation length).
+- You need the posterior **closed-form** for downstream optimisation (BO acquisition functions, gradient w.r.t. inputs).
+- You need to **encode prior physics** (Matérn smoothness, periodic kernels for cycling processes).
+:::
+
+::: {.callout-note .fragment}
+On the 21CrMoV5-7 task TabPFN matches the GP's leave-one-out RMSE within $\sim 0.3$ HRC; the GP wins on interpretability of $\ell$ and $\sigma_f$. Use whichever your stakeholder will sign off on.
+:::
+:::
+:::
+
+::: {.notes}
+**Why this slide exists in 2026.** Until $\sim 2023$, "small tabular + uncertainty" was synonymous with "Gaussian process." TabPFN inverts that default for problems where the input space is more than 1-D and where kernel engineering would otherwise dominate the analyst's day. The transformer is doing implicit kernel learning — billions of synthetic priors absorbed into the weights at pre-training time.
+
+**One sentence definition.** TabPFN is a frozen Bayesian non-parametric regressor / classifier whose prior was *learned* (not hand-specified) by pre-training on synthetic data. You query it like a function; it returns calibrated probabilities.
+
+**Materials-relevant strengths.** (1) In-context — no hyperparameter optimisation per dataset. (2) Calibration out of the box; the posterior is already a probability, not a softmax. (3) Handles mixed continuous/categorical features without one-hot tricks. (4) Inference is $\mathcal{O}(n^2)$ in the in-context set but the constant is small; $n = 1000$ runs in seconds on a single 1080Ti.
+
+**Materials-relevant limitations.** (1) No kernel ⇒ no physical interpretation of length scale or smoothness — black-box prior. (2) Cannot extrapolate honestly outside the pre-training prior — the model has its own implicit OOD failure mode, which is harder to diagnose than a GP's variance growth. (3) Heavy dependency to install ($\sim 1$ GB checkpoint).
+
+**Connection to MFML W7 (the "Watch for: TabPFN" fragment).** That slide introduces TabPFN as the first credible deep-learning approach to small tabular problems. This slide is the materials-specific deployment view.
+
+**Anti-pattern.** Using TabPFN on $n > 10\,000$ rows. Above that, gradient-boosted trees beat it and run faster. Stay in TabPFN's sweet spot.
+
+**Forward link.** §6 will conformalise predictions; TabPFN's calibrated posterior already gives close-to-honest intervals on in-distribution data, but conformal still adds the finite-sample guarantee on top.
+:::
+
 
 # 04. Case study B — MC Dropout for SEM defect segmentation
 
@@ -422,6 +471,112 @@ flowchart LR
 - Workflow: train your model, fit a Mahalanobis detector on training features, **reject** any inference with detector score above a threshold and route to a human.
 :::
 
+## Conformal prediction — distribution-free coverage in 5 lines
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+**Split conformal** [@angelopoulos_2023_conformal]. Given any pre-trained predictor $\hat{f}$:
+
+1. Hold out a fresh **calibration set** of size $n_{\text{cal}}$.
+2. Compute non-conformity scores $s_i = |y_i - \hat{f}(x_i)|$ on it.
+3. Take the empirical quantile $\hat{q} = \text{Quantile}_{\lceil(n_{\text{cal}}+1)(1-\alpha)\rceil/n_{\text{cal}}}(s)$.
+4. At test time, emit the interval $[\hat{f}(x) - \hat{q},\ \hat{f}(x) + \hat{q}]$.
+5. **Theorem.** Marginal coverage $\geq 1-\alpha$, finite sample, **distribution-free** — no Gaussianity, no calibration assumption.
+:::
+
+::: {.fragment}
+$$
+\mathbb{P}\big[\,Y_{\text{test}} \in C(X_{\text{test}})\,\big] \;\geq\; 1 - \alpha
+$$
+:::
+:::
+::: {.column width="45%"}
+::: {.fragment}
+**Why this lands in materials labs**
+
+- Works as a *wrapper* around the GP, MC-Dropout, ensemble, or **TabPFN** model you already trust for the mean prediction.
+- The coverage guarantee is **finite-sample** — even on the $n \sim 30$ specimens of §3.
+- No assumption that the residuals are Gaussian — robust to the heavy tails real lab data has.
+:::
+
+::: {.callout-note .fragment}
+The only assumption is **exchangeability** of calibration and test data. Under distribution shift (new alloy family, new microscope) this breaks — width must grow or coverage drops silently.
+:::
+:::
+:::
+
+::: {.notes}
+**One-line story for the class.** *"Hold out $n$ rows. Compute your residuals on them. The $(1-\alpha)$ quantile of those residuals — plus and minus — is your prediction interval. That's it."* This is what students should remember.
+
+**Why it actually works.** Exchangeability of calibration and test residuals is the only ingredient. Under exchangeability, the rank of $s_{\text{test}}$ among $\{s_1, \dots, s_{n_{\text{cal}}}, s_{\text{test}}\}$ is uniform on $\{1, \dots, n+1\}$. So the test residual exceeds the empirical $(1-\alpha)$-quantile with probability at most $\alpha + 1/(n+1)$. No Gaussianity, no calibration. The math is in MFML W12.
+
+**Operational comparison vs the §3 GP CI.** The GP's $\pm 2\sigma$ ribbon is *honest only if the kernel is right*. The conformal interval is honest as long as the calibration set looks like the test set. *Either failure mode is detectable* (LOO reliability diagram for the GP; coverage on a held-out set for conformal). Modern materials deployments stack both: GP gives the mean and an *initial* CI; conformal *recalibrates* the CI to guaranteed coverage.
+
+**The 5-line recipe is literally 5 lines of code.** `q_hat = np.quantile(np.abs(y_cal - f_hat(X_cal)), 1 - alpha)`; intervals are `f_hat(X_test) ± q_hat`. Live-code this on the chalkboard if time permits.
+
+**Naming convention.** The score $s_i$ is the *non-conformity score*. We are using **absolute residual**; many other choices (signed residual, quantile NN, normalized residual) give different *adaptivity* properties — next slide.
+
+**Pre-empt.** "Why is the marginal coverage $1 - \alpha$ and not $1 - \alpha - 1/(n_{\text{cal}}+1)$ exactly?" The two-sided exchangeability argument gives the tighter bound; the more pedagogical bound is the loose one. For class purposes, the slide's statement is what matters.
+
+**Anti-pattern.** Fitting the model *on* the calibration set. The whole point is the calibration set is unseen — if not, the residuals are training residuals and the quantile is *too small*, coverage drops well below $1-\alpha$. Always carve calibration off before model fit.
+
+**Forward link.** Next slide: the constant width $\hat q$ is wasteful in heteroscedastic problems (lab noise depends on regime). CQR adapts.
+:::
+
+## Adaptive widths — Conformalized Quantile Regression (CQR)
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **Problem with vanilla split conformal.** The interval has **constant width** $2\hat{q}$ — even where the underlying process is noisier or less so. In labs, noise is *heteroscedastic*: scatter grows in two-phase regions, near the keyhole boundary, at low temper.
+:::
+
+::: {.fragment}
+**Conformalized Quantile Regression (CQR)** [@romano_2019_cqr]:
+
+1. Train a **quantile regressor** for $\alpha/2$ and $1-\alpha/2$ levels (e.g., a quantile NN with **pinball loss**, or quantile forests).
+2. Compute non-conformity $s_i = \max\{\hat{q}_{\alpha/2}(x_i) - y_i,\, y_i - \hat{q}_{1-\alpha/2}(x_i)\}$.
+3. Wrap: $[\hat{q}_{\alpha/2}(x) - \hat{Q},\ \hat{q}_{1-\alpha/2}(x) + \hat{Q}]$ with $\hat Q$ the empirical quantile of $s_i$.
+4. **Marginal coverage $\geq 1 - \alpha$** *and* widths now adapt to local noise.
+:::
+:::
+::: {.column width="45%"}
+::: {.fragment}
+**Materials picture.** On a LPBF process map (laser power vs scan velocity), CQR widens the predicted-hardness interval inside the keyhole-onset band and tightens it in the safe interior — *automatically*. Vanilla split conformal would put the *same* interval everywhere.
+:::
+
+::: {.fragment}
+**When to use which**
+
+| Setting | Use |
+|---|---|
+| Homoscedastic, in-control process | **Split conformal** (cheapest) |
+| Heteroscedastic / regime-dependent noise | **CQR** |
+| Online streaming with drift | **Adaptive conformal** (Gibbs & Candès 2021) |
+| Safety-critical, regulator-facing | **Any conformal + held-out coverage report** |
+:::
+:::
+:::
+
+::: {.notes}
+**The pedagogical reason CQR matters.** Honest *marginal* coverage with vanilla split conformal does NOT imply honest *conditional* coverage. If your test point sits in a quiet regime, a constant-width interval is too wide; in a noisy regime, too narrow on average. CQR uses a learned local-quantile predictor to allocate width where it is needed.
+
+**The pinball loss in one breath.** $L_\tau(y, \hat y) = \max(\tau(y - \hat y), (\tau-1)(y - \hat y))$. Minimised when $\hat y$ is the conditional $\tau$-quantile of $y$. Drop one hidden layer onto the NN with two output heads ($\tau = \alpha/2$ and $1 - \alpha/2$); train with the sum of two pinball losses. Five lines of PyTorch.
+
+**The conformalisation step matters.** The raw quantile NN is *not* calibrated — it overfits and undercovers. Step 3 (computing $\hat Q$ on a held-out calibration set) is what restores the coverage guarantee. Without it, you have just a quantile regressor.
+
+**Where this lives in our courses.** This is the modern, distribution-free version of the calibration story §6 just introduced. It composes with everything: TabPFN-CQR, GP-CQR, ensemble-CQR. The wrapper pattern is the point.
+
+**Online / drift extension (mention only).** Gibbs & Candès (2021) propose *Adaptive Conformal Inference* (ACI): adjust $\alpha$ on-line based on past coverage to maintain target under distribution shift. Useful for streaming process monitoring (LPBF, melt-pool); we will not derive it.
+
+**Connection to §6 reliability diagrams.** A reliability diagram reports *what fraction of $\hat p$-confidence predictions are correct*; conformal *constructs an interval with guaranteed fraction*. Diagrams diagnose; conformal *enforces*. The two are complements, not alternatives.
+
+**Anti-pattern.** Reporting CQR widths without a held-out coverage check. The guarantee is *marginal* and conditional on exchangeability; verify both empirically on the deployment set or you are bluffing.
+
+**Forward link.** Next slide (reproducibility hygiene): a conformal coverage curve belongs in the model card. "$90\%$ split-conformal coverage, $\alpha=0.1$, verified on $n_{\text{cal}}=200$" is one line that earns you the right to deploy.
+:::
+
 ## Reproducibility hygiene
 
 ::: {.fragment}
@@ -450,6 +605,8 @@ If you cannot write that paragraph for your model, you cannot deploy it.
 - Closed-form GP posterior (mean + variance), kernel hyperparameter learning by log marginal likelihood.
 - ELBO and variational interpretation of MC Dropout.
 - Calibration formalism (reliability, ECE) and recalibration methods (temperature scaling, Platt, isotonic).
+- Full conformal-prediction proofs — finite-sample exchangeability, conditional-coverage limits, split / CQR / adaptive variants.
+- TabPFN's prior-data fitted network — what the pre-training prior actually is.
 :::
 
 ::: {.fragment}
@@ -462,11 +619,12 @@ If you cannot write that paragraph for your model, you cannot deploy it.
 ## Recap: Unit 12
 
 ::: {.fragment}
-1. **Pick the UQ tool per task**: GP for small tabular data, MC dropout for trained CNNs, ensembles for high-stakes regression, MDN for multi-modal outputs.
+1. **Pick the UQ tool per task**: GP or **TabPFN** for small tabular data, MC dropout for trained CNNs, ensembles for high-stakes regression, MDN for multi-modal outputs.
 2. **Calibrate before deploying** — a reliability diagram on a held-out lab-realistic set is non-negotiable.
-3. **UQ enables active learning** — and active learning is how labs scale beyond the brute-force grid search.
-4. **OOD detection** complements calibration — confidence is meaningless when the input is outside the training distribution.
-5. **The math lives in MFML W12.** ML-PC W12 is about **using** that math to save tests, find process windows, and ship trustworthy models.
+3. **Wrap with conformal** — split conformal or CQR adds finite-sample, distribution-free coverage on top of *any* mean predictor. Mandatory for safety-critical or regulator-facing models.
+4. **UQ enables active learning** — and active learning is how labs scale beyond the brute-force grid search.
+5. **OOD detection** complements calibration — confidence is meaningless when the input is outside the training distribution.
+6. **The math lives in MFML W12.** ML-PC W12 is about **using** that math to save tests, find process windows, and ship trustworthy models.
 :::
 
 <!-- BEGIN prev-next -->
@@ -487,6 +645,9 @@ If you cannot write that paragraph for your model, you cannot deploy it.
 - **Lakshminarayanan et al. (2017)** — Deep ensembles, the empirical gold standard for NN UQ [@lakshminarayanan2017simple].
 - **Hernández-Lobato et al. (2014)** — Predictive entropy search; foundational for BO/active learning in materials [@Hernandez-Lobato_2014_PES].
 - **Guo et al. (2017)** — Modern NNs are miscalibrated; temperature scaling [@guo2017calibration].
+- **Angelopoulos & Bates (2023)** — Gentle introduction to split conformal prediction [@angelopoulos_2023_conformal].
+- **Romano, Patterson & Candès (2019)** — Conformalized Quantile Regression [@romano_2019_cqr].
+- **Hollmann et al. (2025)** — TabPFN v2, foundation model for tabular data [@hollmann_2025_tabpfn].
 - **Rasmussen & Williams (2006)** — GP reference text.
 - **Aspuru-Guzik & Berlinguette** — self-driving lab perspective; materials-acceleration platforms.
 - **MFML W12** — full mathematical treatment of all methods used here.

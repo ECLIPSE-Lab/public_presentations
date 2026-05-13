@@ -598,8 +598,8 @@ learned during pretraining.
  
 - Small LR on the backbone (don't move far).
 - Per-layer / per-parameter LR (next two slides).
-- LR schedules with warm-up (slide 13).
-- Gradual unfreezing (slide 31).
+- LR schedules with warm-up (slide 14).
+- Gradual unfreezing (slide 33).
 :::
 :::
 :::
@@ -789,7 +789,7 @@ fine-tuning; halve it as a starting point.
 **Connection to MFML W6 schedules.** Each group can have its own LR
 schedule too. Common pattern: warm-up applied to *all* groups, but with
 the head's warm-up over fewer steps (since the head needs to converge
-first to avoid "leaking" bad gradients into the backbone — see slide 13).
+first to avoid "leaking" bad gradients into the backbone — see slide 14).
 
 **Bridge.** Next slide: when to use Adam vs SGD+momentum during
 fine-tuning.
@@ -864,11 +864,99 @@ always worth the extra hyperparameters.
 generalization claim. The reference textbook for these claims is
 [@goodfellow2016deep] Ch. 8 ("Optimization for Training Deep Models").
 
+**Bridge.** Next slide: optimizer state as a memory bottleneck — and the
+Lion optimizer as a halved-state alternative to AdamW.
+:::
+
+## 13. Optimizer state is the memory bottleneck — Lion halves it
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**AdamW: two extra tensors per parameter.**
+
+- Running mean $m_t$ and running variance $v_t$ are stored in fp32 alongside
+  the (often fp16/bf16) weights.
+- Per-parameter memory: ~3× the parameter tensor itself.
+- For a 100 M-parameter backbone in mixed precision, AdamW state alone is
+  ~0.8 GB — meaningful on an 11 GB 1080Ti shared with activations.
+:::
+
+::: {.fragment}
+**Lion: one extra tensor per parameter.**
+
+- Stores only the momentum buffer $m_t$; uses the *sign* of the running
+  mean for the update — no second moment.
+- Per-parameter memory: ~2× the parameter tensor.
+- Same 100 M backbone: ~0.4 GB of optimizer state. *Half* the bottleneck.
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+**Practical takeaway (Chen et al. 2023 [@chen_2023_lion]).**
+
+- Update rule:
+  $$x_{t+1} = x_t - \eta \, \mathrm{sign}\!\big(\beta_1 m_t + (1-\beta_1)\, g_t\big)$$
+- Matches (or beats) AdamW validation loss on vision backbones — discovered
+  by symbolic program search over optimizer space.
+- **LR is 3–10× smaller** than the AdamW LR you would have used; weight decay
+  3–10× larger.
+- Strong evidence for vision (ViT, ConvNeXt). Less clear for LLMs — use
+  AdamW there.
+:::
+
+::: {.callout-note .fragment}
+**Anti-pattern.** Dropping Lion in with the *AdamW learning rate* — it
+diverges immediately. The sign-update has constant magnitude, so the LR
+controls the step size directly.
+:::
+:::
+:::
+
+::: {.notes}
+**Why a sign-based optimizer is feasible.** Most of AdamW's job is to
+normalize the per-parameter gradient by $\sqrt{v_t}$ — turning a noisy
+multi-magnitude gradient into a roughly unit-scale update. The sign
+function is the *limit* of this normalization: $\mathrm{sign}(g)$
+gives a unit-magnitude update along the gradient direction. For vision
+networks the loss landscape geometry is friendly enough — gradients
+across parameters live on similar scales after BatchNorm/LayerNorm —
+that this brutal normalization works. (For LLMs, where gradient scales
+across layers can span orders of magnitude, AdamW's adaptive
+denominator is harder to replace.)
+
+**The 1080Ti budget, made concrete.** Take a ResNet-50 backbone (~25 M
+params, fp16) plus an FPN + segmentation head (~5 M):
+
+- Weights (fp16): 60 MB.
+- Activations at batch 16, $512\times 512$: ~2.5 GB (mixed precision).
+- AdamW state (fp32 $m_t$ and $v_t$): ~240 MB.
+- Lion state (fp32 $m_t$ only): ~120 MB.
+
+The 120 MB difference may sound small at 25 M params, but jumps to
+800 MB savings at 200 M params — exactly the threshold where modern
+backbones (DINOv2-base, ConvNeXt-large) start to fit only with the
+memory savings.
+
+**Connection to MFML W6.** Last week we showed SGD+momentum and Adam as
+two points on a "how aggressively do we adapt per-parameter?" axis. Lion
+sits at the most-aggressive end: full sign-normalization. The MFML W6
+flat-minima argument still applies — Lion finds slightly flatter minima
+than AdamW on vision tasks (Chen et al. report comparable or better test
+accuracy on ViT/ConvNeXt despite the cruder updates).
+
+**Anticipated student question.** "*Why not just use SGD+momentum if we
+care about memory?*" Two reasons. (1) SGD+momentum is even more
+LR-sensitive on small data; the per-parameter sign of Lion gives back
+some of the robustness that adaptive methods provided. (2) Lion is the
+new sweet spot — Adam-like behavior at SGD-like memory cost. SGD+momentum
+remains valid for the Phase-2 tightening on slide 12.
+
 **Bridge.** Next slide: warm-up and cosine schedules — the LR-schedule
 content from MFML W6 specialized to fine-tuning.
 :::
 
-## 13. Warm-up and cosine schedules
+## 14. Warm-up and cosine schedules
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -948,7 +1036,7 @@ cosine works well across architectures and tasks. The conceptual idea
 randomly initialized head is the fastest way to undo a pretraining.
 :::
 
-## 14. Batch size and gradient noise revisited
+## 15. Batch size and gradient noise revisited
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1002,7 +1090,7 @@ linear-scaling rule confidently.
 
 **Anti-pattern: tiny batch + Adam + default LR.** Adam's $v_t$ underestimates
 gradient variance for very small batches in early training, leading to
-unstable updates. Either warm up Adam carefully (slide 13) or use SGD+
+unstable updates. Either warm up Adam carefully (slide 14) or use SGD+
 momentum where the noise structure is clearer.
 
 **Memory-saving tricks (mention briefly).** Gradient accumulation
@@ -1013,7 +1101,7 @@ for tuning ViT-Large on a single 24 GB card.
 **Bridge.** Next slide synthesizes Slides 7–14 into a single recipe.
 :::
 
-## 15. From MFML optimization theory to the TL recipe
+## 16. From MFML optimization theory to the TL recipe
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1024,12 +1112,12 @@ for tuning ViT-Large on a single 24 GB card.
  
 2. **Per-layer LR** — discriminative fine-tuning (slides 10–11).
  
-3. **Schedules + warm-up** — preserve pretraining (slide 13).
+3. **Schedules + warm-up** — preserve pretraining (slide 14).
  
 4. **Adam → SGD+momentum** — speed first, generalization last
    (slide 12).
  
-5. **Small batches** — implicit flat-minimum regularizer (slide 14).
+5. **Small batches** — implicit flat-minimum regularizer (slide 15).
 :::
 
 :::
@@ -1103,7 +1191,7 @@ leakage (an image and its augmented copy across train/test).
 **Sandfeld 19.2.5** is the canonical reference for this section.
 :::
 
-## 16. Augmentation — artificially expanding the dataset
+## 17. Augmentation — artificially expanding the dataset
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1155,7 +1243,7 @@ universal alternative.
 **Bridge.** The next slides walk through specific transformation families.
 :::
 
-## 17. Geometric transformations
+## 18. Geometric transformations
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1215,7 +1303,7 @@ typically multiplies the effective dataset by 16–64×.
 when does augmentation violate physics?
 :::
 
-## 18. When transformations are "physically illegal"
+## 19. When transformations are "physically illegal"
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1282,7 +1370,7 @@ flip is fine (left-right symmetry).
 a software decision."
 :::
 
-## 19. Elastic transformations and cutout
+## 20. Elastic transformations and cutout
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1344,7 +1432,7 @@ for segmentation). Less common in the materials literature but worth
 trying.
 :::
 
-## 20. Intensity transformations
+## 21. Intensity transformations
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1402,7 +1490,7 @@ across that parameter range at training time so the network is robust at
 test time.
 :::
 
-## 21. Adding "physical" noise as augmentation
+## 22. Adding "physical" noise as augmentation
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1468,7 +1556,7 @@ off in scientific impact, not just accuracy numbers.
 modern augmentation library.
 :::
 
-## 22. Augmentation libraries — Albumentations / Torchvision
+## 23. Augmentation libraries — Albumentations / Torchvision
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1546,7 +1634,7 @@ per-sample cost.
 **Bridge.** Next slide: on-the-fly vs offline; the label-consistency rule.
 :::
 
-## 23. On-the-fly vs offline; the label-consistency rule
+## 24. On-the-fly vs offline; the label-consistency rule
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1621,7 +1709,7 @@ epochs. A middle ground between offline and on-the-fly.
 **Bridge.** Next slide: pitfalls and section summary.
 :::
 
-## 24. Augmentation pitfalls and Part 3 summary
+## 25. Augmentation pitfalls and Part 3 summary
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1705,7 +1793,7 @@ unfreezing protocols, and to choose between them based on dataset size
 and domain gap.
 :::
 
-## 25. Concept — knowledge reuse
+## 26. Concept — knowledge reuse
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1775,7 +1863,7 @@ The forward-pass discussion (next slide) makes this concrete via
 hierarchical features.
 :::
 
-## 26. ImageNet pretraining and hierarchical features
+## 27. ImageNet pretraining and hierarchical features
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1844,11 +1932,129 @@ backbone is more about compute and dataset size than transfer quality.
 - HuggingFace `transformers` for ViT, DINOv2, SAM.
 - Domain-specific: BraTS-pretrained U-Nets, MicroNet pretrained models.
 
+**Bridge.** Before formalizing backbone + head: ImageNet supervised
+pretraining is not the only — or even the best — source of generic
+features for microscopy. Next slide compares modern self-supervised
+alternatives.
+:::
+
+## 28. Modern Self-Supervised Features for Microscopy
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Three backbones, one steel-defect benchmark.**
+
+On a NEU-DET-style steel surface defect classification / detection task:
+
+- **ImageNet ResNet-50 (supervised).** The classical baseline. Features
+  trained for 1000-class image classification.
+- **DINOv2-small (self-supervised on natural images)
+  [@oquab_2024_dinov2].** Trained with self-distillation on 142 M curated
+  natural images — *no labels*.
+- **MAE pretrained on the lab's own micrographs
+  [@he_2022_mae].** Masked-autoencoder pretraining on ≥10k *unlabeled*
+  in-house micrographs.
+:::
+
+::: {.fragment}
+**Empirical pattern (not exact numbers).**
+
+- DINOv2 generic features often **match or beat** ImageNet supervised
+  features on metallography — the SSL training on textured natural
+  images is closer to micrograph statistics than ImageNet's
+  object-centric labels.
+- MAE-on-domain-data tends to **beat both** once ≥10k unlabeled
+  micrographs are available.
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+**Practical recipe.**
+
+```python
+# Off-the-shelf DINOv2 features (inference)
+import torch
+m = torch.hub.load(
+    'facebookresearch/dinov2', 'dinov2_vits14')
+m.eval()                       # frozen feature extractor
+
+# Domain MAE pretraining
+import timm
+backbone = timm.create_model(
+    'vit_base_patch16_224.mae', pretrained=True)
+# then continue MAE pretraining on your micrographs
+```
+:::
+
+::: {.fragment}
+**Two adaptation paths.**
+
+- **Frozen backbone + linear/MLP head.** Cheapest. Works surprisingly
+  well with DINOv2 — that's *the* selling point.
+- **LoRA fine-tuning.** Low-rank adapters into attention layers.
+  Recovers full-fine-tuning quality at a fraction of the parameter
+  and optimizer-state cost.
+:::
+
+::: {.callout-note .fragment}
+**1080Ti budget.** DINOv2-**small** inference and LoRA fine-tuning fit
+fine. DINOv2-**large** full fine-tuning does not — use LoRA or stick to
+the frozen-features path.
+:::
+:::
+:::
+
+::: {.notes}
+**Why DINOv2 transfers so well to microscopy.** DINOv2 is trained with
+self-distillation on natural images that include *enormous amounts of
+texture and fine structure* — fur, foliage, fabric, stone, lichen,
+water, sand. The SSL objective (image-level + patch-level invariance
+under augmentations) forces the network to learn texture- and
+edge-statistics features that are *not* tied to ImageNet's
+object-centric labels. Those features turn out to be very close to what
+metallography and ceramography backbones need: oriented edges, grain
+texture, periodic structure, defect boundaries.
+
+**Why MAE on lab data closes the remaining gap.** MAE (masked
+autoencoder) reconstructs the masked patches of an image from the
+visible ones. The pretext task forces the encoder to learn the
+*generative statistics* of the input distribution. When that input
+distribution is your own micrographs (SEM, optical, EBSD), the resulting
+features are tailored to your acquisition pipeline — detector noise,
+contrast distribution, magnification range. ≥10k unlabeled images is the
+empirical break-even where MAE-on-domain stops underperforming a
+well-pretrained ImageNet backbone and starts beating it.
+
+**The materials hook.** Most ML-PC students have access to *labeled* data
+in the hundreds, but *unlabeled* micrographs in the thousands to tens of
+thousands — the LIMI archive, every old PhD thesis backup, the QC
+microscope's daily output. MAE pretraining turns that previously-useless
+pile into a domain-specific backbone.
+
+**Anti-pattern to call out.** Fine-tuning DINOv2-large (~1.1 B params)
+end-to-end on a 1080Ti. Optimizer state alone (AdamW) is ~13 GB — won't
+fit. Either (a) freeze the backbone and train a linear/MLP head,
+(b) use LoRA, or (c) drop to DINOv2-small (~22 M).
+
+**MFML W6 pointer.** The "warm start in a flat basin" argument from §2
+applies *more strongly* to SSL features than to ImageNet supervised
+features — SSL pretraining converges to flatter minima (empirically;
+Oquab et al. 2024) because the loss is averaged over augmentation
+distributions, which acts as implicit regularization.
+
+**Anticipated student question.** *"If MAE-on-lab-data is best, why
+bother with DINOv2 at all?"* Because you usually don't have ≥10k
+micrographs *at project start*. DINOv2 is the **strong zero-shot
+default**; MAE-on-domain is the **upgrade path** once your lab's
+unlabeled archive is large enough — and combining both (DINOv2 init,
+MAE continued pretraining on lab data) often wins outright.
+
 **Bridge.** Backbone + head = the structural decomposition. Next slide
 formalizes it.
 :::
 
-## 27. Backbone and head
+## 29. Backbone and head
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1922,7 +2128,7 @@ the next decision is whether to train the backbone at all. Two choices:
 freeze (feature extraction) or unfreeze (fine-tuning).
 :::
 
-## 28. Strategy 1 — Feature extraction
+## 30. Strategy 1 — Feature extraction
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -1998,7 +2204,7 @@ Useful to know about; see SimCLR [@chen2020simclr].
 **Bridge.** Strategy 2 unfreezes the backbone for stronger adaptation.
 :::
 
-## 29. Strategy 2 — Fine-tuning (full)
+## 31. Strategy 2 — Fine-tuning (full)
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2006,7 +2212,7 @@ Useful to know about; see SimCLR [@chen2020simclr].
 **Recipe.**
  
 1. Load pretrained backbone + new head.
-2. **Unfreeze everything** (or unfreeze gradually — slide 31).
+2. **Unfreeze everything** (or unfreeze gradually — slide 33).
 3. Apply the full §2 recipe:
    - Discriminative LRs.
    - Warm-up + cosine schedule.
@@ -2047,7 +2253,7 @@ for a few
 epochs *first* (head learns reasonable outputs), *then* unfreeze for
 fine-tuning. The pre-trained-head step prevents large gradients from
 the random head wrecking the backbone in the first few steps. This is
-related to warm-up (slide 13) but acts on the architecture rather than
+related to warm-up (slide 14) but acts on the architecture rather than
 the LR.
 
 **Empirical numbers to quote.** On a typical SEM segmentation problem
@@ -2068,10 +2274,10 @@ catastrophic forgetting (slide 9) wipes out the pretrained features. The
 discriminative LR recipe is what makes full fine-tuning safe.
 
 **Forward link.** The next slide is a direct §2 recap applied here;
-slide 31 introduces gradual unfreezing.
+slide 33 introduces gradual unfreezing.
 :::
 
-## 30. Layer-wise LRs in practice (recap of §2)
+## 32. Layer-wise LRs in practice (recap of §2)
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2137,10 +2343,10 @@ discriminative LRs is intentionally redundant: Adam's per-parameter
 adaptation handles fine-grained variation; discriminative LRs encode the
 per-layer prior we get from the backbone/head split.
 
-**Bridge.** Slide 31: gradual unfreezing as an extra safety measure.
+**Bridge.** Slide 33: gradual unfreezing as an extra safety measure.
 :::
 
-## 31. Gradual unfreezing
+## 33. Gradual unfreezing
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2211,7 +2417,7 @@ deeper coverage in W11/W14.
 **Bridge.** Next slide: when does TL fail? Domain-gap considerations.
 :::
 
-## 32. Domain gap — natural vs scientific images
+## 34. Domain gap — natural vs scientific images
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2280,10 +2486,10 @@ comparison:
 - If ImageNet $<$ scratch (rare but real), the pretraining is *harmful*.
 
 **Bridge.** Within the materials world there are *also* domain gaps —
-across microscopes, samples, alloys. Slide 33.
+across microscopes, samples, alloys. Slide 35.
 :::
 
-## 33. Cross-microscope and within-domain transfer
+## 35. Cross-microscope and within-domain transfer
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2331,7 +2537,7 @@ related domain, *use it* for stage 2.
 
 **Cross-microscope normalization.** Different microscopes have different
 intensity statistics, scan parameters, detector response functions. The
-intensity augmentation discussed in §3 (slide 20) is exactly the right
+intensity augmentation discussed in §3 (slide 21) is exactly the right
 tool to bridge this gap *during training*, so the model is robust at
 deployment.
 
@@ -2347,7 +2553,7 @@ discussion of W8 — generalization across operators, tools, and process
 conditions.
 :::
 
-## 34. Success case — Au nanoparticles U-Net
+## 36. Success case — Au nanoparticles U-Net
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2381,15 +2587,15 @@ conditions.
 ::: {.notes}
 **The recipe walked through, slide by slide.**
 
-- *Backbone pretraining (slide 26).* ImageNet-trained ResNet-34 encoder.
+- *Backbone pretraining (slide 27).* ImageNet-trained ResNet-34 encoder.
   The ~25 M parameters of the encoder come pre-loaded with edge,
   blob, and texture detectors — exactly what we need for nanoparticle
   silhouettes.
-- *Backbone/head split (slide 27).* The U-Net decoder is the "head" here,
+- *Backbone/head split (slide 29).* The U-Net decoder is the "head" here,
   randomly initialized.
 - *Strategy choice (slides 28–29).* Full fine-tuning, not feature
   extraction — encoder needs to adapt to TEM contrast statistics.
-- *Discriminative LRs (slide 30).* Decoder LR $\sim 10^{-3}$, encoder LR
+- *Discriminative LRs (slide 32).* Decoder LR $\sim 10^{-3}$, encoder LR
   $\sim 10^{-4}$.
 - *Augmentation (§3).* Intensity jitter (different microscope settings),
   90° rotations + flips (orientation invariant), elastic deformations
@@ -2402,7 +2608,7 @@ up in this single example. Sandfeld 19.3.1 is worth re-reading after the
 full unit for that reason.
 
 **What's *not* shown but is usually present.** Augmentation-aware
-validation splitting (slide 24); a clean held-out test set on a different
+validation splitting (slide 25); a clean held-out test set on a different
 microscope (§6 best practices); careful initialization of the U-Net
 decoder layers (e.g., Kaiming init).
 
@@ -2429,7 +2635,7 @@ target task than ImageNet does.
 the section.
 :::
 
-## 35. The "infinite data" dream
+## 37. The "infinite data" dream
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2484,11 +2690,11 @@ all — it gives the user false confidence.
 This pretraining-on-synthetic + fine-tuning-on-real is the modern best
 practice. The next slides walk through the components.
 
-**Bridge.** Slide 36: the simplest synthetic-data generator — Voronoi
+**Bridge.** Slide 38: the simplest synthetic-data generator — Voronoi
 tessellations.
 :::
 
-## 36. Voronoi tessellations for grain microstructures
+## 38. Voronoi tessellations for grain microstructures
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2557,11 +2763,11 @@ random fields more broadly include Boolean models (random circles for
 porosity), Poisson-line models (fiber networks), etc. Each captures a
 specific physics.
 
-**Bridge.** Slide 37: turning the synthetic *geometry* into a synthetic
+**Bridge.** Slide 39: turning the synthetic *geometry* into a synthetic
 *image*.
 :::
 
-## 37. From geometry to image — the synthetic ladder
+## 39. From geometry to image — the synthetic ladder
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2621,10 +2827,10 @@ across many possible distributions. The network learns to be robust to
 *any* of them. This is the dominant approach in robotics sim-to-real and
 works well for materials too.
 
-**Bridge.** Slide 38 makes the sim-to-real gap precise.
+**Bridge.** Slide 40 makes the sim-to-real gap precise.
 :::
 
-## 38. The Sim-to-Real gap
+## 40. The Sim-to-Real gap
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2672,8 +2878,8 @@ don't have those features, so the model has nothing to attend to.
 
 **The two strategies (next slides).**
 
-1. *Better simulation* (slide 37): make synthetic look more like real.
-2. *Domain adaptation* (slide 39): train so the model is *invariant* to
+1. *Better simulation* (slide 39): make synthetic look more like real.
+2. *Domain adaptation* (slide 41): train so the model is *invariant* to
    the difference.
 
 The two are complementary; combine them.
@@ -2682,10 +2888,10 @@ The two are complementary; combine them.
 training. There is no magic bullet. Best practice is: aggressive synthetic
 diversity + small real fine-tuning set + careful held-out real evaluation.
 
-**Bridge.** Slide 39: domain adaptation.
+**Bridge.** Slide 41: domain adaptation.
 :::
 
-## 39. Domain adaptation
+## 41. Domain adaptation
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2758,10 +2964,10 @@ close the sim-to-real gap.
 materials → real materials. Three TL stages, each providing more
 specific features. This is the gold-standard pipeline.
 
-**Bridge.** Slide 40 walks through a complete success case.
+**Bridge.** Slide 42 walks through a complete success case.
 :::
 
-## 40. Case study — SEM grain segmentation on Voronoi
+## 42. Case study — SEM grain segmentation on Voronoi
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2817,8 +3023,8 @@ gives ~50–60 % IoU; the U-Net trained on Voronoi gives ~85–90 %.
 
 **The recipe components.**
 
-- ImageNet-pretrained encoder (slide 26): provides edge/texture features.
-- Voronoi-synthetic data (slide 36): provides topology + perfect labels.
+- ImageNet-pretrained encoder (slide 27): provides edge/texture features.
+- Voronoi-synthetic data (slide 38): provides topology + perfect labels.
 - Aggressive augmentation (§3): closes sim-to-real gap.
 - U-Net architecture: well-suited to dense pixel-level prediction.
 
@@ -2830,7 +3036,7 @@ remaining gap. The §6 recipe is what you would do in production.
 real images to label to maximize the gain — preview slide later.
 :::
 
-## 41. Procedural generation beyond grains
+## 43. Procedural generation beyond grains
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2889,7 +3095,7 @@ comes from experimental 4D-STEM acquisitions [@Pelz_2023].
 (§4) and augmentation (§3) into the full materials-ML recipe of §6.
 :::
 
-## 42. Synthetic-data summary
+## 44. Synthetic-data summary
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -2974,7 +3180,7 @@ contamination, group leakage). Unit 3's K-fold material is the foundation
 we build on here.
 :::
 
-## 43. The fine-tuning recipe — the canonical workflow
+## 45. The fine-tuning recipe — the canonical workflow
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -3049,7 +3255,7 @@ and validate at each step." The recipe makes this explicit.
 **Bridge.** Slides 44–45 cover the validation half.
 :::
 
-## 44. Validation in the small-data regime
+## 46. Validation in the small-data regime
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -3098,11 +3304,11 @@ mean differences with overlapping intervals are not significant.
 **LOOCV (leave-one-out CV).** For very small datasets ($N < 30$), $K =
 N$. Computationally heavy but the only honest approach.
 
-**Bridge to slide 45.** K-fold alone is not enough — *which* fold split
+**Bridge to slide 47.** K-fold alone is not enough — *which* fold split
 matters. Group K-fold prevents augmentation/specimen leakage.
 :::
 
-## 45. Group-based splitting — the leakage you don't see
+## 47. Group-based splitting — the leakage you don't see
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -3160,7 +3366,7 @@ If you do not have enough distinct units to support a K-fold split on
 the right axis, **you do not have enough data to claim cross-axis
 generalization** — period. Collect more, or restrict your claim.
 
-**Augmentation-induced leakage (§3 callback, slide 24).** A special case:
+**Augmentation-induced leakage (§3 callback, slide 25).** A special case:
 if the same image and its rotation end up on both sides of the split,
 the test is easy in a way that has nothing to do with materials science.
 Always split *before* augmenting.
@@ -3177,11 +3383,11 @@ strategies:
 The gap between them tells the reader how much specimen-specific
 overfitting your model is doing. Honest reporting builds trust.
 
-**Bridge.** Slide 46: active learning — the next-level optimization of
+**Bridge.** Slide 48: active learning — the next-level optimization of
 which labels to acquire.
 :::
 
-## 46. Active learning — bonus concept
+## 48. Active learning — bonus concept
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -3248,10 +3454,10 @@ active loop + transfer learning" is the modern small-data workflow.
 - W12: GP-based active learning for regression problems.
 - W14: integration with Bayesian experiment design.
 
-**Bridge.** Slide 47: the gold-standard test set.
+**Bridge.** Slide 49: the gold-standard test set.
 :::
 
-## 47. The gold-standard test set
+## 49. The gold-standard test set
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -3319,10 +3525,10 @@ dramatically lower, you overfit the validation.
 train + augment, 10 % validation (multiple uses), 10 % gold-standard
 (used once). Stratified by group/specimen.
 
-**Bridge.** Slide 48 covers when to stop training.
+**Bridge.** Slide 50 covers when to stop training.
 :::
 
-## 48. When to stop — early stopping
+## 50. When to stop — early stopping
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -3393,7 +3599,7 @@ stopping behavior. Still set early-stopping as a safety net.
 implicit bias, and generalization in deeper detail.
 :::
 
-## 49. Top takeaways
+## 51. Top takeaways
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -3419,6 +3625,10 @@ implicit bias, and generalization in deeper detail.
 6. **The recipe** is the deliverable: backbone choice → head replace →
    freeze/unfreeze with discriminative LRs → warm-up + cosine →
    Adam→SGD switch → augment → group K-fold.
+
+7. **Modern levers** when ImageNet is not enough: self-supervised
+   backbones (DINOv2, MAE-on-lab-data) for features, and memory-light
+   optimizers (Lion) for fitting larger models on lab GPUs.
 :::
 :::
 :::
@@ -3459,10 +3669,10 @@ pretraining, group K-fold — drops out of the §2 framing.
   augmentation.
 - W14 (reflection): integrates these into the materials-ML practice.
 
-**Bridge to references.** Slide 50: where to read more.
+**Bridge to references.** Slide 52: where to read more.
 :::
 
-## 50. References & further reading
+## 52. References & further reading
 
 ::: {.fragment}
 **Course textbooks.**
@@ -3479,7 +3689,7 @@ pretraining, group K-fold — drops out of the §2 framing.
   is the textbook reference for §2.
 :::
 
-## 50. References & further reading 2
+## 53. References & further reading 2
 
 ::: {.fragment}
 **Foundational references.** [@howard2018ulmfit] ULMFiT —
