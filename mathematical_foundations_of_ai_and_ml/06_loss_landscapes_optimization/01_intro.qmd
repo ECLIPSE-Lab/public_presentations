@@ -1,4 +1,4 @@
-﻿---
+---
 title: |
   Mathematical Foundations of AI & ML<br>Unit 6: Loss Landscapes and Optimization Behavior
 bibliography: ref.bib
@@ -6,8 +6,12 @@ author:
   - name: Prof. Dr. Philipp Pelz
     affiliation:
       - FAU Erlangen-Nürnberg
+execute:
+  eval: true
+  echo: false
 format:
   revealjs:
+    chalkboard: true
     width: 1920
     height: 1080
     template-partials:
@@ -15,23 +19,19 @@ format:
     css: custom.css
     theme: custom.scss
     slide-number: c/t
-    logo: "eclipse_logo_small.png"
-    footer: "© Philipp Pelz - Mathematical Foundations of AI & ML"
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
     menu:
       side: left
       loadIcons: true
+    footer: © Philipp Pelz - Mathematical Foundations of AI & ML
 ---
 
 
 <!-- ===== §1. Framing ===== -->
 
-## Title + Unit 6 positioning
-
-:::: {.incremental}
-- Unit 5 introduced backpropagation and gradient computation.
-- Unit 6 asks: **what does the surface look like** that we are descending on?
-- Understanding landscape geometry is essential for choosing optimizers and diagnosing training failures.
-::::
+ 
 
 ## Recap: gradient descent as parameter update
 
@@ -41,7 +41,7 @@ format:
 - Convergence depends on landscape properties — not just the gradient direction [@mcclarren2021machine].
 ::::
 
-## Learning outcomes for Unit 6
+### Learning outcomes for Unit 6
 
 By the end of this lecture, students can:
 
@@ -128,47 +128,8 @@ $$
 
 
 <!-- ===== §3. Conditioning and the condition number ===== -->
-
-## Conditioning and the condition number
-
-:::: {.columns}
-:::: {.column width="50%"}
-### Mathematical Definition
-
-:::: {.incremental}
-- The condition number is defined as $\kappa(\mathbf{H}) = \lambda_{\max} / \lambda_{\min}$.
-- $\kappa \approx 1$: well-conditioned, isotropic curvature.
-- $\kappa \gg 1$: ill-conditioned curvature.
-::::
-::::
-
-:::: {.column width="50%"}
-### Geometric Intuition
-
-:::: {.incremental}
-- **Well-conditioned**: Level sets are nearly circular.
-- **Ill-conditioned**: Level sets are elongated ellipses.
-- Gradient descent oscillates in steep directions and crawls in flat ones.
-::::
-::::
-::::
-
-## Geometric interpretation: elliptical contours
-
-:::: {.columns}
-:::: {.column width="55%"}
-:::: {.incremental}
-- Well-conditioned: circular level sets — equal progress in all directions.
-- Ill-conditioned: elongated ellipses — the optimal step size differs drastically by direction.
-- Standard gradient descent cannot adapt to direction-dependent curvature.
-::::
-::::
-
-:::: {.column width="45%"}
-![Near a minimum $\mathbf{w}^\star$, contours of constant error are ellipses aligned with the Hessian eigenvectors $\mathbf{u}_i$, with axis lengths $\propto \lambda_i^{-1/2}$ [@bishop2006pattern].](images/bishop_hessian_elliptical_contours.png){width=100%}
-::::
-::::
-
+ 
+ 
 ## Why local minima are rare in high dimensions
 
 :::: {.incremental}
@@ -258,12 +219,64 @@ plot_saddle = Plot.plot({
 - Training appears stuck — but the model has not converged to a useful solution.
 ::::
 
-## Loss surface of linear networks
+### Loss surface of linear networks
 
 :::: {.incremental}
 - Even linear networks $f = W_L \cdots W_1 x$ have non-convex loss landscapes.
 - Saddle points arise from the product structure of weight matrices.
 - Analytical tractability makes them a useful theoretical testbed.
+::::
+
+## Exploding gradients and gradient clipping
+
+:::: {.columns}
+:::: {.column width="55%"}
+- The symmetric failure to vanishing gradients: through deep or recurrent layers, the gradient is a **product of Jacobians** — if their spectral norms exceed 1, $\|\mathbf{g}\|$ grows exponentially.
+- Geometrically: the loss surface has **cliffs** (steep walls); a normal step off a cliff sends parameters to infinity → `NaN`.
+- **Norm clipping** [@pascanu2013difficulty]: if $\|\mathbf{g}\| > c$, rescale
+$$
+\mathbf{g} \leftarrow c\,\frac{\mathbf{g}}{\|\mathbf{g}\|}
+$$
+- Direction preserved, step magnitude capped. Typical $c \approx 1.0$; near-universal in transformer / RNN / LLM training.
+::::
+
+:::: {.column width="45%"}
+- Diagnose by **monitoring the global gradient norm** — spikes precede divergence by a few steps.
+- Per-coordinate value clipping exists but is rarely used (it distorts the descent direction).
+- Clipping is a *band-aid for landscape cliffs*, not a substitute for good initialization or normalization.
+::::
+::::
+
+:::: {.notes}
+This is the missing sibling of the vanishing-gradient / plateau slide: same mechanism (product of Jacobians along depth), opposite pathology. The "cliff" mental model is the one to draw — Goodfellow's picture of a near-vertical wall in the loss surface where the gradient is enormous but the *useful* step is tiny. Clipping is literally "take a controlled step off the cliff instead of being flung across the canyon."
+
+Concrete teaching points: (1) RNNs/LSTMs are the historical motivation (Pascanu 2013) — backprop-through-time multiplies the recurrent Jacobian T times. (2) In 2026 it survives as a one-liner in every LLM training loop (`clip_grad_norm_(model.parameters(), 1.0)`), cheap insurance against a single bad minibatch nuking a million-dollar run. (3) Tell students the *diagnostic*: log the grad-norm; a sudden spike is the early-warning signal, and the fix is clip + (often) lower LR or check the data batch that caused it.
+::::
+
+## Initialization: where you start on the landscape
+
+:::: {.columns}
+:::: {.column width="55%"}
+- The optimizer is local — the **starting point decides which basin** you fall into and whether gradients survive layer 1.
+- Goal: keep activation **and** gradient variance roughly constant across depth (no exponential shrink/blow-up).
+- **Xavier/Glorot** [@glorot2010xavier] (tanh/linear): $\operatorname{Var}(W)=\dfrac{2}{n_\text{in}+n_\text{out}}$
+- **He/Kaiming** [@he2015delving] (ReLU): $\operatorname{Var}(W)=\dfrac{2}{n_\text{in}}$ — the factor 2 compensates ReLU killing half the units.
+::::
+
+:::: {.column width="45%"}
+:::: {.incremental}
+- All-zeros / all-equal → **symmetry**: every unit learns the identical function. Random breaking is mandatory.
+- Too large → exploding activations/saturation; too small → vanishing signal — both stall training before the optimizer matters.
+- Modern recipes lean on init **+ normalization + residuals** jointly (e.g. residual-aware scaling for deep transformers).
+- A bad init can make even AdamW fail; a good init is the cheapest conditioning fix there is.
+::::
+::::
+::::
+
+:::: {.notes}
+Frame this as the bookend to the exploding/vanishing-gradient slides: those described the failure; initialization is the *principled prevention*. The derivation is worth one sentence on the board — propagate the variance of activations forward through a linear layer and you need $n_\text{in}\operatorname{Var}(W)=1$; propagate the gradient backward and you need $n_\text{out}\operatorname{Var}(W)=1$; Xavier compromises with the harmonic-style average $2/(n_\text{in}+n_\text{out})$. He init redoes the same calculation for ReLU, where roughly half the inputs are zeroed, hence the factor of 2.
+
+Two points students must leave with: (1) The symmetry argument — zero or constant init is not "a bad random seed," it is *structurally* broken: identical units get identical gradients forever. This is why we never initialize weights to zero (biases are fine). (2) Init is not obsolete in the normalization era — it interacts with BatchNorm/LayerNorm and residual connections; very deep transformers use residual-aware downscaling (e.g. $1/\sqrt{2L}$-style) precisely so the identity path dominates at start. Practical anchor: `torch.nn.init.kaiming_normal_` is the default students should reach for with ReLU/conv nets; the framework defaults are usually a sensible Xavier/He variant, but reach for the explicit call when training deep stacks from scratch.
 ::::
 
 ## Empirical observations: loss surfaces of deep networks
@@ -274,22 +287,52 @@ plot_saddle = Plot.plot({
 - Sharp minima coexist with flat minima — optimizer choice determines which is found [@goodfellow2016deep].
 ::::
 
+## Visualizing real loss landscapes
 
-<!-- ===== §5. Role of overparameterization ===== -->
+:::: {.columns}
+:::: {.column width="55%"}
+- A network has $10^6$–$10^{11}$ parameters — every "landscape picture" is a **2D projection** through that space.
+- **Naive random-direction slices are misleading**: ReLU networks are scale-invariant, so you can make any minimum look arbitrarily sharp or flat just by rescaling weights.
+- **Filter-normalized directions** [@li2018visualizing]: normalize each random direction filter-wise to the weight norm → slices become *comparable* across models.
+::::
 
-## Role of overparameterization
+:::: {.column width="45%"}
+**What the corrected plots reveal**
 
 :::: {.incremental}
+- Skip connections (ResNets) and normalization layers dramatically **smooth** an otherwise chaotic surface.
+- Wider networks → visibly flatter, more convex-looking minima.
+- The famous ResNet-56 "with vs without skip connections" landscape is the canonical image of this effect.
+- Caveat: even filter-normalized slices are still 2D shadows — useful intuition, not ground truth.
+::::
+::::
+::::
+
+:::: {.notes}
+The single most important message: every loss-landscape visualization students will ever see (including the ones earlier in this deck) is a 2D shadow of a billion-dimensional object, and the *method of projection matters*. Spend a moment on the scale-invariance pitfall — for a ReLU net, scaling layer $\ell$ by $a$ and layer $\ell{+}1$ by $1/a$ leaves the function unchanged but arbitrarily rescales curvature, so an un-normalized sharpness plot is meaningless. Filter normalization (Li et al. 2018) is the fix that made these plots scientifically usable.
+
+The headline ResNet-56 figure (chaotic, non-convex mess without skips → smooth bowl with skips) is the best single argument that *architecture shapes the landscape* — connect it forward to the normalization slide and to Units 4/10. Asset note: this figure is an external image (Li et al. 2018); it is tracked in `EXTERNAL_ASSETS_TODO.md` for sourcing — describe it verbally if the image is not yet embedded.
+::::
+
+
+<!-- ===== §5. Role of overparameterization ===== -->
+ 
+::: {.fragment}
+### Role of overparameterization
+
+
 - Networks with more parameters than training samples create degenerate solution manifolds.
 - Connected low-loss valleys allow smooth interpolation between solutions.
 - Overparameterization paradoxically **helps** optimization by removing barriers.
-::::
-
-## Symmetry and mode connectivity
+:::
+ 
+::: {.fragment}
+### Symmetry and mode connectivity
 
 - Permuting hidden units produces an equivalent network with identical loss.
 - This creates combinatorially many equivalent minima in weight space.
 - Recent work shows that minima found by different training runs can be connected by low-loss paths.
+:::
 
 ## Landscape pathologies summary
 
@@ -298,12 +341,13 @@ plot_saddle = Plot.plot({
 - **Plateaus**: extended flat regions; caused by saturating activations.
 - **Sharp minima**: low training loss but poor generalization; sensitive to perturbation.
 
-## Checkpoint: identify the pathology
+::: {.fragment}
+### Checkpoint: identify the pathology
 
 - Scenario A: training loss oscillates wildly but does not decrease — **ill-conditioning + learning rate too large**.
 - Scenario B: training loss flatlines at a high value — **saddle point or plateau**.
 - Scenario C: training loss is very low but test loss is high — **sharp minimum / overfitting**.
-
+:::
 
 <!-- ===== §6. Vanilla GD on ill-conditioned surface ===== -->
 
@@ -342,20 +386,23 @@ plot_saddle = Plot.plot({
 - Parameter update: $\boldsymbol{\theta}^{(t+1)} = \boldsymbol{\theta}^{(t)} + \mathbf{v}^{(t+1)}$
 - Typical default: $\alpha = 0.9$; controls how much history is retained.
 
-## Momentum on the elongated bowl
+::: {.fragment}
+### Momentum on the elongated bowl
 
 - Oscillations across the narrow direction cancel in the velocity average.
 - Net velocity builds up along the valley floor.
 - Convergence is dramatically faster compared to vanilla GD — the multi-optimizer interactive below makes this concrete.
+:::
 
 
 <!-- ===== §7. Nesterov accelerated gradient ===== -->
-
-## Nesterov accelerated gradient
+::: {.fragment}
+### Nesterov accelerated gradient
 
 - Key idea: evaluate the gradient at the **look-ahead** position $\boldsymbol{\theta} + \alpha \mathbf{v}$.
 - Provides a correction before committing to the full momentum step.
 - Achieves provably better convergence rate $O(1/t^2)$ vs $O(1/t)$ for convex problems.
+:::
 
 ## Momentum vs Nesterov: comparison
 
@@ -432,23 +479,69 @@ plot_func_1d = Plot.plot({
 - A single $\eta$ forces a compromise: too fast for some directions, too slow for others.
 - Per-parameter adaptation is the natural solution.
 
-## Recap: what momentum solves and what it does not
+::: {.fragment}
 
+### Recap: what momentum solves and what it does not
 - Momentum accelerates convergence along consistent gradient directions.
 - It does **not** adapt the learning rate per parameter.
 - Ill-conditioned landscapes still require direction-dependent step sizes.
+:::
 
-## Per-parameter learning rates: the core idea
+::: {.fragment}
+### Per-parameter learning rates: the core idea
 
 - Scale each parameter's update by the inverse of its historical gradient magnitude.
 - Parameters with large gradients get smaller effective learning rates.
 - Parameters with small gradients get larger effective learning rates.
+:::
 
-## AdaGrad: accumulate squared gradients
+## AdaGrad: accumulate squared gradients for per-parameter learning rates
 
-- Accumulator: $\mathbf{G}_t = \mathbf{G}_{t-1} + \mathbf{g}_t^2$ (element-wise).
-- Update: $\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \frac{\eta}{\sqrt{\mathbf{G}_t} + \epsilon} \mathbf{g}_t$
-- Naturally adapts to sparse features — infrequent features get larger updates [@neuer2024machine].
+:::: {.columns}
+:::: {.column width="50%"}
+**Mechanism**
+
+:::: {.incremental}
+- Sparse-data regimes (NLP, recommenders): some parameters update often, others rarely — one global $\eta$ cannot serve both.
+- **Accumulator** (element-wise, never resets):
+  $$
+  \mathbf{G}_t = \mathbf{G}_{t-1} + \mathbf{g}_t^2
+  $$
+- **Update rule**:
+  $$
+  \theta_{t+1,i} = \theta_{t,i} - \frac{\eta}{\sqrt{G_{t,i}} + \epsilon}\; g_{t,i}
+  $$
+::::
+::::
+
+:::: {.column width="50%"}
+**Effect & caveat**
+
+:::: {.incremental}
+- Large historical gradient $\Rightarrow$ smaller step; small historical gradient $\Rightarrow$ larger step.
+- Rarely-updated features catch up automatically (e.g. word-embedding rows for rare tokens) [@neuer2024machine].
+- Frequent features get damped — fewer oscillations / divergence.
+- **Caveat:** $\mathbf{G}_t$ only grows $\Rightarrow$ effective LR decays monotonically; training can stall.
+- Motivates RMSProp / Adam (next slides).
+::::
+::::
+::::
+
+:::: {.notes}
+**Motivation in full.** In many learning problems, especially those with sparse data (NLP, recommender systems), some parameters are updated frequently while others are rarely touched. A fixed global learning rate treats all parameters identically, which slows convergence — especially for rarely-updated features. AdaGrad adapts the effective learning rate per-parameter from historical gradient information.
+
+**Mechanism.** AdaGrad maintains an accumulator $\mathbf{G}_t$ for each parameter, tracking the sum of squared gradients element-wise. The update divides the global step size by $\sqrt{G_{t,i}} + \epsilon$ — parameters with large historical gradients get smaller learning rates, while parameters with small cumulative gradients get comparatively larger steps.
+
+**Effect, expanded.**
+
+- *Sparse features* (rarely receive a gradient) keep their effective learning rate high and can catch up during training.
+- *Frequent features* (updated often) have their learning rate damped, preventing oscillation or divergence.
+- This makes AdaGrad an excellent default where sparsity is significant — training word embeddings, learning weights for rare items in recommender systems.
+
+**Intuition.** AdaGrad continuously tunes each parameter's learning rate from the frequency and magnitude of its own updates — no manual scheduling. Shrinking the step for well-trodden parameters and boosting it for under-updated ones balances and accelerates convergence in sparse-data regimes.
+
+**Caveat in full.** Because $\mathbf{G}_t$ only grows (never shrinks), the effective learning rate keeps decreasing and training may stop too early if the LR decays excessively. This motivates RMSProp (exponential moving average instead of a running sum) and Adam.
+::::
 
 
 <!-- ===== §9. AdaGrad: strengths and weaknesses ===== -->
@@ -482,27 +575,73 @@ plot_func_1d = Plot.plot({
 
 ## ADAM update rule (full derivation)
 
-:::: {.incremental}
+::: {.fragment}
 - Bias correction: $\hat{\mathbf{m}}_t = \frac{\mathbf{m}_t}{1-\beta_1^t}, \quad \hat{\mathbf{v}}_t = \frac{\mathbf{v}_t}{1-\beta_2^t}$
-::::
-
-:::: {.incremental}
+ 
 - Parameter update:
 
 $$
 \boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \frac{\eta}{\sqrt{\hat{\mathbf{v}}_t} + \epsilon}\,\hat{\mathbf{m}}_t
 $$
-::::
+:::
+
 
 :::: {.incremental}
 - Defaults: $\beta_1=0.9$, $\beta_2=0.999$, $\epsilon=10^{-8}$, $\eta=10^{-3}$.
 ::::
 
-## ADAM as landscape normalizer
+::: {.fragment}
+### ADAM as landscape normalizer
 
 - ADAM effectively rescales coordinates to equalize curvature across parameter directions.
 - In well-conditioned subspace: ADAM behaves like momentum SGD.
 - In ill-conditioned subspace: ADAM compensates by scaling down steep directions and scaling up flat ones.
+:::
+ 
+::: {.notes}
+**Step-by-step derivation of the ADAM update.** ADAM tracks two exponential moving averages (EMAs) of the per-coordinate stochastic gradient $\mathbf{g}_t$, initialized at zero:
+
+- First moment (mean estimate): $\mathbf{m}_t = \beta_1 \mathbf{m}_{t-1} + (1-\beta_1)\,\mathbf{g}_t$,  $\mathbf{m}_0 = \mathbf{0}$.
+- Second moment (uncentered variance estimate, element-wise): $\mathbf{v}_t = \beta_2 \mathbf{v}_{t-1} + (1-\beta_2)\,\mathbf{g}_t^{\odot 2}$,  $\mathbf{v}_0 = \mathbf{0}$.
+
+*Step 1 — closed-form unroll.* Unrolling the recurrence gives the geometric weighting
+$$
+\mathbf{m}_t = (1-\beta_1)\sum_{i=1}^{t} \beta_1^{\,t-i}\,\mathbf{g}_i,
+\qquad
+\mathbf{v}_t = (1-\beta_2)\sum_{i=1}^{t} \beta_2^{\,t-i}\,\mathbf{g}_i^{\odot 2}.
+$$
+
+*Step 2 — why bias correction is needed.* Assume the gradient is approximately stationary so that $\mathbb{E}[\mathbf{g}_i]\approx\mathbb{E}[\mathbf{g}]$ for the recent window. Taking the expectation of the unrolled sum and using $\sum_{k=0}^{t-1}\beta_1^k = (1-\beta_1^t)/(1-\beta_1)$:
+$$
+\mathbb{E}[\mathbf{m}_t]
+= (1-\beta_1^t)\,\mathbb{E}[\mathbf{g}],
+\qquad
+\mathbb{E}[\mathbf{v}_t]
+= (1-\beta_2^t)\,\mathbb{E}[\mathbf{g}^{\odot 2}].
+$$
+With $\mathbf{m}_0=\mathbf{v}_0=\mathbf{0}$, both EMAs are *biased toward zero* at small $t$ — early-training steps underestimate the gradient statistics. Dividing by the correction factor removes the bias:
+$$
+\hat{\mathbf{m}}_t = \frac{\mathbf{m}_t}{1-\beta_1^t},
+\qquad
+\hat{\mathbf{v}}_t = \frac{\mathbf{v}_t}{1-\beta_2^t}.
+$$
+As $t\to\infty$ the corrections approach 1 and the update reduces to the plain EMA form.
+
+*Step 3 — the update direction.* Use $\hat{\mathbf{m}}_t$ as the noise-averaged search direction and $\sqrt{\hat{\mathbf{v}}_t}$ as a per-coordinate RMS gradient magnitude (units of $g$). The element-wise ratio $\hat{\mathbf{m}}_t / (\sqrt{\hat{\mathbf{v}}_t} + \epsilon)$ is then a *dimensionless* signal-to-RMS-noise quantity, so a single global step $\eta$ has consistent scale across parameters:
+$$
+\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta\,\frac{\hat{\mathbf{m}}_t}{\sqrt{\hat{\mathbf{v}}_t}+\epsilon}.
+$$
+
+*Step 4 — why a square root, not $\hat{\mathbf v}_t$ itself.* $\sqrt{\hat{\mathbf v}_t}$ has the same units as $\mathbf{g}$ (an RMS gradient), so $\hat{\mathbf m}_t/\sqrt{\hat{\mathbf v}_t}$ is unitless — same logic as RMSProp. It can also be read as a diagonal approximation to a Newton-style preconditioner $\mathbf{H}^{-1/2}\mathbf{g}$ using $\mathbb{E}[\mathbf{g}\mathbf{g}^\top]_{ii}$ as a cheap stand-in for curvature along coordinate $i$.
+
+*Step 5 — role of $\epsilon$.* Pure numerical stability. When a parameter sits in a flat direction $\hat{\mathbf v}_{t,i}\to 0$ and the bare ratio explodes; $\epsilon\approx 10^{-8}$ caps the effective per-coordinate learning rate at $\eta/\epsilon$ and prevents NaNs.
+
+*Step 6 — bounded step size ("trust region" property, Kingma & Ba 2015).* When the gradient signal is on the order of its RMS, $|\hat m_{t,i}| \lesssim \sqrt{\hat v_{t,i}}$, so the magnitude of the step in each coordinate is bounded by $\eta$ regardless of the gradient scale. This is the reason ADAM works almost out-of-the-box across very different problems with $\eta=10^{-3}$.
+
+*Step 7 — interpreting the defaults.* $\beta_1=0.9$ corresponds to an effective momentum window of $\sim 1/(1-\beta_1)=10$ steps; $\beta_2=0.999$ averages the second moment over $\sim 1000$ steps so the denominator is stable; $\epsilon=10^{-8}$ is below typical gradient RMS and acts only in pathological regions; $\eta=10^{-3}$ is small enough to respect the trust-region bound while large enough to make progress.
+
+*Step 8 — connection to surrounding slides.* Dropping $\hat{\mathbf{v}}_t$ recovers SGD with momentum. Dropping $\hat{\mathbf{m}}_t$ recovers RMSProp. AMSGrad replaces $\hat{\mathbf v}_t$ with $\max_{s\le t}\hat{\mathbf v}_s$ to repair a convergence-proof gap (rarely used in practice). The next slide (AdamW) decouples weight decay from this adaptive denominator, which is the standard production fix.
+:::
 
 ## AdamW: decoupled weight decay (the production default)
 
@@ -574,16 +713,16 @@ Default in 2026 is still AdamW for most work; reach for Lion (memory), Sophia (L
 - **ADAM**: fast initial progress, robust to hyperparameter choices, but may converge to sharper minima.
 
 :::: {.columns}
-:::: {.column width="30%"}
+:::: {.column width="40%"}
 ```{ojs}
 //| echo: false
-viewof lr_opt = Inputs.range([0.01, 1.0], {value: 0.1, step: 0.01, label: "GD/Mom/RMS LR"});
+viewof lr_opt = Inputs.range([0.01, 1.0], {value: 0.1, step: 0.01, label: "Base LR"});
 viewof lr_adam = Inputs.range([0.01, 1.0], {value: 0.5, step: 0.01, label: "ADAM LR"});
 viewof steps_opt = Inputs.range([1, 200], {value: 50, step: 10, label: "Steps"});
 viewof btn_opt = Inputs.button("Reset / Re-run");
 ```
 ::::
-:::: {.column width="70%"}
+:::: {.column width="60%"}
 ```{ojs}
 //| echo: false
 // Skewed bowl: f(x,y) = x^2/2 + 10y^2 + xy
@@ -652,7 +791,7 @@ grid_multi = {
 
 plot_multi = {
   const plot = Plot.plot({
-    width: 800, height: 400,
+    width: 1000, height: 600,
     x: {domain: [-4, 4]},
     y: {domain: [-4, 4]},
     color: {scheme: "viridis"},
@@ -680,16 +819,7 @@ plot_multi = {
 
 ## Optimizer genealogy
 
-```mermaid
-graph TD
-    GD[Gradient Descent] --> M[Momentum]
-    GD --> AG[AdaGrad]
-    M --> NAG[Nesterov Accelerated Gradient]
-    AG --> RMS[RMSProp]
-    RMS --> ADAM[ADAM]
-    M --> ADAM
-    ADAM --> AW[AdamW]
-```
+![Optimizer genealogy](images/optimizer_genealogy.png){fig-align="center"}
 
 ## When ADAM is not enough
 
@@ -707,6 +837,32 @@ graph TD
 - **For best generalization**: SGD + momentum with tuned learning rate schedule.
 - **For sparse or NLP tasks**: ADAM or AdaGrad variants.
 - Always validate optimizer choice on a held-out set.
+
+## Second-order and quasi-Newton methods in practice
+
+:::: {.columns}
+:::: {.column width="50%"}
+- **Newton:** $\boldsymbol{\theta} \leftarrow \boldsymbol{\theta} - \mathbf{H}^{-1}\mathbf{g}$ — quadratic convergence, but $\mathbf{H}$ is $p\times p$ (infeasible to form/invert) and **indefinite at saddles** (steps toward maxima).
+- **Why DL stays first-order:** stochastic mini-batch gradients make curvature estimates noisy and brittle; first-order is cheap, robust, and parallel.
+::::
+
+:::: {.column width="50%"}
+**Where second-order *is* used**
+
+:::: {.incremental}
+- **L-BFGS** — limited-memory quasi-Newton; deterministic, full-batch. The workhorse for **PINNs** and small/scientific problems → direct link to **Unit 13**.
+- **Gauss–Newton / Levenberg–Marquardt** — exploits least-squares structure (classic in scientific computing).
+- **K-FAC, Shampoo** [@martens2015kfac] — tractable Kronecker/matrix curvature approximations used at scale (conceptual cousins of Muon).
+- **Natural gradient** — preconditioning by the Fisher information metric.
+::::
+::::
+::::
+
+:::: {.notes}
+Pay back the Newton's-method figure from the geometry section: we showed there that blindly trusting curvature in a non-convex region steps toward a *maximum*. That, plus the $O(p^3)$ inversion cost, is the full answer to "why don't we just use Newton in deep learning." Reference @nocedal2006numerical as the standard text if students want the classical optimization background.
+
+The cross-link to make explicit: **PINNs (Unit 13) routinely use L-BFGS**, not Adam — because PINN losses are smooth, deterministic, and full-batch, exactly the regime where quasi-Newton shines. So this is not a museum slide; students in the materials track will type `scipy.optimize.minimize(method="L-BFGS-B")` or `torch.optim.LBFGS` within a few weeks. Also note K-FAC/Shampoo as the bridge: they are the "approximate matrix-aware curvature" lineage that Muon (covered among modern optimizers) belongs to — second-order ideas are quietly re-entering large-scale training.
+::::
 
 ## Curvature explains differential learning rates
 
@@ -771,6 +927,35 @@ plot_fs = Plot.plot({
 - Sharp minima memorize training data specifics — poor transfer to unseen data.
 - This connects landscape geometry to the bias-variance tradeoff of Unit 8 [@goodfellow2016deep].
 
+## SAM: optimizing for flatness directly
+
+:::: {.columns}
+:::: {.column width="55%"}
+- Don't just minimize the loss — minimize the **worst-case loss in a neighborhood**:
+$$
+\min_{\boldsymbol{\theta}}\; \max_{\|\boldsymbol{\epsilon}\|\le\rho} \; L(\boldsymbol{\theta}+\boldsymbol{\epsilon})
+$$
+- Two-step update [@foret2021sam]:
+  1. Ascend to the worst point: $\hat{\boldsymbol{\epsilon}} = \rho\,\dfrac{\nabla L(\boldsymbol{\theta})}{\|\nabla L(\boldsymbol{\theta})\|}$
+  2. Descend using the gradient *at* $\boldsymbol{\theta}+\hat{\boldsymbol{\epsilon}}$.
+::::
+
+:::: {.column width="45%"}
+:::: {.incremental}
+- Explicitly biases training toward **flat** minima → better generalization & robustness, especially for ViTs and limited-data regimes.
+- Cost: ~**2× gradient evaluations** per step.
+- It *wraps* a base optimizer (SAM + SGD, SAM + AdamW) — not a replacement for AdamW.
+- Variants: ASAM (scale-invariant $\rho$), GSAM, efficient-SAM.
+::::
+::::
+::::
+
+:::: {.notes}
+This is the operationalization of the flat-vs-sharp slide: we spent two slides arguing flat minima generalize better; SAM is the optimizer that *acts* on that claim by explicitly minimizing the sharpest direction in an $\rho$-ball. Walk the two-step picture concretely: first take a small step *uphill* to find the most adversarial nearby point, then descend from the original point using the gradient measured there — the net effect penalizes sharpness.
+
+Honest framing for practitioners: the 2× cost is real (two forward/backward passes), so SAM is a *targeted* tool — reach for it when generalization or distribution-shift robustness is the bottleneck and you can afford the compute (vision/ViT, small datasets, materials data with covariate shift), not a default. Tie it back to Wilson et al.'s adaptive-methods generalization gap and forward to the Unit 7/8 generalization story — SAM, flat minima, and bias–variance are three views of the same phenomenon.
+::::
+
 ## Learning rate schedules
 
 :::: {.columns}
@@ -798,6 +983,29 @@ plot_fs = Plot.plot({
 :::: {.column width="45%"}
 ![Training and test mean-absolute error versus epoch for networks with 1, 2, and 3 hidden layers trained with ADAM. Noisier convergence in deeper models reflects gradient noise from batching [@mcclarren2021machine].](images/mcclarren_training_convergence.png){width=100%}
 ::::
+::::
+
+## Normalization smooths the loss landscape
+
+:::: {.columns}
+:::: {.column width="55%"}
+- The textbook story ("BatchNorm fixes internal covariate shift") is **wrong** — Santurkar et al. 2018 showed it still helps even with noise injected *after* normalization.
+- The real effect: normalization improves the **Lipschitzness / conditioning** of the loss and its gradients — it reshapes the landscape, not the statistics.
+::::
+
+:::: {.column width="45%"}
+:::: {.incremental}
+- Consequence: **larger stable learning rates**, less sensitivity to initialization, faster convergence.
+- It is a *conditioning* intervention — same goal as Adam's per-parameter scaling, achieved architecturally.
+- **LayerNorm / RMSNorm** is the backbone of every transformer; **pre-norm** placement is what makes very deep transformers trainable [@santurkar2018howbn].
+::::
+::::
+::::
+
+:::: {.notes}
+This slide deliberately overturns the explanation most students will have heard. The Santurkar et al. (2018) ablation is the memorable bit: they deliberately added non-stationary noise *after* the BatchNorm layer (restoring "covariate shift") and it still trained fast — so the covariate-shift story cannot be the mechanism. The actual mechanism is landscape smoothing: the loss and its gradient become more Lipschitz, so larger steps are stable and the effective condition number drops.
+
+Connect three earlier threads: (1) "Adam as a landscape normalizer" — normalization does the same conditioning job in the architecture instead of the optimizer; (2) the visualization slide — BN/skip connections are exactly what smooths the Li et al. plots; (3) the ill-conditioned-bowl slide — normalization is arguably the *highest-leverage* fix for conditioning, often more than optimizer choice. Practical pointer for the transformer unit (10): pre-norm vs post-norm is a stability decision, not cosmetic — post-norm deep transformers need careful warmup, pre-norm largely removes that.
 ::::
 
 
