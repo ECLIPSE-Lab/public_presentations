@@ -218,7 +218,7 @@ format:
 ## The loss landscape — a bowl in weight space
 
 ::: {layout-ncol=2}
-![Gradient descent on an ill-conditioned 2D loss bowl. Left: learning rate too large (zigzag/diverge). Right: good learning rate (smooth descent).](img/loss_landscape.png){width="100%"}
+![Gradient descent on an ill-conditioned 2D loss bowl. Left: learning rate too large — steps overshoot and bounce back and forth, then diverge. Right: good learning rate — smooth monotone descent to the minimum.](img/loss_landscape.png){width="100%"}
 
 :::: {.incremental}
 - **Loss landscape:** the surface $\hat{R}(\mathbf{w})$ over all possible weight vectors $\mathbf{w}$.
@@ -374,6 +374,8 @@ format:
 - **Effect:** smoother, faster convergence on ill-conditioned landscapes.
 ::::
 
+^[(PyTorch/heavy-ball convention; some texts include a $(1-\beta)$ factor on the gradient term, i.e. $\mathbf{v}_t = \beta\,\mathbf{v}_{t-1} + (1-\beta)\nabla L$.)]
+
 :::: {.notes}
 - Gesture to the optimizer comparison figure (next slide) where momentum visibly reduces the zigzag. "The orange GD trajectory slaloms back and forth. The momentum trajectory goes almost straight for the minimum."
 - The one point to land: momentum adds a one-line memory to SGD. The "velocity" vector averages over past gradients, smoothing out the oscillations in the steep dimension. This is the physical intuition — a ball rolling down a hill does not instantly change direction; it accumulates speed.
@@ -386,7 +388,7 @@ format:
 ## Adam — the go-to optimiser
 
 ::: {layout-ncol=2}
-![Optimizer trajectories: GD zigzags; momentum is smoother; Adam reaches the minimum in far fewer steps.](img/optimizer_comparison.png){width="100%"}
+![Optimizer trajectories on an ill-conditioned quadratic bowl (elongation ratio 20:1): GD zigzags across the steep dimension; SGD+momentum is visibly smoother; Adam reaches the minimum in far fewer steps.](img/optimizer_comparison.png){width="100%"}
 
 :::: {.incremental}
 - **Adam:** tracks both the gradient (momentum term $\hat{\mathbf{v}}_t$) and the squared gradient (adaptive scaling $\hat{\mathbf{s}}_t$):
@@ -684,21 +686,22 @@ Error
 ## The EM leakage trap: crops from one specimen
 
 ::: {layout-ncol=2}
-![Random crop split (left) vs. specimen-group split (right). The same synthetic dataset: $R^2 = 0.946$ with random split vs. $R^2 = 0.119$ with group split. The 0.83 gap is pure leakage.](img/leakage_crop_vs_specimen.png){width="100%"}
+![Random crop split (left, $R^2 = 0.936$, dishonest) vs. 3-fold specimen-group split (right, mean $R^2 = 0.169$, honest). Same synthetic dataset; the gap of 0.77 is pure leakage.](img/leakage_crop_vs_specimen.png){width="100%"}
 
 :::: {.incremental}
 - **The scenario:** 6 EM specimens, 20 crops each — 120 training examples.
   A per-specimen property (e.g., composition, lattice parameter, stoichiometry) is the target $y$.
-- **Random crop split:** crops from Specimen 3 land in both train and test.
+- **Random crop split** ($R^2 = 0.936$): crops from Specimen 3 land in both train and test.
   The model learns "Specimen 3 looks like this" and predicts well on test crops — but it has memorised a specimen, not the property.
-- **Specimen-group split:** entire Specimen 3 is in test only. The model must generalise across specimen identities — the honest evaluation.
+- **3-fold specimen-group split** (mean $R^2 = 0.169$): entire specimen pairs are in test only. The model must generalise across specimen identities — the honest evaluation.
 ::::
 :::
 
 :::: {.notes}
 - This is the emotional centrepiece of the lecture — spend 4–5 minutes here. Make it feel real.
-- Walk through the figure slowly: "On the left you see the data split randomly. The six colours are six specimens. Stars are test points. Notice that every colour has both circles (train) and stars (test) — that means the model has seen every specimen during training. On the right, two entire specimens (grey and pink) are completely absent from training — the model encounters them for the first time at test time. The $R^2$ drops from 0.95 to 0.12."
-- The one point to land: the 0.83 difference between the two scores is not model error — it is the amount by which the validation was lying. A score of 0.95 looks publication-worthy; the honest score of 0.12 says the model has learned nothing useful about the property of interest.
+- Walk through the figure slowly: "On the left, the scatter plot for the random split — all six specimens seen during training; predictions nearly perfect ($R^2 = 0.936$). On the right, the 3-fold grouped CV bar chart: each fold withholds 2 entire specimens. The honest mean $R^2 = 0.169$ — lower but positive, meaning the model does generalise somewhat across specimens, just not nearly as well as the random split claimed."
+- The one point to land: the 0.77 gap between the two scores is not model error — it is the amount by which the validation was lying. A score of 0.94 looks publication-worthy; the honest score of 0.17 reveals the inflated optimism from leakage.
+- Note for instructors: the honest score here is positive (not negative) by design. The data generation uses a realistic `SIGMA_TARGET` so cross-specimen generalisation is possible but weaker. In a more extreme memorisation scenario, the honest score could be near zero. The lesson is the gap, not whether the honest score is positive or negative.
 - Misconception to preempt: "if my model passes random K-fold with high $R^2$, it is a good model." Only if the crops are genuinely independent — which they are not if they come from the same specimen.
 - EM anchor: this scenario arises constantly in EM ML: predicting composition from EELS spectra (many spectra per sample), segmenting defects from tilt-series frames (many frames per specimen), or classifying crystal phases from diffraction patterns (many patterns per crystal grain).
 - Forward link: the cure is GroupKFold — next slide.
@@ -745,7 +748,7 @@ For each of the three setups below, identify the leakage and the fix.
 
 . . .
 
-**(b)** You collect 100 EBSD maps from the same 5 specimens (20 maps each). You run a random 5-fold CV and report Dice=0.91. On a 6th specimen, Dice=0.51.
+**(b)** You collect 100 EBSD maps from the same 5 specimens (20 maps each). You run a random 5-fold CV and report Dice=0.91. *(Dice: segmentation metric — see metrics section.)* On a 6th specimen, Dice=0.51.
 
 . . .
 
@@ -806,7 +809,7 @@ For each of the three setups below, identify the leakage and the fix.
 ## Regression metrics: MAE, RMSE, $R^2$
 
 ::: {layout-ncol=2}
-![Left: residual plot (random scatter = good model). Right: $R^2$ — the fraction of variance in $y$ explained by the model.](img/metrics_regression.png){width="100%"}
+![Left: residual plot with conventional $y - \hat{y}$ on the vertical axis (random scatter around zero = good model). Right: $R^2$ — the fraction of variance in $y$ explained by the model.](img/metrics_regression.png){width="100%"}
 
 :::: {.incremental}
 - $\mathrm{MAE} = \frac{1}{n}\sum|y_i - \hat{y}_i|$ — in the same units as $y$; robust to outliers.
