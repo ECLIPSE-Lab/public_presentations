@@ -1,0 +1,822 @@
+---
+title: |-
+  Data Science for Electron Microscopy<br>
+  Week 3: Linear algebra &amp; PCA you actually need
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+  - Institute of Micro- and Nanostructure Research
+bibliography: ref.bib
+csl: custom.csl
+execute:
+  eval: false
+  echo: true
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: ©Philipp Pelz - FAU Erlangen-Nürnberg - Data Science for Electron Microscopy
+---
+
+<!-- ===== §0. Recap + today's question ===== -->
+
+## Recap: where we left off
+
+:::: {.incremental}
+- **Week 2:** What is learning? EM data tensors, Poisson noise, SNR = √λ.
+- You can now simulate a noisy STEM image, measure its SNR, and explain why dose quadruples to double it.
+- Every EM pixel is a **count** — Poisson statistics, signal-dependent variance.
+- **Gap:** to do anything useful with a stack of 50 000 EELS spectra, we need a compact, interpretable representation.
+- **Today:** the minimum linear algebra to build that representation, culminating in PCA as the workhorse for EM spectral denoising.
+::::
+
+:::: {.notes}
+- Open by asking: who completed the Week 2 notebook? Validate the experience briefly — the SNR vs dose plot should have been visually striking.
+- The one point to land: Week 2 showed that low-dose data is unavoidably noisy. Today we learn the tool that separates signal from noise in a hyperspectral dataset — not by collecting more electrons, but by exploiting structure in the data.
+- Misconception to preempt: "I did not enjoy linear algebra in my physics degree." This week's linear algebra is entirely geometric and intuition-first — no proofs, no eigendecomposition algebra. If you can picture a stretched ellipse, you already know the core idea.
+- EM anchor: an EELS spectrum image is a 3-D tensor (x, y, E) with potentially thousands of pixels, each carrying a 1024-channel spectrum. Without a tool to compress and denoise, the dataset is unusable.
+- Pacing note: move briskly through §1–2 (geometry, ~20 min), protect 25 min for §4–5 (SVD and PCA), and 20 min for §6–7 (denoising + eigen-spectra). The scree-plot and denoising sections are the payoff — do not let the early geometry slides steal their time.
+- Transition: "Two questions anchor today — let me show you before we dive in."
+::::
+
+## Today's question
+
+:::: {.incremental}
+- **Why does PCA denoise an EELS spectrum image?** Because signal lives in a **low-dimensional subspace**; noise spreads across all directions.
+- **How do we find that subspace?** Singular Value Decomposition — the same three-step picture you can draw without any formulas.
+- **Road map:** vectors & matrices as geometry (5) · projection (4) · SVD picture (5) · PCA = max-variance directions (6) · scree plot (4) · PCA denoising (6) · eigen-spectra (3) · ill-conditioning (3) · limits + forward link (2).
+- **Self-study:** `notebooks/week03_pca_eels.ipynb` — build a synthetic EELS stack, compute PCA, denoise, choose k from the scree plot.
+::::
+
+:::: {.notes}
+- Name the payoff upfront: by slide 30, students will be able to open any EELS spectrum image, apply PCA in four lines of code, and read a scree plot to decide how many components are signal vs noise. That is a genuine lab skill.
+- The one point to land: linear algebra is not about computation — it is about geometry. Every concept today has a picture that is more useful than the formula.
+- Misconception to preempt: "PCA is a black box." It is not — every output (scores, loadings, singular values) has a direct physical interpretation in EM. We build that interpretation today.
+- Pacing note: this slide is an orientation, not a lecture. Read it together with the room and point at two anchors: (1) the SVD picture in §3 and (2) the EELS denoising demo in §6. Tell students those two things are the core of the week.
+- Forward link: Week 4 uses linear regression — which is least-squares projection onto a subspace, the same geometry we introduce today. Week 8 introduces autoencoders as a non-linear generalisation of PCA.
+- Transition: "Start with the simplest thing: what is a vector?"
+::::
+
+<!-- ===== §1. Vectors & matrices as geometry ===== -->
+
+## Vectors: arrows in space
+
+:::: {.incremental}
+- A **vector** $\mathbf{x} \in \mathbb{R}^D$ is a point (or arrow) in $D$-dimensional space.
+- **In EM:** one EELS spectrum with 200 energy channels is a point in $\mathbb{R}^{200}$.
+- The **dot product** $\mathbf{a}^T \mathbf{b} = |\mathbf{a}||\mathbf{b}|\cos\theta$ measures the alignment between two vectors.
+- Dot product = 0 ⟹ **orthogonal** (90°) — the two vectors carry independent information.
+- **Norm** $\|\mathbf{a}\| = \sqrt{\mathbf{a}^T\mathbf{a}}$ = the length of the arrow.
+::::
+
+:::: {.notes}
+- Draw two arrows on the board. Ask: what does it mean for two spectra to be "similar"? Answer: their dot product is large (they point in almost the same direction). Two chemically distinct spectra (oxide vs metal) will be nearly orthogonal.
+- The one point to land: angle between vectors = degree of similarity. This is the geometric foundation of every clustering and similarity metric we will use in the course.
+- Misconception to preempt: "a vector is just a list of numbers." It is — but it also has a geometric meaning (direction + magnitude) that becomes crucial when we ask "which direction captures the most variance?" Keep both views active.
+- EM anchor: the dot product between a measured EELS spectrum and a reference Fe-L edge spectrum is a spectroscopic "match score" — this is the basis of reference-spectrum fitting and spectral unmixing.
+- Forward link: the projection of one vector onto another (next slide) is the foundation of PCA and least-squares regression.
+- Transition: "How do we project one vector onto another? That is the workhorse operation of this whole week."
+::::
+
+## Projection: the core operation
+
+::: {.columns}
+::: {.column width="55%"}
+![Projection of $\mathbf{b}$ onto the direction of $\mathbf{a}$; the residual (orange dashed) is orthogonal.](img/vectors_projection.png){width="100%"}
+:::
+::: {.column width="45%"}
+:::: {.incremental}
+- **Scalar projection** of $\mathbf{b}$ onto unit vector $\hat{\mathbf{a}}$: $c = \hat{\mathbf{a}}^T \mathbf{b}$.
+- **Vector projection**: $\text{proj}_{\mathbf{a}} \mathbf{b} = c \, \hat{\mathbf{a}}$.
+- The **residual** $\mathbf{b} - \text{proj}_{\mathbf{a}}\mathbf{b}$ is perpendicular to $\mathbf{a}$.
+- This decomposition — "how much lies along $\mathbf{a}$?" — is what PCA does in every direction.
+::::
+:::
+:::
+
+:::: {.notes}
+- Work through the picture carefully: the blue arrow is $\mathbf{a}$, the red arrow is $\mathbf{b}$, the green arrow is the projection. The orange dashed line is the residual — it meets $\mathbf{a}$ at a right angle.
+- The one point to land: projection = "shadow" of $\mathbf{b}$ onto the line of $\mathbf{a}$. The scalar $c$ tells you how much of $\mathbf{b}$ is "explained" by the direction $\mathbf{a}$.
+- Misconception to preempt: "the projection is the closest point on the line to $\mathbf{b}$." This is true and equivalent, but students find the "shadow" intuition more concrete. Use both.
+- EM anchor: projecting an EELS spectrum $\mathbf{b}$ onto a reference spectrum $\hat{\mathbf{a}}$ (normalised to unit length) gives the coefficient that tells you "how much Fe-L edge is in this spectrum." This is spectral unmixing in one formula.
+- Forward link: least-squares regression (Week 4) generalises this to projecting onto a multi-dimensional subspace spanned by multiple feature vectors.
+- Transition: "Now scale up: what does a matrix do geometrically?"
+::::
+
+## Matrices as geometric transformations
+
+::: {.columns}
+::: {.column width="55%"}
+![A $2\times2$ matrix applied to the unit square: rotates, stretches, and shears.](img/vectors_projection.png){width="100%"}
+:::
+::: {.column width="45%"}
+:::: {.incremental}
+- A matrix $\mathbf{A}$ maps every vector $\mathbf{x}$ to a new vector $\mathbf{y} = \mathbf{Ax}$.
+- Geometrically: $\mathbf{A}$ **rotates**, **stretches**, and (for non-symmetric $\mathbf{A}$) **shears** space.
+- **The data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$:** $N$ spectra (rows), each with $D$ energy channels (columns).
+- One row = one spectrum = one point in $\mathbb{R}^D$.
+- **Convention for this week:** observations in rows, features in columns.
+::::
+:::
+:::
+
+:::: {.notes}
+- The unit-square picture is the classic: take the four corners of the unit square, apply $\mathbf{A}$ to each corner, watch the square become a parallelogram. This encodes the full action of the matrix geometrically.
+- The one point to land: a matrix is not just a 2-D spreadsheet — it is a machine that reshapes space. Understanding what kind of reshaping it does (rotation? stretch? compression?) is the key to understanding PCA and SVD.
+- Misconception to preempt: "the data matrix has $D$ rows (features) and $N$ columns (observations)." Different fields use different conventions. In this course: observations (spectra, pixels, samples) are **rows**; features (energy channels, pixel values) are **columns**. Always check shape with `.shape`.
+- EM anchor: for an EELS spectrum image of shape (64, 64, 1024), you reshape the first two axes to get the data matrix $\mathbf{X}$ of shape (4096, 1024) — 4096 spectra, each with 1024 energy channels. This is the input to PCA.
+- Forward link: the column space of $\mathbf{X}$ (the span of all spectra) is the subspace PCA is searching for a compact basis for.
+- Transition: "When we talk about 'dimensions' of EM data, what do we mean precisely?"
+::::
+
+## The data matrix: EM spectra as points in high-D space
+
+::: {.columns}
+::: {.column width="55%"}
+![Data cloud with principal directions (arrows): PC1 = direction of maximum spread, PC2 = orthogonal residual.](img/data_matrix_pca_cloud.png){width="100%"}
+:::
+::: {.column width="45%"}
+:::: {.incremental}
+- Each EELS spectrum $\mathbf{x}_i \in \mathbb{R}^{1024}$ is a **point** in 1024-D space.
+- The cloud of $N$ spectra occupies only a tiny corner of that space — most directions are empty.
+- **Intrinsic dimensionality:** if a sample has $K$ distinct chemical phases, the spectra approximately lie on a $K$-dimensional subspace.
+- **Key intuition:** for a two-phase sample, all spectra are linear combinations of two end-members → they lie on a **2-D plane** inside $\mathbb{R}^{1024}$.
+- PCA finds and extracts that plane.
+::::
+:::
+:::
+
+:::: {.notes}
+- Work through the figure in detail. The points are spectra; the two arrows are the first two principal components. PC1 points along the direction where spectra vary most (chemical difference between phases); PC2 points along the second-largest variation.
+- The one point to land: a 1024-channel EELS dataset from a two-phase sample is effectively 2-dimensional. We only need 2 numbers per spectrum (the scores on PC1 and PC2) to characterise it completely. The other 1022 dimensions are noise.
+- Misconception to preempt: "more channels = more information." Not necessarily. More channels can mean more noise in dimensions that carry no signal. PCA identifies the low-dimensional signal subspace and discards the noise-dominated directions.
+- EM anchor: in a steel sample with austenite and martensite phases, the EELS spectra from each phase are nearly constant within the phase. The data cloud is very thin (one dimension per phase), so K=2 components capture essentially all the signal.
+- Forward link: the concept of intrinsic dimensionality reappears in Week 8 (autoencoders) where non-linear dimensionality reduction finds curved, not flat, low-dimensional structures.
+- Transition: "How do we find a compact basis for a cloud of points? Start with projection."
+::::
+
+## Reshaping EM data into a matrix: the practical step
+
+```python
+import numpy as np
+
+# Simulate loading an EELS spectrum image
+# Shape: (ny, nx, energy_channels) = (64, 64, 1024)
+eels_map = np.random.rand(64, 64, 1024).astype(np.float32)
+
+ny, nx, ne = eels_map.shape
+print("Original shape:", eels_map.shape)   # (64, 64, 1024)
+
+# Reshape: stack all pixels into rows → data matrix
+X = eels_map.reshape(ny * nx, ne)
+print("Data matrix shape:", X.shape)        # (4096, 1024) — N=4096 spectra, D=1024 channels
+
+# After PCA: reshape score maps back to spatial image
+# (assume K=3 components)
+K = 3
+# scores.shape = (4096, 3)  →  reshape to (64, 64, 3)
+# score_maps = scores.reshape(ny, nx, K)
+print(f"Score maps after reshape: ({ny}, {nx}, {K}) = {ny*nx*K} values total")
+```
+
+. . .
+
+- **Data layout rule:** observations (pixels, spectra) in **rows**; features (channels) in **columns**.
+- Always check `X.shape` before any analysis — a transposed matrix gives meaningless PCA.
+
+:::: {.notes}
+- This is a practical code slide. Walk through it line by line. The reshape from (64, 64, 1024) to (4096, 1024) is the single operation that unlocks PCA for any spectral image.
+- The one point to land: the reshape operation does not change the data — it re-indexes it. The first 1024 values in row 0 of X are the spectrum at pixel (0, 0); the next 1024 in row 1 are the spectrum at pixel (0, 1); and so on. No information is lost.
+- Misconception to preempt: "I should reshape the matrix as (1024, 4096) because features go in rows." In NumPy/sklearn, the convention is always observations in rows. Transposing before PCA gives a completely different (and wrong) result — PCA would find directions of maximum variance across energy channels, not across pixels.
+- EM anchor: hyperspy's `s.decomposition()` does this reshape internally. Understanding it means you can use `s.get_decomposition_factors()` and `s.get_decomposition_loadings()` with confidence.
+- Forward link: in the notebook, students do exactly this reshape operation before calling `np.linalg.svd`.
+- Transition: "Now the core projection geometry."
+::::
+
+<!-- ===== §2. Projection & least-squares-as-projection intuition ===== -->
+
+## Projection onto a subspace
+
+:::: {.incremental}
+- Suppose we want to **approximate** a spectrum $\mathbf{x}$ using only $K$ basis vectors $\{\mathbf{v}_1, \ldots, \mathbf{v}_K\}$.
+- The best approximation (minimum reconstruction error) is the **orthogonal projection**:
+  $$\hat{\mathbf{x}} = \sum_{k=1}^{K} (\mathbf{v}_k^T \mathbf{x})\, \mathbf{v}_k = \mathbf{V}_K \mathbf{V}_K^T \mathbf{x}.$$
+- The coefficients $c_k = \mathbf{v}_k^T \mathbf{x}$ are called **scores** — how much of $\mathbf{x}$ lies along $\mathbf{v}_k$.
+- **Residual:** $\mathbf{x} - \hat{\mathbf{x}}$ is orthogonal to every $\mathbf{v}_k$ — it contains whatever the $K$ basis vectors could not explain.
+- If the basis vectors capture signal, the residual contains noise.
+::::
+
+:::: {.notes}
+- This is the conceptual heart of both PCA and linear regression. Connect back to the single-vector projection: projecting onto $K$ basis vectors is just doing that operation $K$ times and adding up the results.
+- The one point to land: "best approximation in the least-squares sense = orthogonal projection." This is a theorem (the projection theorem), not a convention. It means PCA reconstruction is optimal in the Frobenius norm sense.
+- Misconception to preempt: "I need to choose the basis vectors before projecting." For projection onto a **given** subspace, yes. For PCA, the algorithm finds the optimal basis vectors from the data. The projection formula is then applied with those learned vectors.
+- EM anchor: if we project an EELS spectrum onto a reference Fe-L edge eigenspectrum, the score $c_1$ directly measures the Fe content at that pixel. Low $c_1$ = Fe-poor; high $c_1$ = Fe-rich. The score map is a chemical map.
+- Forward link: in Week 4, linear regression is exactly this: approximate a target vector $\mathbf{y}$ by projecting it onto the subspace spanned by the feature matrix columns. The coefficients are the regression weights.
+- Transition: "This geometric picture leads directly to least squares with no calculus."
+::::
+
+## Least squares = projection (no calculus required)
+
+:::: {.incremental}
+- **Problem:** find weights $\mathbf{w}$ such that $\mathbf{Xw} \approx \mathbf{y}$ (predict target $\mathbf{y}$ from features $\mathbf{X}$).
+- **Geometric view:** $\mathbf{Xw}$ can only reach the **column space** of $\mathbf{X}$.
+- The best approximation is the orthogonal projection of $\mathbf{y}$ onto that column space.
+- **Orthogonality condition:** the residual $\mathbf{r} = \mathbf{y} - \mathbf{Xw}$ must be perpendicular to every column of $\mathbf{X}$, i.e. $\mathbf{X}^T \mathbf{r} = \mathbf{0}$.
+- Substituting: $\mathbf{X}^T(\mathbf{y} - \mathbf{Xw}) = \mathbf{0}$ → **Normal equations:** $\mathbf{X}^T\mathbf{X}\,\hat{\mathbf{w}} = \mathbf{X}^T \mathbf{y}$ [@bishop2006pattern].
+::::
+
+:::: {.notes}
+- Draw the classic picture on the board: $\mathbf{y}$ is an arrow in $\mathbb{R}^N$ outside the column space (a plane). The projection $\hat{\mathbf{y}} = \mathbf{X}\hat{\mathbf{w}}$ is the closest point in the plane; the residual drops perpendicularly to the plane.
+- The one point to land: "Normal equations" uses "normal" in the sense of perpendicular, not in the sense of Gaussian. The residual must be perpendicular to the feature subspace — that single geometric requirement gives the entire formula, no derivatives needed.
+- Misconception to preempt: "I need to know calculus to understand least squares." The geometric derivation is completely calculus-free. The calculus derivation agrees, which is reassuring — but you do not need it to understand what is happening.
+- EM anchor: fitting an EELS background (power-law or polynomial) is a least-squares problem: find the coefficients of the background model that minimise the squared residual in the pre-edge region. The feature matrix $\mathbf{X}$ is constructed from the background functional form evaluated at each energy channel.
+- Forward link: in Week 4 we will compute $\hat{\mathbf{w}}$ numerically using gradient descent — but understanding the geometric answer (projection) tells us what gradient descent is converging to.
+- Transition: "Now for the big tool: Singular Value Decomposition. We will build it as a geometric story."
+::::
+
+## Inner product and orthonormal bases: the computational engine
+
+:::: {.incremental}
+- **Orthonormal basis** $\{\mathbf{v}_1, \ldots, \mathbf{v}_K\}$: each vector has unit length and all pairs are perpendicular.
+  - Formally: $\mathbf{v}_i^T \mathbf{v}_j = \delta_{ij}$ (= 1 if $i=j$, else 0).
+- **Computational advantage:** to find the coefficient of $\mathbf{x}$ along $\mathbf{v}_k$, just compute one dot product: $c_k = \mathbf{v}_k^T \mathbf{x}$.
+- No matrix inversion needed — orthonormality makes the "inverse" trivial.
+- **PCA principal components are orthonormal:** each eigenspectrum has unit norm; different eigenspectra are perpendicular.
+- This means the scores for different PCs are **uncorrelated** — a crucial property for interpretation.
+::::
+
+:::: {.notes}
+- The orthonormality condition ($\delta_{ij}$) explains why PCA computation is cheap: projecting a spectrum onto K principal components requires only K dot products (K matrix-vector multiplies), not a system solve. Once the eigenspectra are known, processing a new spectrum is O(KD) — very fast.
+- The one point to land: "uncorrelated PCs" means the score for PC1 carries no information about the score for PC2. If both were large and positively correlated, they would be redundant. Orthogonality guarantees each PC adds truly independent information.
+- Misconception to preempt: "orthogonal components must be physically uncorrelated." PCA components are decorrelated in the data — their scores have zero covariance. But two physical quantities that happen to be decorrelated in *this particular* dataset are not guaranteed to be uncorrelated in general. PCA does not discover universal physical independence; it discovers statistical independence in the specific dataset.
+- EM anchor: in EELS, after PCA, the Fe score map and Cr score map are guaranteed to be uncorrelated (by construction of PCA). If the actual Fe and Cr distributions in the sample are correlated (e.g. both track sample thickness), the PCA components will not directly correspond to Fe and Cr — instead they will encode linear combinations. To get back to element maps, you need an extra unmixing step.
+- Forward link: the orthonormality of PCA components is what makes the Eckart–Young theorem work — the reconstruction error is simply the sum of the discarded singular values squared, with no cross-terms.
+- Transition: "Three-dimensional intuition helps with the scree plot concept."
+::::
+
+## Projection intuition in 3-D
+
+:::: {.incremental}
+- Imagine a cloud of 3-D points (atoms in a grain boundary, spectra from a 3-phase sample).
+- Most of the **variance** (spread) lies along one principal direction — call it $\mathbf{v}_1$.
+- Projecting every point onto $\mathbf{v}_1$ gives a 1-D summary that preserves most information.
+- Adding $\mathbf{v}_2$ (orthogonal to $\mathbf{v}_1$) captures the next largest spread, and so on.
+- PCA finds $\mathbf{v}_1, \mathbf{v}_2, \ldots$ in order of decreasing variance — this is exact.
+- **Key property:** $K$ projections capture more variance than any other set of $K$ directions — PCA is optimal.
+::::
+
+:::: {.notes}
+- Use a physical analogy: shadow-casting. If you have a 3-D object and shine a light, the shadow on a wall is a 2-D projection. The shadow that shows the most detail corresponds to the best projection direction — the "most informative" shadow. PCA finds exactly that direction, then the second-most informative, and so on.
+- The one point to land: PCA projections are optimal in a specific sense — among all possible $K$-dimensional subspaces, PCA chooses the one that minimises reconstruction error (equivalently, maximises captured variance). This is the Eckart–Young theorem, and it is why PCA is used everywhere.
+- Misconception to preempt: "there might be a better set of 2 directions than PC1 and PC2." There isn't — the optimality of PCA is a theorem. However, "better" here means "explains more variance," not "more physically interpretable." Non-negative Matrix Factorization (NMF) sacrifices optimality for physical interpretability.
+- EM anchor: in a 4D-STEM dataset, the 3-D analogy is literal — diffraction patterns vary across a 2-D spatial scan plus a 2-D reciprocal space. PCA collapses the (kx, ky) pattern variability into a few principal components that encode grain orientation or strain.
+- Forward link: the next three slides formalise this with SVD, which is the computational engine of PCA.
+- Transition: "The mathematical tool behind PCA is SVD. Let me show you its geometry."
+::::
+
+<!-- ===== §3. SVD as a picture ===== -->
+
+## The covariance matrix: where geometry meets statistics
+
+:::: {.incremental}
+- **Covariance matrix** of centered data: $\mathbf{S} = \frac{1}{N-1}\tilde{\mathbf{X}}^T\tilde{\mathbf{X}} \in \mathbb{R}^{D \times D}$.
+- Entry $S_{ij}$ = covariance between energy channels $i$ and $j$; $S_{ii}$ = variance of channel $i$.
+- **Geometry:** the level set $\mathbf{x}^T\mathbf{S}^{-1}\mathbf{x} = 1$ is an **ellipsoid** whose axes are the eigenvectors of $\mathbf{S}$ with lengths $\propto \sqrt{\lambda_k}$ (eigenvalues).
+- **PCA = align the coordinate axes with the ellipsoid axes:** rotate to the eigenbasis of $\mathbf{S}$, where features are uncorrelated.
+- **In EM:** off-diagonal entries of $\mathbf{S}$ are large when two energy channels always increase or decrease together (e.g. Fe-L23 channels are correlated because they all belong to the same edge).
+::::
+
+:::: {.notes}
+- The covariance matrix slide is the bridge between the abstract "directions of maximum variance" idea and the concrete eigenvector calculation. The ellipsoid picture is the geometric key: the long axis of the data ellipsoid is PC1.
+- The one point to land: the shape of the covariance ellipsoid is exactly what PCA extracts. A thin, elongated ellipsoid means the data is highly structured and low-dimensional (good for PCA); a spherical ellipsoid means the data is isotropic (PCA helps little — all directions have equal variance).
+- Misconception to preempt: "the covariance matrix is $N \times N$" (number of observations squared). It is $D \times D$ (number of features squared). For EELS data with 1024 channels and 4096 pixels, the covariance matrix is 1024×1024, not 4096×4096. This is why PCA is feasible even for huge numbers of pixels.
+- EM anchor: in EELS, correlated energy channels are the norm because each element contributes a characteristic edge shape that spans many channels. The covariance matrix of EELS spectra is block-diagonal, with each block corresponding to an element's edge region.
+- Forward link: SVD of the centered data matrix gives exactly the eigenvectors of $\mathbf{S}$ without ever forming $\mathbf{S}$ explicitly — which is important because forming $\mathbf{S}$ is computationally expensive and can be numerically unstable for large $D$.
+- Transition: "Now the big tool: SVD as a geometric picture."
+::::
+
+## SVD: the rotate–stretch–rotate decomposition
+
+::: {.columns}
+::: {.column width="60%"}
+![SVD applied to a unit circle: (1) rotate by $\mathbf{V}^T$, (2) stretch by $\mathbf{\Sigma}$, (3) rotate by $\mathbf{U}$ — the result is an ellipse.](img/svd_rotate_stretch_rotate.png){width="100%"}
+:::
+::: {.column width="40%"}
+:::: {.incremental}
+- Any matrix $\mathbf{X}$ (data matrix or otherwise) can be written as:
+  $$\mathbf{X} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T.$$
+- **$\mathbf{V}$**: right singular vectors — input rotation (principal directions in feature space).
+- **$\boldsymbol{\Sigma}$**: singular values on the diagonal — how much each direction is stretched.
+- **$\mathbf{U}$**: left singular vectors — output rotation (scores in observation space).
+::::
+:::
+:::
+
+:::: {.notes}
+- Walk through the four panels in the figure carefully: start with the unit circle (all possible unit-length inputs), apply $\mathbf{V}^T$ (rotate), then $\mathbf{\Sigma}$ (stretch along axes to form an ellipse), then $\mathbf{U}$ (rotate the ellipse). The result is the set of all possible output vectors when the input runs over the unit sphere.
+- The one point to land: the singular values in $\boldsymbol{\Sigma}$ are the semi-axes of the output ellipse. A large singular value = a direction the matrix stretches strongly = a direction that carries a lot of information. A small singular value = a direction barely amplified = likely noise.
+- Misconception to preempt: "SVD is just eigendecomposition." Similar idea, but SVD works on any matrix (including rectangular), while eigendecomposition only applies to square matrices. For PCA, the connection is: the right singular vectors of the centered data matrix $\mathbf{X}$ are the eigenvectors of the covariance matrix $\mathbf{X}^T\mathbf{X}/(N-1)$.
+- EM anchor: for the EELS data matrix $\mathbf{X}$ (spectra × energy channels), the first singular value is proportional to the total signal strength; the corresponding left singular vector $\mathbf{u}_1$ shows how that signal varies across pixels; the right singular vector $\mathbf{v}_1$ shows the spectral shape of that variation.
+- Forward link: the truncated SVD (keeping only the top $k$ singular values) is exactly the PCA denoising operation we will use in §6.
+- Transition: "Let me make the SVD factors more concrete with their specific meanings."
+::::
+
+## SVD factors: what each part means
+
+:::: {.incremental}
+- $\mathbf{X} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T$ for a data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$ (N spectra, D channels):
+- **$\mathbf{V}$** ($D \times D$): columns are **eigenspectra** — the "spectral shapes" that make up the data.
+- **$\boldsymbol{\Sigma}$** ($N \times D$, diagonal): singular values $\sigma_1 \geq \sigma_2 \geq \ldots \geq 0$ — the **importance** of each eigenspectrum.
+- **$\mathbf{U}$** ($N \times N$): columns are **score maps** — how strongly each eigenspectrum is expressed at each pixel.
+- **Compact notation:** $\mathbf{X} \approx \sum_{k=1}^{K} \sigma_k \, \mathbf{u}_k \mathbf{v}_k^T$ — a sum of $K$ rank-1 "spectral images."
+::::
+
+:::: {.notes}
+- This is the interpretive slide for EM practitioners. Every quantity has a direct measurement meaning: eigenspectrum = a spectral shape (may resemble an edge minus a background); score map = a chemical map showing where that spectral shape is strong.
+- The one point to land: each rank-1 term $\sigma_k \mathbf{u}_k \mathbf{v}_k^T$ is a "snapshot" of one spectral variation mode. The first few terms describe the dominant chemistry; the later terms describe noise fluctuations that look like random patterns in both the score map and the eigenspectrum.
+- Misconception to preempt: "the first singular vector is the mean spectrum." No — PCA first centers the data (subtracts the mean spectrum), then finds the first singular vector of the centered data. The mean spectrum is removed before SVD. After centering, PC1 captures the largest *variation* around the mean, not the mean itself.
+- EM anchor: Trebbia and Bonnet (1990) [@trebbia1990eels] introduced SVD/PCA analysis to EELS data. Their insight was exactly this: the first few singular vectors correspond to real chemical variations; the rest look like noise. This is now standard in hyperspy's PCA implementation.
+- Forward link: the scree plot (next section) tells you how many rank-1 terms to keep — where the singular values drop from "signal-large" to "noise-small."
+- Transition: "Before the scree plot: the full PCA recipe in two slides."
+::::
+
+## SVD and low-rank approximation (Eckart–Young)
+
+:::: {.incremental}
+- **Truncated SVD:** keep only the top $k$ singular values; set the rest to zero.
+- **Result:** $\hat{\mathbf{X}}_k = \mathbf{U}_k \boldsymbol{\Sigma}_k \mathbf{V}_k^T$, where subscript $k$ means "first $k$ columns."
+- **Optimality (Eckart–Young theorem):** $\hat{\mathbf{X}}_k$ is the best rank-$k$ approximation of $\mathbf{X}$ in the sense of minimising the Frobenius norm of the reconstruction error:
+  $$\| \mathbf{X} - \hat{\mathbf{X}}_k \|_F = \sqrt{\sigma_{k+1}^2 + \sigma_{k+2}^2 + \cdots}.$$
+- **Denoising:** if signal lives in rank-$k$ and noise spreads over all ranks, truncation removes noise.
+- In Python: `U, s, Vt = np.linalg.svd(X, full_matrices=False)` — then zero out `s[k:]`.
+::::
+
+:::: {.notes}
+- The Eckart–Young theorem is the one "theorem" worth naming here — it is the mathematical guarantee that makes PCA trustworthy for denoising. You do not need to prove it, but students should know it exists.
+- The one point to land: the reconstruction error from truncating at rank $k$ is exactly computable from the discarded singular values. This is not an approximation — it is an exact formula. You can always compute how much information you throw away.
+- Misconception to preempt: "truncating at rank $k$ removes only noise." It removes the directions with smallest singular values, which are *dominated* by noise if the signal is truly low-rank. But if a rare phase occupies only 1% of pixels, its singular value may be small — and truncation may discard it. Always check the residual.
+- EM anchor: a synthetic EELS spectrum image constructed from two latent components plus Poisson noise has true rank 2. Its data matrix will have two large singular values (signal) and many small ones (noise floor). The exact reconstruction error from keeping only rank 2 is $\sqrt{\sum_{k>2} \sigma_k^2}$.
+- Forward link: the scree plot is a visual display of the singular values. The elbow (where the curve transitions from steeply decreasing to flat) marks the boundary between signal and noise.
+- Transition: "Now PCA — putting the geometric pieces together."
+::::
+
+<!-- ===== §4. PCA = directions of max variance ===== -->
+
+## PCA: directions of maximum variance
+
+:::: {.incremental}
+- **PCA** finds the orthonormal directions $\mathbf{v}_1, \mathbf{v}_2, \ldots$ that maximise the **variance of the projected data**.
+- Mathematically: PC1 maximises $\text{Var}(\mathbf{X}\mathbf{v})$ subject to $\|\mathbf{v}\|=1$.
+- Solution: $\mathbf{v}_1$ is the **first right singular vector** of the centered data matrix.
+- PC2 maximises variance subject to $\mathbf{v}_2 \perp \mathbf{v}_1$ — and so on.
+- **Equivalently:** PCA diagonalises the covariance matrix $\mathbf{S} = \frac{1}{N-1}\mathbf{X}^T\mathbf{X}$ (after centering).
+- The eigenvalues $\lambda_k = \sigma_k^2/(N-1)$ are the variances along each principal component.
+::::
+
+:::: {.notes}
+- Connect back to the data-cloud figure from earlier. The long axis of the ellipse is PC1 (maximum spread = maximum variance). The short axis is PC2. SVD finds both simultaneously, plus all higher PCs.
+- The one point to land: "PCA = SVD of the centered data matrix." The centering step is crucial — without it, the first singular vector just points toward the mean spectrum, which is not interesting.
+- Misconception to preempt: "PCA maximises variance so it always finds the most physically meaningful directions." Maximum variance means maximum spread across samples. If the dominant variation is an instrumental artefact (beam drift, brightness drift), PC1 will capture that, not the chemistry. Always interpret PCs in the context of what causes spectral variation in your experiment.
+- EM anchor: in EELS of a two-phase steel sample, PC1 typically captures the global intensity variation (due to sample thickness) and PC2 captures the chemical contrast between phases — because the chemical variation is the second-largest source of spectral change after thickness.
+- Forward link: the scree plot shows the eigenvalues $\lambda_k$ (or equivalently the singular values $\sigma_k$) in decreasing order. The drop from signal-eigenvalues to noise-eigenvalues is the elbow. We read that next.
+- Transition: "Scores and loadings are the outputs of PCA — let me name them precisely."
+::::
+
+## Scores and loadings: PCA outputs in EM
+
+:::: {.incremental}
+- After centering $\mathbf{X}$ (subtract mean spectrum): $\tilde{\mathbf{X}} = \mathbf{X} - \bar{\mathbf{x}}\mathbf{1}^T$.
+- **Loadings (eigenspectra):** rows of $\mathbf{V}^T$ — the spectral shapes of each PC. Shape: ($K \times D$).
+- **Scores:** $\mathbf{C} = \tilde{\mathbf{X}} \mathbf{V}_K$ — how strongly each PC is expressed at each pixel. Shape: ($N \times K$).
+- Reshape scores back to (ny, nx, K) → **score maps** (chemical images).
+- Reshape loadings to (K, D) → **eigenspectra** (spectral shapes).
+- **Reconstruction with $k$ components:** $\hat{\mathbf{X}} = \bar{\mathbf{x}}\mathbf{1}^T + \mathbf{C}\mathbf{V}_K^T$.
+::::
+
+:::: {.notes}
+- Walk through the full pipeline on the board: (1) form data matrix (N×D); (2) subtract mean; (3) call `np.linalg.svd`; (4) take first K columns of $\mathbf{V}$ as loadings; (5) project: scores = centered_data @ loadings; (6) reshape scores to image shape; (7) to denoise: reconstruct = mean + scores @ loadings.T. That is the entire algorithm — 7 steps, no black box.
+- The one point to land: scores = "where is each PC strong?" (chemical map). Loadings = "what does each PC look like spectrally?" (spectral shape). Together they give a complete interpretation.
+- Misconception to preempt: "I need to use a PCA library." You can, and you should for large data (sklearn's `IncrementalPCA`). But understanding that PCA is just SVD of the centered matrix means you can always fall back to `np.linalg.svd` and build it from scratch — which you will do in the notebook.
+- EM anchor: in the notebook, students will build exactly this pipeline on a synthetic EELS line scan. The score maps will clearly show chemical variation; the eigenspectra will show recognisable spectral shapes (an edge profile for PC1, a difference spectrum for PC2).
+- Forward link: the scree plot (next section) tells you which K to use before you compute the scores and loadings.
+- Transition: "How do you pick K? The scree plot is your guide."
+::::
+
+## PCA step by step: the algorithm
+
+:::: {.incremental}
+1. **Form the data matrix:** reshape spectral image to $(N, D)$ — $N$ pixels, $D$ energy channels.
+2. **Center:** subtract the mean spectrum $\bar{\mathbf{x}}$ from each row.
+3. **SVD:** `U, s, Vt = np.linalg.svd(X_centered, full_matrices=False)`.
+4. **Choose $k$** from the scree plot (next section).
+5. **Scores:** `C = X_centered @ Vt[:k].T` — shape $(N, k)$.
+6. **Reconstruct:** `X_hat = mean + C @ Vt[:k]` — shape $(N, D)$.
+7. **Reshape** back to $(n_y, n_x, D)$ for display.
+::::
+
+:::: {.notes}
+- This slide bridges theory to practice. Go through each step with the EELS example shapes: (4096, 1024) data matrix → center → SVD → choose k=3 → scores (4096, 3) → reconstruct (4096, 1024) → reshape to (64, 64, 1024).
+- The one point to land: the entire PCA denoising pipeline is seven lines of NumPy. There is no magic. Each line maps to a geometric operation we already understand.
+- Misconception to preempt: "I should use sklearn PCA because it is faster." For small data, `np.linalg.svd` is fine and perfectly transparent. For large EELS datasets (millions of spectra), `sklearn.decomposition.IncrementalPCA` processes data in chunks. The math is identical.
+- EM anchor: hyperspy's `s.decomposition(algorithm='svd')` does exactly these seven steps internally. Understanding the steps means you can interpret hyperspy's output and troubleshoot unexpected PCs.
+- Forward link: the notebook asks students to implement steps 1–7 from scratch on a synthetic EELS stack, then compare with `sklearn.decomposition.PCA`. Both should give identical results.
+- Transition: "Now the critical question: how many components do we keep? The scree plot answers this."
+::::
+
+## PCA in five lines of NumPy
+
+```python
+import numpy as np
+
+# X: data matrix, shape (N, D) — observations in rows, features in columns
+# (already centered: X_centered = X - X.mean(axis=0))
+
+U, s, Vt = np.linalg.svd(X_centered, full_matrices=False)  # core computation
+K = 3                                                         # chosen from scree plot
+
+# Scores (chemical maps): how strongly each PC is expressed per pixel
+scores = X_centered @ Vt[:K].T             # shape (N, K)
+
+# Eigenspectra (spectral shapes): rows of Vt[:K], shape (K, D)
+eigenspectra = Vt[:K]                      # already unit-norm and orthogonal
+
+# Reconstruct (denoise): keep only the signal subspace
+X_denoised = scores @ eigenspectra + X_centered.mean(axis=0)  # WRONG without centering fix
+```
+
+. . .
+
+```python
+# Correct full pipeline including mean restoration
+mean_spectrum = X.mean(axis=0)             # (D,) — mean of original (un-centered) data
+X_denoised    = (U[:, :K] * s[:K]) @ Vt[:K] + mean_spectrum   # shape (N, D)
+```
+
+:::: {.notes}
+- Walk through each line carefully. Students who did the Week 1 notebook will recognise the array operations. The only new call is `np.linalg.svd`.
+- The one point to land: the entire PCA pipeline — center, SVD, choose K, reconstruct — is five lines of NumPy. Every line corresponds to a geometric operation from the slides. There is no black box.
+- Misconception to preempt: "I forgot to add the mean back in the reconstruction." This is the most common error. The SVD was computed on the centered data; the reconstruction is in centered space. To get back to the original scale, you must add the mean spectrum to every reconstructed row. Forgetting this gives systematically wrong intensities.
+- EM anchor: hyperspy does this automatically — `s.decomposition()` stores the mean internally and adds it back in `s.get_decomposition_model()`. Understanding why this step exists means you can implement it outside hyperspy.
+- Forward link: the notebook in Part 4 uses exactly this code pattern. Students who type it themselves (rather than just running it) will own the pattern.
+- Transition: "Before running PCA, we need to know how many components to keep. The scree plot is the guide."
+::::
+
+<!-- ===== §5. Scree plot ===== -->
+
+## The scree plot: how many components to keep?
+
+::: {.columns}
+::: {.column width="55%"}
+![Scree plot (left) and cumulative variance plot (right) for the synthetic EELS stack. The elbow at $k=2$ separates signal components (large bars) from noise components (flat floor).](img/scree_plot_eels.png){width="100%"}
+:::
+::: {.column width="45%"}
+:::: {.incremental}
+- Plot the **variance explained** $\lambda_k / \sum_k \lambda_k$ (or $\sigma_k^2$) for each component.
+- **Signal** components: steeply decreasing — each one captures a large portion of variance.
+- **Noise** components: flat floor — all roughly equal variance (noise is isotropic).
+- **Elbow rule:** keep components before the curve flattens.
+- **Cumulative variance:** keep the smallest $K$ such that $\geq 95\%$ (or $\geq 99\%$) of variance is explained.
+::::
+:::
+:::
+
+:::: {.notes}
+- Walk through the figure in detail. The two left bars (k=1 and k=2) are clearly taller than the rest — these capture the two latent EELS components. From k=3 onwards the bars are nearly equal height (the noise floor). The elbow is between k=2 and k=3.
+- The one point to land: the noise floor is approximately flat because Poisson noise is isotropic — it adds equal variance in every direction. Signal, by contrast, is structured and anisotropic — it clusters into a few directions. The elbow is where this transition happens.
+- Misconception to preempt: "the elbow is always obvious." For real data with many phases, the elbow can be gradual. In that case, inspect the eigenspectra and score maps for PCs near the elbow — if they look like recognizable spectral features, keep them; if they look like random noise, drop them. The scree plot is a starting point, not a definitive answer.
+- EM anchor: for a realistic EELS dataset from a multi-phase oxide with 5 distinct Fe/Cr/Ni environments, the elbow might be at k=6–8, not k=2. Rule of thumb: intrinsic dimensionality ≈ number of distinct chemical environments + 1–2 background components.
+- Forward link: the notebook exercise asks students to construct the scree plot for their synthetic EELS stack and justify their choice of k from it. The assert in the notebook checks that choosing the correct k gives lower reconstruction error than an underfitted k=1 model.
+- Transition: "The elbow tells you where to cut. Let me show you what truncation does to the data."
+::::
+
+## Interpreting the scree plot: signal vs noise
+
+:::: {.incremental}
+- **Above the elbow:** components with large $\sigma_k$ — their eigenspectrum has recognisable physical structure (peaks, edges, background shapes).
+- **Below the elbow:** components with small $\sigma_k$ — their eigenspectrum looks like random oscillations; score map looks like spatially uncorrelated noise.
+- **Practical check:** always inspect the eigenspectrum and score map of the last component you keep and the first one you discard.
+- **Variance explained by noise floor:** for $N$ spectra with $D$ channels, the noise captures roughly $N \cdot D \cdot \sigma_n^2$ total variance. If the noise floor variance per component is uniform, each noise PC explains $\approx \sigma_n^2$.
+- **90%/95%/99%:** common thresholds — for EELS denoising, 95% is a reasonable starting point.
+::::
+
+:::: {.notes}
+- The visual inspection check is the most important practical point. Tell students: before trusting a PCA denoising result, always display PC_k_signal (last kept) and PC_(k+1)_noise (first discarded). The former should look like a smooth spectral shape; the latter should look like noise.
+- The one point to land: the scree plot is not a black-box oracle — it is a diagnostic. The elbow is a starting point; physical interpretation of the PCs is the final check.
+- Misconception to preempt: "keeping 95% of variance is always enough." This is true for global denoising but not for rare-phase discovery. If a minor phase accounts for only 0.5% of the sample area, its contribution may fall below the 95% threshold. PCA denoising might erase it entirely. Always inspect the residual.
+- EM anchor: a commonly encountered case in STEM-EELS is radiation damage: a beam-induced change in one small region creates a new "phase" with a distinct spectrum. Its singular value may be small (because only a few pixels are damaged) but physically critical. PCA denoising would suppress it.
+- Forward link: the denoising demonstration (next section) shows quantitatively how reconstruction error decreases with k and plateaus at the noise floor.
+- Transition: "Let's see PCA denoising in action on the synthetic EELS stack."
+::::
+
+## Choosing K: the 95% rule and parallel analysis
+
+:::: {.incremental}
+- **95% cumulative variance rule:** keep the smallest $K$ such that $\sum_{k=1}^K \lambda_k / \sum_k \lambda_k \geq 0.95$.
+- **Parallel analysis (Horn's test):** compare eigenvalues against those from random data with the same shape.
+  - Components with $\lambda_k >$ random $\lambda_k$ are signal; the rest are noise.
+  - More principled than the elbow rule but computationally heavier.
+- **Physical prior:** if you know the sample has 3 phases + a background model → try $K = 4$.
+- **Practice:** use the scree plot as a first pass, then inspect eigenspectra near the boundary.
+- There is no universally correct $K$ — it depends on the science question.
+::::
+
+:::: {.notes}
+- Introduce parallel analysis as a more rigorous alternative without going deep — students should know it exists. The key comparison: parallel analysis replaces the subjective elbow with a statistical threshold (is this eigenvalue larger than what random noise would produce?).
+- The one point to land: the "right" K depends on the scientific question. For compression, use 95% variance. For denoising before clustering, use a larger K that includes weak components. For rare-phase detection, keep more components and look at residuals.
+- Misconception to preempt: "there is a single correct K that the algorithm should find automatically." No algorithm can determine K without some criterion; different criteria answer different questions. The criterion is a scientific choice, not a mathematical one.
+- EM anchor: in 4D-STEM grain orientation mapping, K might be 10–15 to capture major grain families plus twin variants; in EELS of a simple binary oxide, K=2–4 usually suffices.
+- Forward link: the notebook exercise is specifically about justifying K from the scree plot. The assert checks that a reasonable K gives a meaningful reduction in reconstruction error compared to noise-dominated high-K reconstructions.
+- Transition: "Now let's see what truncation actually does to the spectra."
+::::
+
+<!-- ===== §6. PCA denoising of EELS by truncation ===== -->
+
+## PCA denoising of EELS: the experiment
+
+::: {.columns}
+::: {.column width="55%"}
+![Synthetic EELS line-scan stack: noisy input (left), three sample spectra (centre, solid=noisy, dashed=clean), and clean ground truth (right).](img/eels_stack_noisy_clean.png){width="100%"}
+:::
+::: {.column width="45%"}
+:::: {.incremental}
+- **Setup:** 48-pixel × 200-channel synthetic EELS line scan.
+- **Two latent components:** Fe-L edge (~710 eV) dominant in the centre; Cr-L edge (~580 eV) dominant at the edges.
+- **Noise:** Poisson (scale = 300 counts); realistic low-dose EM conditions.
+- **Goal:** recover the clean spectra from the noisy stack using PCA truncation.
+- **Signal is low-rank!** Only 2 true latent components → data matrix has rank ≤ 2.
+::::
+:::
+:::
+
+:::: {.notes}
+- Walk through the figure: the colour map shows intensity as a function of position (x-axis) and energy (y-axis). You can see the Fe edge (bright band around 710 eV) centred in the middle of the scan, and the Cr edge (around 580 eV) brighter at the edges. The noisy spectra look jagged; the clean dashed lines are smooth.
+- The one point to land: this synthetic dataset is designed to mimic a real grain-boundary line scan in a steel sample where Fe and Cr vary spatially. The number of true components (K=2) is known, which lets us validate the denoising result against ground truth.
+- Misconception to preempt: "I would need a real EELS dataset to learn PCA." The synthetic dataset is specifically designed so that the results are easy to interpret and the ground truth is known. Real EELS PCA works identically — we just cannot check against ground truth.
+- EM anchor: PCA was applied to EELS spectrum images of grain boundaries in steels by Bosman et al. (2006) [@bosman2006spatially] to separate Fe, Ni, and Cr variations. The same approach is now routine in any EELS mapping experiment.
+- Forward link: the notebook builds exactly this synthetic EELS stack and then walks through the PCA denoising pipeline step by step, ending with an exercise asking students to justify K from the scree plot.
+- Transition: "Now let's run PCA and see what k components give what quality of reconstruction."
+::::
+
+## PCA denoising: reconstruction with k components
+
+::: {.columns}
+::: {.column width="60%"}
+![PCA reconstruction of EELS stack with k = 1, 2, 5, 10 components. Top: reconstructed spectral images; bottom: reconstructed spectra at position 24 vs noisy (blue) and clean (green dashed).](img/pca_denoising_comparison.png){width="100%"}
+:::
+::: {.column width="40%"}
+:::: {.incremental}
+- **k = 1:** over-denoised — missing the Cr component; systematic error.
+- **k = 2:** near-perfect — recovers both chemical components; smooth and accurate.
+- **k = 5:** slightly under-denoised — residual noise from 3 noise components added back in.
+- **k = 10:** significantly under-denoised — many noise components included.
+- **Optimal k = 2** matches the scree-plot elbow. Not coincidence — the elbow marks where truncation switches from "removing noise" to "adding noise."
+::::
+:::
+:::
+
+:::: {.notes}
+- This is the payoff slide — walk through each panel carefully. The k=2 reconstruction looks clean and closely tracks the ground truth (green dashed). The k=1 reconstruction is smooth but missing the Cr edge entirely (systematic error = too much truncation). k=5 and k=10 are noisier because we included noise components.
+- The one point to land: there is an optimal K. Below the optimal K, you have underfitting (losing real signal). Above the optimal K, you have overfitting (including noise). The scree plot elbow is the visual signal of where the optimum lives.
+- Misconception to preempt: "more components = better reconstruction." No — adding noise-floor components adds their random variation to the reconstruction, degrading it. The reconstruction error vs k plot is U-shaped: decreases to the optimal K, then increases again as noise components are added.
+- EM anchor: in hyperspy, after `s.decomposition()`, the function `s.plot_decomposition_results()` shows the same comparison. Students can now interpret every panel of that output.
+- Forward link: the notebook assert checks that the reconstruction error at k=2 is lower than at k=1 (underfitting) and that adding more components beyond the signal rank increases the error again.
+- Transition: "The eigenspectra themselves carry chemical information. Let me show you what they look like."
+::::
+
+## Why PCA denoising works: the subspace argument
+
+:::: {.incremental}
+- **Signal is low-rank:** if the spectrum image has $K$ true chemical components, the clean data lies on a $K$-dimensional subspace of $\mathbb{R}^D$.
+- **Noise is full-rank:** Poisson noise adds variance in every direction equally — it spreads across all $D$ dimensions.
+- **After SVD:** the top $K$ singular vectors capture the signal subspace; the remaining $D - K$ directions are dominated by noise.
+- **Truncation:** project onto the signal subspace (keep top $K$), discard the orthogonal complement (noise).
+- **Caveat:** this argument assumes Gaussian noise (noise is isotropic). Poisson noise has signal-dependent variance, so the noise floor is not perfectly flat — PCA denoising is slightly suboptimal for Poisson statistics.
+::::
+
+:::: {.notes}
+- This is the conceptual explanation that ties the geometry of §2–3 to the practical denoising result. The key phrase is "low-rank signal + full-rank noise."
+- The one point to land: PCA denoising is not magic — it is projection onto the signal subspace. It works because the signal is structured (low-dimensional) while the noise is unstructured (spread over all dimensions). If the signal were also spread over many dimensions, PCA would not help.
+- Misconception to preempt: "PCA denoising is the best possible denoising method." For Gaussian noise, yes (it is optimal in the Eckart–Young sense). For Poisson noise (real EELS), it is approximately optimal for high counts but suboptimal at low counts where the noise variance varies across energy channels. Anscombe transform or Poisson-matched methods can improve on it.
+- EM anchor: this is why PCA denoising is so powerful for EELS: EELS spectra from a sample with $K$ phases lie in a $K$-dimensional subspace regardless of how many energy channels are recorded. The "true dimensionality" is set by the chemistry, not the spectrometer resolution.
+- Forward link: Week 8 (autoencoders) removes the "linearity" assumption — autoencoders can find non-linear low-dimensional structure, useful when phase boundaries curve the data manifold rather than keep it flat.
+- Transition: "The eigenspectra extracted by PCA are physically interpretable. Let me show you."
+::::
+
+<!-- ===== §7. Eigen-spectra / eigen-micrographs ===== -->
+
+## Eigen-spectra: the spectral shapes of variation
+
+::: {.columns}
+::: {.column width="60%"}
+![First three eigenspectra extracted from the synthetic EELS stack. PC1 captures the dominant Fe-L variation; PC2 captures the Cr-L contrast; PC3 looks like noise.](img/eigenspectra.png){width="100%"}
+:::
+::: {.column width="40%"}
+:::: {.incremental}
+- **PC1 eigenspectrum:** the direction of maximum variance — here dominated by the Fe-L edge shape.
+- **PC2 eigenspectrum:** second direction — captures Cr-L contrast (positive Cr-L, negative Fe-L background).
+- **PC3+ eigenspectrum:** no recognisable peaks — random noise pattern.
+- Note: eigenspectra can have negative values (they are basis vectors, not physical spectra).
+- Physical spectra are reconstructed as: $\hat{\mathbf{x}}_i = \bar{\mathbf{x}} + c_{i1}\mathbf{v}_1 + c_{i2}\mathbf{v}_2$.
+::::
+:::
+:::
+
+:::: {.notes}
+- Walk through each panel: PC1 has a clear peak around 710 eV (Fe-L$_{2,3}$) — this is the dominant spectral variation across the scan. PC2 has a peak around 580 eV (Cr-L) with an anticorrelation at 710 eV — this is the Cr-vs-Fe chemical contrast. PC3 shows no recognisable structure — it is noise.
+- The one point to land: eigenspectra that look like recognisable spectral features (edges, peaks) are signal; those that look like random oscillations are noise. Physical interpretation is part of the analysis.
+- Misconception to preempt: "PC1 should look like the average Fe-L spectrum." No — PC1 is a basis vector for the *variation*, not the mean. The mean spectrum is removed before PCA. PC1 looks like the spectral shape that varies most across pixels — which in this case is the Fe-L edge because Fe concentration varies most across the scan.
+- EM anchor: in a real multi-element STEM-EELS experiment, the eigenspectra often resemble difference spectra between phases (oxide minus metal, high-Fe minus low-Fe). They are not directly interpretable as elemental compositions but can be rotated (e.g., with Varimax rotation) to get closer to physical end-members.
+- Forward link: in Week 8, autoencoders replace the eigenspectra with learned non-linear features — but the same physical interpretation goal applies: what material variation does each latent feature capture?
+- Transition: "Eigen-micrographs (score maps) complete the picture — but first: why do correlated features cause problems?"
+::::
+
+## Score maps: chemical images from PCA
+
+:::: {.incremental}
+- The **score** $c_{ik} = \mathbf{v}_k^T (\mathbf{x}_i - \bar{\mathbf{x}})$ tells how strongly pixel $i$ expresses PC $k$.
+- Reshape scores to $(n_y, n_x)$ → a **score map** — a chemical image of the sample.
+- **In our EELS example:** the PC1 score map shows high values (bright) where the Fe-L contribution is strong → Fe-rich region map.
+- Score maps can be positive or negative (unlike elemental maps which must be ≥ 0).
+- To get a physically interpretable elemental map: linear unmixing of score maps using known reference spectra.
+- **Eigen-micrographs** (score maps reshaped to 2-D) are the EM equivalent of eigenfaces in face recognition.
+::::
+
+:::: {.notes}
+- Connect to the 4D-STEM analogy: in 4D-STEM, applying PCA to the diffraction patterns (one per probe position) gives score maps that correspond to grain orientation contrast — bright regions in the PC1 score map are grains oriented strongly along PC1's diffraction direction. This is the basis of automated grain mapping without manual labelling.
+- The one point to land: score maps are the spatial output of PCA and directly give chemical/structural contrast. They are cheap to compute once the eigenspectra are known (just one matrix multiply).
+- Misconception to preempt: "I need NMF to get physical elemental maps." NMF gives non-negative maps (closer to physical concentrations) but at the cost of uniqueness (NMF solutions are not unique) and optimality (NMF is not the best rank-k approximation). PCA + linear unmixing is often more reliable.
+- EM anchor: in hyperspy, `s.get_decomposition_factors()` gives the eigenspectra and `s.get_decomposition_loadings()` gives the score maps (called "loadings" in hyperspy's convention). Students who understand the relationship score = projection will never be confused by this naming.
+- Forward link: the notebook visualises the score maps for the synthetic EELS stack. Students should see the Fe-rich vs Cr-rich regions clearly delineated in the PC1 and PC2 score maps.
+- Transition: "One important practical warning: correlated features and ill-conditioning."
+::::
+
+## Eigen-micrographs: score maps for 2-D spatial data
+
+:::: {.incremental}
+- For a **2-D EELS map** (not a line scan), scores have shape $(N, K) = (n_y \cdot n_x, K)$.
+- Reshape to $(n_y, n_x, K)$ → each $[:, :, k]$ slice is an **eigen-micrograph**: a 2-D chemical map.
+- **Physical interpretation:**
+  - PC1 eigen-micrograph: spatial map of the dominant spectral variation (often sample thickness or total signal).
+  - PC2 eigen-micrograph: spatial map of the primary chemical contrast between phases.
+- Bright regions in the k-th eigen-micrograph = pixels where the k-th eigenspectrum is strongly expressed.
+- Compare: **eigenfaces** in face recognition are the exact same concept applied to images instead of spectra.
+::::
+
+:::: {.notes}
+- The eigenfaces analogy is powerful — many students have seen it in pop-science articles about AI. Make the connection explicit: eigenfaces = first few PCA components of a dataset of face images; each eigenface is a "ghost face" (a spectral shape in image space). Eigen-micrographs are the exact same thing for EELS images.
+- The one point to land: the score map is the spatial complement of the eigenspectrum. If the eigenspectrum shows an Fe-L edge, the score map shows where Fe is. If the eigenspectrum is noise, the score map is spatially uncorrelated noise. Both pictures together give a complete decomposition.
+- Misconception to preempt: "the first eigen-micrograph should look like a bright region where the sample is." PC1 after centering shows the dominant *variation*, not the dominant *intensity*. If the sample is thicker on one side, PC1 captures that thickness gradient. To get an element map, you need to interpret the eigenspectrum and then unmix.
+- EM anchor: in a 4D-STEM grain map, the "eigen-diffractograms" (PC score maps) directly encode grain orientation contrast. Each PC corresponds to one family of Bragg spots; the score map shows which grains have that family active. PCA automatically segments the image into grains without any labelling.
+- Forward link: Week 8 introduces autoencoder latent maps, which are the non-linear generalisation of eigen-micrographs — they can show curved boundaries and non-linear chemical gradients that PCA cannot capture.
+- Transition: "One important practical warning before we wrap up: correlated features and ill-conditioning."
+::::
+
+<!-- ===== §8. Ill-conditioning & why correlated features hurt ===== -->
+
+## Ill-conditioning: when correlated features cause trouble
+
+::: {.columns}
+::: {.column width="55%"}
+![Loss landscape: well-conditioned problem (circular contours, left) vs ill-conditioned problem (narrow valley, right). Small noise → large parameter swing in the ill-conditioned case.](img/ill_conditioning_landscape.png){width="100%"}
+:::
+::: {.column width="45%"}
+:::: {.incremental}
+- **Condition number** $\kappa = \sigma_\text{max}/\sigma_\text{min}$ — ratio of largest to smallest singular value.
+- Well-conditioned: $\kappa \approx 1$ (circular contours). Ill-conditioned: $\kappa \gg 1$ (narrow valley).
+- **Cause:** highly correlated features → data matrix nearly singular → small $\sigma_\text{min}$ → large $\kappa$.
+- **Effect:** a tiny change in the data produces huge, unstable swings in the estimated parameters [@murphy2012machine].
+::::
+:::
+:::
+
+:::: {.notes}
+- Walk through the loss landscape figure: the circular contours mean that moving in any direction costs you the same loss — you can locate the minimum reliably. The narrow valley means the loss is nearly flat along the valley floor — many parameter combinations give almost the same loss, but they correspond to wildly different physical predictions.
+- The one point to land: $\kappa \gg 1$ means the matrix amplifies small errors (noise, rounding) by a factor of $\kappa$. If $\kappa = 10^4$, floating-point noise at the $10^{-16}$ level becomes $10^{-12}$ errors in the solution — usually fine. But noise at the $10^{-3}$ level (real measurement noise) becomes errors of order $10$, which is catastrophic.
+- Misconception to preempt: "ill-conditioning means the model is wrong." No — the model can be perfectly specified but the data matrix is ill-conditioned. The solution is not a different model but a different computation: use SVD (which can detect and handle small singular values) instead of direct inversion.
+- EM anchor: in EDS mapping of an alloy with Fe and Mn close in energy, the two elemental maps are highly correlated because the Fe-K$\alpha$ and Mn-K$\alpha$ peaks overlap. Directly fitting both peaks simultaneously creates a near-singular regression matrix. SVD-based pseudo-inverse or regularisation (Ridge) is the standard fix.
+- Forward link: in Week 4, ridge regression adds $\lambda\mathbf{I}$ to the normal equations, which lifts all eigenvalues by $\lambda$ and eliminates ill-conditioning. This is the standard cure.
+- Transition: "Why do correlated features produce ill-conditioning?"
+::::
+
+## Why correlated features cause ill-conditioning in EM
+
+:::: {.incremental}
+- **Scenario:** two EDS channels (Fe-K$\alpha$ at 6.4 keV and Ni-K$\alpha$ at 7.5 keV) both increase with sample thickness in an FeNi alloy.
+- Forming a regression matrix from both channels → two nearly parallel column vectors → near-singular $\mathbf{X}^T\mathbf{X}$ → high $\kappa$.
+- **PCA as a cure:** PCA rotates to the principal directions. In the new basis, the directions are uncorrelated by construction (orthogonal). The PCA-transformed data matrix has no correlated columns.
+- **Practical rule:** if your condition number is $> 10^3$ and you are fitting a linear model, standardise your features (subtract mean, divide by std) and consider PCA pre-processing or Ridge regularisation.
+- Fitting with highly correlated features gives wildly uncertain coefficients even when the prediction accuracy looks fine.
+::::
+
+:::: {.notes}
+- The key insight: high prediction accuracy with correlated features does not mean the coefficients are physically meaningful. The model found one combination of coefficients that works, but many other combinations work equally well (the loss valley is flat). Any perturbation of the data changes which combination is selected.
+- The one point to land: "correct predictions, wrong coefficients" is a genuine failure mode. If you are using regression coefficients as physical descriptors (e.g., "the model says the Fe contribution is 0.7"), you need well-conditioned data for those numbers to be interpretable.
+- Misconception to preempt: "I can check if my features are correlated by looking at the correlation matrix." Yes — but the correlation matrix shows pairwise correlation. SVD shows the effective dimensionality of the full feature matrix, including higher-order redundancies. High condition number with moderate pairwise correlations is common.
+- EM anchor: in 4D-STEM strain mapping, the lattice parameters $a$ and $c$ of a hexagonal crystal are often correlated in strained regions. Directly fitting both can produce unstable strain maps; using PCA-reduced diffraction pattern features as inputs avoids this.
+- Forward link: Week 4 introduces regularisation (Ridge, Lasso) as the systematic cure for ill-conditioning. PCA pre-processing (projecting onto the well-conditioned principal components) is an alternative.
+- Transition: "Before we close: what are the limits of linear methods, and what comes next?"
+::::
+
+## Ill-conditioning: a quick diagnostic
+
+:::: {.incremental}
+- **Check condition number:** `np.linalg.cond(X)` — if $> 10^6$, you have a serious problem.
+- **Variance–inflation factor (VIF):** for each feature, regress it on all others. High $R^2$ → high VIF → high collinearity.
+- **Standardise first:** features on vastly different scales (counts vs kV vs nm) create artificial ill-conditioning. Always subtract the mean and divide by the standard deviation before linear modelling.
+- **PCA as pre-processing:** project features onto the first $K$ principal components (choose $K$ to drop near-zero singular values). The resulting $K$ features are guaranteed to be uncorrelated.
+- **Ridge regularisation (Week 4):** adds $\lambda\mathbf{I}$ to $\mathbf{X}^T\mathbf{X}$, lifting all eigenvalues above $\lambda$ — quick fix when you want to keep all features.
+::::
+
+:::: {.notes}
+- This is a practical toolbox slide. Give students a decision tree: (1) check condition number; (2) if high, check for correlated features; (3) standardise; (4) if still high, use PCA pre-processing or Ridge. Each step has a specific NumPy/sklearn call.
+- The one point to land: standardisation (subtract mean, divide by std) is the first step in any linear model pipeline when features have different physical units. Skipping it is one of the most common beginner errors — it creates artificial ill-conditioning that has nothing to do with the actual physics.
+- Misconception to preempt: "standardisation distorts the physical meaning of the features." Standardisation changes scale but not relative variation. The regression coefficients after standardisation are in units of "standard deviations of the feature per unit target" — which is a meaningful, interpretable scale for comparing feature importances.
+- EM anchor: in compositional analysis, if one feature is "Ti content in at%" (range 0–100) and another is "peak position in eV" (range 460–470), the scale difference is 100× — enough to create artificial ill-conditioning when both are used in a regression together.
+- Forward link: Week 4 presents Ridge regression and introduces the explicit regularisation $\lambda$. The geometric interpretation: Ridge replaces the sharp SVD truncation with a soft shrinkage of all singular values, which is smoother and often more practical.
+- Transition: "Let's close with the limits of linear methods and what we build toward."
+::::
+
+<!-- ===== §9. Limits + forward link ===== -->
+
+## Limits of linear methods and where PCA fails
+
+:::: {.incremental}
+- **PCA is optimal for linear, Gaussian-noise problems.** For Poisson noise (low-dose EELS), it is approximately optimal for high counts but suboptimal at low counts.
+- **PCA fails when spectral variation is non-linear:** peak positions shift with composition (XRD peak shift with lattice parameter); peak shapes change non-linearly (EELS fine structure). The data cloud curves — it does not lie on a flat hyperplane.
+- **Negative values:** PCA loadings can be negative, but spectra are non-negative. PCA does not respect this physical constraint; NMF does.
+- **Rare phases:** a phase occupying 1% of pixels may contribute <1% of total variance and fall below the noise floor. PCA will erase it.
+- **These limits motivate Week 8:** autoencoders learn a non-linear low-dimensional representation — the natural generalisation of PCA.
+::::
+
+:::: {.notes}
+- Frame the limits positively: knowing where a method fails is as important as knowing where it works. PCA is the right first tool for any spectral dataset — but understanding its limits tells you when to reach for the next tool (NMF, autoencoder, deep denoiser).
+- The one point to land: the core assumption of PCA is linearity — that the data cloud is approximately flat (lies on a hyperplane). If the cloud is curved (which happens when peak positions shift or peak shapes change non-linearly), PCA will require many components to describe the curvature, and a non-linear method will be much more efficient.
+- Misconception to preempt: "if PCA fails, I should use deep learning." Not necessarily. NMF is a simple, interpretable fix for the non-negativity problem. Varimax rotation addresses the "loadings do not look physical" problem. Deep learning (autoencoders) addresses genuine non-linearity. Choose the simplest tool that handles the specific failure mode.
+- EM anchor: XRD peak shift with lattice parameter is a classic non-linearity. A dataset of XRD patterns from a solid solution with varying composition has peaks that shift — the data cloud is curved (a 1-D manifold, but curved). PCA will describe it with 2–3 components (one for the peak shift direction, one for curvature), while a 1-D non-linear embedding (t-SNE, UMAP, or an autoencoder with latent dim=1) captures it perfectly with one.
+- Forward link: the exact connection — Week 8 introduces autoencoders as a non-linear generalisation of PCA. The encoder = non-linear projection; the decoder = non-linear reconstruction. With linear activation, the autoencoder exactly recovers PCA.
+- Transition: "Let me close with the path ahead."
+::::
+
+## Looking ahead — Week 4
+
+:::: {.incremental}
+- **Topic:** "Regression, gradient descent & honest validation"
+- Linear regression as projection (building directly on today's geometry).
+- Gradient descent: how to find $\hat{\mathbf{w}}$ without inverting $\mathbf{X}^T\mathbf{X}$.
+- Ridge and Lasso regularisation: systematic cures for ill-conditioning.
+- Cross-validation: how to get an honest estimate of generalisation error.
+- **Prerequisite:** complete the Week 3 notebook; understanding scores and loadings is needed.
+::::
+
+:::: {.notes}
+- Keep this light — it is a teaser, not a lecture. The key promise: after Week 4, students will be able to fit a linear regression model to EM data, regularise it properly, and report an honest estimate of how well it generalises.
+- The one point to land: the "least squares = projection" insight from today's slide §2 is the geometric foundation of Week 4. Students who internalise the projection picture will find gradient descent immediately intuitive (it is walking down the loss surface toward the projection).
+- Misconception to preempt: "I should read ahead and study regression before the notebook." Finish the Week 3 notebook first — the PCA skills (centering, SVD, choosing K, interpreting eigenspectra) are direct prerequisites for understanding what gradient descent is optimising in regression.
+- Transition: "Here is what to do this week."
+::::
+
+## Self-study this week
+
+:::: {.incremental}
+- **Notebook:** `notebooks/week03_pca_eels.ipynb` — "PCA denoising of a synthetic EELS stack."
+  - Build a synthetic EELS line-scan (two latent EELS components + Poisson noise).
+  - Compute SVD and plot the scree plot.
+  - Reconstruct with different numbers of components; show that k=2 is optimal.
+  - **Exercise:** choose K yourself and justify from the scree plot.
+- **Open in Colab:** no local installation needed; first cell installs all dependencies.
+- **Goal:** understand the full PCA pipeline (center → SVD → choose K → reconstruct) before Week 4.
+- **Must-know review:** check `_shared/exam_mustknow.md` — Week 3 statements are now filled.
+::::
+
+:::: {.notes}
+- Distribute the Colab link now. Students who start the notebook this week will have the PCA geometric intuition fresh when Week 4 introduces regression.
+- The one point to land: the notebook exercise asks students to write a single justification sentence for their choice of K. This sentence ("I chose K=2 because the scree plot shows a clear elbow between component 2 and 3, and the cumulative variance reaches 97%") is exam-ready language. Practice it in the notebook.
+- Misconception to preempt: "the notebook is just the lecture again in code." The notebook extends the lecture: it shows the U-shaped reconstruction error vs K curve, which demonstrates concretely that under-truncating (too few components) and over-truncating (too many) both hurt. The lecture only described this; the notebook shows it quantitatively.
+- Materials anchor: the assert in the notebook checks that your chosen K gives lower reconstruction error than K=1. This is the computational equivalent of "the scree plot elbow tells you the optimal K" — you are measuring it, not just claiming it.
+- Forward link: the miniproject team working on spectral denoising (Option B) should do the Week 3 notebook carefully — it is essentially a mini version of their miniproject pipeline.
+- Transition: "See you next week for regression and validation."
+::::
+
+## Continue
+
+- &rarr; Next: [Week 04 — Regression, gradient descent &amp; honest validation](../04_regression_validation/01_intro.html)
+- &larr; Back: [Week 02 — What is learning? EM data &amp; noise origins](../02_learning_and_em_data/01_intro.html)
+- [All courses](../../index.html)
+
+## References
+
+::: {#refs}
+:::
