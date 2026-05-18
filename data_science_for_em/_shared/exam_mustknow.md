@@ -73,7 +73,16 @@
 
 ## Week 5 — Neural networks from first principles
 
-- _(≤10 must-know statements — filled when this week's deck is authored)_
+1. **Perceptron computation:** a single neuron computes $\hat{y} = \sigma(\mathbf{w}^T\mathbf{x} + b)$; $\mathbf{w}$ are weights, $b$ is the bias, and $\sigma$ is a nonlinear activation function. Without the bias, the decision boundary must pass through the origin.
+2. **Linear separability limit:** a single perceptron draws exactly one hyperplane in input space. It cannot solve XOR or any other problem where the class boundary is non-convex or multi-connected — regardless of training time or learning rate.
+3. **Non-linearity is non-negotiable:** stacking $L$ purely linear (identity-activation) layers is algebraically equivalent to a single affine map $(W^{(L)}\cdots W^{(1)})\mathbf{x} + \tilde{\mathbf{b}}$. Only nonlinear activations make depth meaningful.
+4. **MLPs as feature extractors:** hidden layers learn an intermediate representation that transforms the input space so that the output layer can apply a linear map. The final layer is always a linear combination of learned features — the hidden layers are the nonlinear feature engineers.
+5. **Activation function rules:** hidden layers → ReLU (or Leaky ReLU) by default. Output layer → identity (regression), sigmoid (binary probability), softmax (multi-class probability). Sigmoid and tanh are no longer recommended as hidden activations because they saturate.
+6. **Vanishing gradient:** the chain rule multiplies the activation derivative at every layer during backprop. Sigmoid derivative $\sigma'(z) \leq 0.25$; through 8 layers this gives $\leq 0.25^8 \approx 2 \times 10^{-4}$ — early-layer weights barely update. ReLU derivative is 1 for $z > 0$, curing the problem.
+7. **Backprop = reverse-mode automatic differentiation:** the computational graph stores all intermediate values during the forward pass; the backward pass traverses the graph in reverse, applying the chain rule at each node. Modern libraries (`loss.backward()` in PyTorch) do this automatically — you never implement it from scratch.
+8. **Training protocol:** loss → compute gradient via backprop → update all weights with $\theta \leftarrow \theta - \eta\,\nabla_\theta\hat{R}$. Monitor validation loss, not training loss. Stop (or save the model) when validation loss stops improving — early stopping. Adam at $\eta = 0.001$ is the default optimiser.
+9. **Initialisation:** do not set all weights to zero — symmetry is never broken and all neurons learn identically. Use He initialisation for ReLU layers ($w \sim \mathcal{N}(0, \sqrt{2/D_\text{in}})$); Xavier/Glorot for sigmoid/tanh. Framework defaults are correct; only override deliberately.
+10. **When NOT to use a deep net:** $N < 200$ tabular samples (simpler models generalise better); known analytic feature map (embed the physics, do not learn it); images / spatial data without convolutional structure (dense MLP has $10^9$ weights for a 1024×1024 image — use a CNN instead, Week 6).
 
 ---
 
