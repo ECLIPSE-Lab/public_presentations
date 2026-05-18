@@ -545,6 +545,7 @@ $$
 - $N_i$ is a step function in $r_c$ — every shell adds a jump.
 :::
 ::: {.column width="50%"}
+::: {.fragment}
 **Smooth cutoffs**
 
 - A *hard* cutoff is non-differentiable in atomic positions.
@@ -556,6 +557,7 @@ f_c(r) = \begin{cases}
 \end{cases}
 $$
 - Smooth cutoffs are *required* for descriptors used in machine-learned interatomic potentials.
+:::
 :::
 :::
 
@@ -586,11 +588,13 @@ Typical defaults: $r_c \in [4, 8]$ Å for oxides and metals; $r_c \in [3, 5]$ Å
 - The "true" neighbour list of atom $i$ at the cell *centre* and at the cell *boundary* must be physically equivalent.
 :::
 ::: {.column width="50%"}
+::: {.fragment}
 **The trap and the fix**
 
 - *Trap:* compute neighbours from atomic coordinates inside the unit cell only; atoms near the boundary acquire fake low coordination.
 - *Fix:* enumerate images $(n_1, n_2, n_3)$ within $\mathbf{n}$ such that the image distance $\le r_c$, and include image atoms in the neighbour search.
 - Standard tools: ASE `NeighborList`, pymatgen `Structure.get_neighbors`, MDAnalysis `distance_array(box=...)`. Use them.
+:::
 :::
 :::
 
@@ -1193,11 +1197,11 @@ $$
 
 **A practical decision tree, said aloud.** "Single chemistry, interpretability needed, MLIP-style application: ACSF. Multi-chemistry, fine geometric distinctions, kernel-friendly: SOAP. Either, tier-3 baseline against a GNN: pick whichever the team's existing pipeline already uses; the difference between them is small relative to the gap to a non-locality baseline."
 
-**Cross-reference.** Slide 35 (ACSF vs SOAP) is the explicit comparison; slide 36 captures the lecture's recommendation.
+**Cross-reference.** Slide 35 (ACSF vs SOAP) is the explicit comparison; slide 36c captures the lecture's recommendation (the `CrystalNN` tier-3 default).
 
 **Forward link.** Slides 31–34 introduce SOAP. Watch for the conceptual contrast: SOAP replaces the discrete question stack with a continuous basis expansion of a smoothed density.
 :::
-
+ 
 ## 31. SOAP — smooth overlap of atomic positions [@bartok2013soap]
 
 ::: {.columns}
@@ -1416,6 +1420,76 @@ $$
 :::
 :::
 
+::: {.notes}
+**When SOAP is unambiguously the right choice.** (1) Machine-learned interatomic potentials at production-grade accuracy: GAP, FLARE, and other kernel-MLIP frameworks rely on SOAP. (2) Spectroscopic fingerprinting: SOAP kernel similarity is the basis for several similarity-based phase classifiers in spectroscopy. (3) Active learning over chemical space: SOAP-kernel uncertainty is well-calibrated for GP-driven exploration.
+
+**Cross-reference.** Slide 49 (polymorph aliasing) will revisit when even SOAP fails — the failure mode is *long-range* physics, not local resolution.
+
+**Forward link.** But the *recommended* tier-3 baseline is none of these — it is `CrystalNN`, the algorithm the lecture has name-dropped a dozen times without ever defining. Slides 36b–36c finally do.
+:::
+
+## 36b. CrystalNN — chemistry-aware neighbour determination [@pan2021crystalnn]
+
+::: {.columns}
+::: {.column width="50%"}
+**The ill-posed question: who is a neighbour?**
+
+- **Radial cutoff** — one global scalar $r_c$. Fails when bond lengths vary across the structure (oxide vs metal sublattice); a single $r_c$ over- or under-counts.
+- **Pure Voronoi** — every Voronoi facet is a "neighbour", including spurious long-range contacts through tetrahedral voids.
+- Coordination is *not* a hard integer: it is genuinely ambiguous in distorted, defective, and mixed-bonding crystals.
+:::
+::: {.column width="50%"}
+**The CrystalNN algorithm**
+
+1. Voronoi-tessellate the local environment of site $i$.
+2. Weight each candidate $j$ by **solid angle** of its Voronoi facet $\times$ a smooth distance-decay factor.
+3. Convert the weights into a **probability distribution over coordination numbers** — not a single integer.
+4. Optional **oxidation-state / electronegativity-aware** correction.
+
+→ likelihood-weighted local-structure order parameters (tetrahedral, octahedral, …) = `CrystalNNFingerprint`.
+:::
+:::
+
+::: {.notes}
+**Why this slide had to exist.** `CrystalNN` is referenced on slides 6, 09b, 10, 22–26 and recommended as *the* tier-3 baseline — yet the lecture never says what it actually does. This pays that debt. State the one-sentence essence: *CrystalNN is "Voronoi neighbours, but weighted by solid angle and refined by chemistry, returning a probability over coordination numbers instead of a brittle integer."*
+
+**Why solid-angle weighting is the right idea.** A Voronoi facet's solid angle is a smooth, continuous function of atomic positions — so the neighbour weighting is insensitive to small thermal/static distortions and has no discontinuity at a hard cutoff radius (contrast the radial-cutoff failure on slides 14/26). This is the same robustness argument as smoothing in SOAP (slide 31), applied to the neighbour list rather than the density.
+
+**The probabilistic CN is the underrated feature.** Returning a *distribution* over coordination numbers — e.g. "70% 4-fold, 30% 5-fold" — is exactly the right behaviour for ambiguous sites (Jahn–Teller-distorted octahedra, surface/defect environments). A descriptor that forced an integer would inject discretisation noise that no downstream model can undo.
+
+**API anchor.** `pymatgen.analysis.local_env.CrystalNN`; `matminer.featurizers.site.CrystalNNFingerprint.from_preset("ops")`. Defaults are well-chosen — "we used CrystalNN defaults" is a reproducible methods sentence; a hand-rolled Voronoi pipeline is not.
+
+**Cross-reference.** Slides 13–14 (invariance) — CrystalNN order parameters are rotation/translation/permutation invariant by construction. Slide 26 (neighbour-definition sensitivity) — CrystalNN is the principled resolution of that sensitivity.
+
+**Pacing.** ~2 minutes. The four-step box is the takeaway; do not derive the solid-angle weighting formula — name it and move on.
+:::
+
+## 36c. CrystalNN in practice — the tier-3 default [@pan2021crystalnn]
+
+::: {.columns}
+::: {.column width="50%"}
+**The benchmark verdict** [@pan2021crystalnn]
+
+- Pan et al. (2021) benchmarked **8 neighbour algorithms** (CrystalNN, VoronoiNN, MinimumDistanceNN, BrunnerNN, EconNN, JmolNN, …) against expert-/database-assigned coordination across thousands of Materials Project structures.
+- **CrystalNN had the highest agreement** and the most robust behaviour *across bonding types* — ionic, covalent, metallic, molecular.
+- This is *why* it is the de-facto matminer default.
+:::
+::: {.column width="50%"}
+**The recipe (laptop-scale, no DFT)**
+
+```python
+from matminer.featurizers.site import CrystalNNFingerprint
+from matminer.featurizers.structure import SiteStatsFingerprint
+ssf = SiteStatsFingerprint(
+    CrystalNNFingerprint.from_preset("ops"),
+    stats=("mean", "std_dev"))
+X = ssf.featurize_many(structures)   # material-level vector
+```
+
+Pair with `BondFractions` (slide 6) for chemistry; pool with `SiteStatsFingerprint`.
+:::
+:::
+
 ::: {.fragment}
 > **The recommendation for tier-3 baselines:** start with `CrystalNN`-aggregated coordination + bond-length / bond-angle stats (slides 22–23), and reach for ACSF or SOAP only when the simpler tier-3 features fail. Most matminer-shaped pipelines never need to go further.
 :::
@@ -1425,11 +1499,13 @@ $$
 
 **Why the simpler choice usually suffices.** The accuracy gap between `CrystalNNFingerprint` + tree models and SOAP + GP on standard property-prediction tasks (formation energy, band gap, bulk modulus) is typically 10–20% in MAE. The gap between either of those and a tier-1 Magpie baseline is often *smaller*. Most of the variance in real materials-ML datasets is captured by the simpler descriptors; SOAP's expressive power is wasted unless the science demands it.
 
-**When SOAP is unambiguously the right choice.** (1) Machine-learned interatomic potentials at production-grade accuracy: GAP, FLARE, and other kernel-MLIP frameworks rely on SOAP. (2) Spectroscopic fingerprinting: SOAP kernel similarity is the basis for several similarity-based phase classifiers in spectroscopy. (3) Active learning over chemical space: SOAP-kernel uncertainty is well-calibrated for GP-driven exploration.
+**Honest caveat on the benchmark.** Pan et al.'s "ground truth" is *human-/database-assigned* coordination — itself a soft label, because coordination is genuinely ill-defined for many structures (the point of slide 36b). Read the result as "CrystalNN agrees best with expert intuition," not "CrystalNN is provably correct." For ML featurisation this is exactly the right target: we want the descriptor a domain expert would endorse.
 
-**Cross-reference.** Slide 49 (polymorph aliasing) will revisit when even SOAP fails — the failure mode is *long-range* physics, not local resolution.
+**The five-minute exercise (referenced on slide 09b notes).** Materials Project spinel/ABO$_2$ subset → `CrystalNNFingerprint` + `BondFractions` → 2-component PCA → tetrahedral vs octahedral families separate cleanly. This is the concrete payoff of the whole tier-2/tier-3 arc and is currently *not* in the exercise notebooks — flagged as a gap to add to `notebooks/MG/`.
 
-**Forward link.** §E now turns to the question that every tier-3 descriptor must answer: how do we go from atom-level $\phi_i$ to material-level $\Phi$?
+**Cross-reference.** This slide is the lecture's bottom-line recommendation; slide 36 (ACSF/SOAP decision) is when you *override* it.
+
+**Forward link.** §E now turns to the question every tier-3 descriptor must answer: how do we go from atom-level $\phi_i$ to material-level $\Phi$? (The `SiteStatsFingerprint` in the recipe above is one answer — pooling, formalised next.)
 :::
 
 # §E · Pooling and material-level features {.section}
