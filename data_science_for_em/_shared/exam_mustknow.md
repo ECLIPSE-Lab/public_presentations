@@ -88,7 +88,16 @@
 
 ## Week 6 — CNNs for microscopy images
 
-- _(≤10 must-know statements — filled when this week's deck is authored)_
+1. **Parameter explosion of MLP on images:** a 1024×1024 image with one dense layer of 1000 neurons has $\sim10^9$ weights before any depth; a single 3×3 conv layer with 64 filters has 576 weights — a reduction of $>10^6\times$ — because the same 9 weights are reused at every spatial position (weight sharing).
+2. **Convolution = local sliding detector:** output $(I\star K)_{m,n} = \sum_{a,b} K_{a,b}\,I_{m+a,n+b}$; a 3×3 kernel uses only the 9-pixel neighborhood of each output location; this encodes locality and weight sharing simultaneously.
+3. **Weight sharing encodes translation equivariance:** the same kernel is applied at every image location, so if the input feature shifts by $\delta$ pixels, the feature map shifts by $\delta$ pixels — $f(T_\delta X)=T_\delta f(X)$. Translation *invariance* (output unchanged by shift) is built gradually via pooling and global average pooling.
+4. **Inductive bias:** an architectural constraint that makes physically reasonable functions easier to learn; CNN's local+shared bias is well-matched to EM images (local features, repeat patterns, hierarchical structure) and enables learning from small labelled datasets.
+5. **Feature hierarchy:** Layer 1 learns edge/gradient detectors; Layer 2 learns local texture/motif detectors (e.g. grain-boundary segments); deeper layers learn phase regions, defect clusters, or global material state. This mirrors the physical hierarchy in EM images: atoms → grains → phases → microstructure.
+6. **Receptive field growth:** stacking $L$ conv layers of kernel size $k$ gives effective receptive field $(k-1)L+1$; two 3×3 layers see a 5×5 field with an extra nonlinearity — more expressive and fewer parameters than one 5×5 layer.
+7. **Pooling:** max-pooling keeps the strongest activation in each $2\times2$ window (no learned parameters); halves spatial resolution; provides approximate local translation invariance; the standard Conv → ReLU → MaxPool building block doubles effective context per stage.
+8. **U-Net for segmentation:** encoder (successive Conv+Pool, channels double) → bottleneck → decoder (successive upsample+Conv, channels halve); skip connections concatenate encoder feature maps into the decoder at each resolution level, preserving fine spatial detail (boundary locations) that the bottleneck would otherwise lose. Output: one label per pixel at full input resolution.
+9. **ResNet skip connections:** residual block output $\mathbf{y}=F(\mathbf{x})+\mathbf{x}$; learning the *residual* $F(\mathbf{x})=\mathbf{y}-\mathbf{x}$ and bypassing the gradient through the skip path solves the vanishing gradient problem, enabling networks with 50–150+ layers.
+10. **CNN failure modes in EM:** domain shift (different microscope, contrast transfer, resolution) causes silent performance degradation; validate using `GroupKFold` by specimen/session; report IoU/Dice not accuracy; always inspect predicted masks qualitatively; match training and inference pixel size.
 
 ---
 
