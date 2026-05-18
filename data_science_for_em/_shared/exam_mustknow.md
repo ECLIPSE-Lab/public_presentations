@@ -103,7 +103,16 @@
 
 ## Week 7 — Beating small & expensive data
 
-- _(≤10 must-know statements — filled when this week's deck is authored)_
+1. **The labelled-data gap:** materials EM labs typically have 50–500 labelled images; ResNet-50 has 25 million parameters. At 500 images that is 50 000 parameters per image — guaranteed overfitting without augmentation, transfer learning, or synthetic data.
+2. **Augmentation encodes physical invariances:** an augmentation is a claim that the physics has a symmetry. Rotating an equiaxed-grain image is valid (orientation is arbitrary); rotating an EBSD map is illegal (the colour IS the crystallographic orientation). Invalid augmentations inject label noise.
+3. **Label consistency rule (geometric augmentations):** every geometric transform applied to the image must be applied identically to the mask/label at the same time. Apply the split first, then augment — never augment before splitting by specimen.
+4. **Transferability decreases with depth (Yosinski 2014):** Layer 1 (edges, gradients) is ~95% transferable from ImageNet to EM; Layer 4+ (full objects) is ~10%. Fine-tuning strategy should be depth-graded: keep early layers nearly fixed, adapt later layers more, fully retrain the head.
+5. **Feature extraction vs fine-tuning:** feature extraction (freeze backbone, train head only) is safe for <100 labels; fine-tuning (update backbone with low lr) gains accuracy with 100–1000 labels but risks catastrophic forgetting. Use differential learning rates: backbone lr ≈ $10^{-5}$, head lr ≈ $10^{-3}$ (ratio 100×).
+6. **Catastrophic forgetting:** a randomly-initialised head produces large near-random gradients in epoch 1. Backpropagated at full lr through a pretrained backbone, these overwrite ImageNet features before the head stabilises. Symptom: training loss spikes at the start; final accuracy worse than feature extraction. Fix: gradual unfreezing + differential LRs.
+7. **Gradual unfreezing protocol:** (1) train head only until plateau; (2) unfreeze last backbone block with low lr; (3) unfreeze progressively deeper blocks from top to bottom (most domain-specific first, most general last). Combines with differential LRs for defence-in-depth.
+8. **Voronoi synthetic microstructures:** Voronoi tessellations assign each pixel to its nearest random seed point — giving perfect free grain-ID labels by construction. The rendering pipeline (random grain intensity, dark boundary, Poisson noise, blur) makes images look like SEM. Works for grain topology tasks because Voronoi captures the topological truth of grain networks; fails for twin detection or non-equiaxed morphologies.
+9. **Sim-to-real failure rule:** synthetic data fails exactly on the feature the generator omits. A model trained on Voronoi images cannot detect annealing twins because Voronoi never generates twins. The fix is not more synthetic data — it is closing the generator's physics gap or fine-tuning on real labelled images.
+10. **Active learning:** label the most uncertain samples first (uncertainty or entropy scoring). Requires a cold-start random seed batch (model's uncertainty is meaningless with zero labels). Combine uncertainty with diversity to avoid labelling near-duplicate hard cases. 50 strategically chosen labels can outperform 500 random ones.
 
 ---
 
