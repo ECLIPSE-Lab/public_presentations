@@ -120,7 +120,7 @@ format:
 
 ::: {.columns}
 ::: {.column width="55%"}
-![A $2\times2$ matrix applied to the unit square: rotates, stretches, and shears.](img/vectors_projection.png){width="100%"}
+![A $2\times2$ matrix applied to the unit square: rotates, stretches, and shears — the unit square (blue) becomes a parallelogram (orange).](img/matrix_transform.png){width="100%"}
 :::
 ::: {.column width="45%"}
 :::: {.incremental}
@@ -441,34 +441,27 @@ print(f"Score maps after reshape: ({ny}, {nx}, {K}) = {ny*nx*K} values total")
 ```python
 import numpy as np
 
-# X: data matrix, shape (N, D) — observations in rows, features in columns
-# (already centered: X_centered = X - X.mean(axis=0))
-
-U, s, Vt = np.linalg.svd(X_centered, full_matrices=False)  # core computation
-K = 3                                                         # chosen from scree plot
+# ✅ CORRECT full pipeline — copy this version
+mean_spectrum = X.mean(axis=0)                                 # (D,) mean of original data
+X_centered    = X - mean_spectrum                              # center before SVD
+U, s, Vt      = np.linalg.svd(X_centered, full_matrices=False) # core computation
+K = 3                                                          # chosen from scree plot
 
 # Scores (chemical maps): how strongly each PC is expressed per pixel
-scores = X_centered @ Vt[:K].T             # shape (N, K)
+scores       = X_centered @ Vt[:K].T        # shape (N, K)
 
 # Eigenspectra (spectral shapes): rows of Vt[:K], shape (K, D)
-eigenspectra = Vt[:K]                      # already unit-norm and orthogonal
+eigenspectra = Vt[:K]                       # already unit-norm and orthogonal
 
-# Reconstruct (denoise): keep only the signal subspace
-X_denoised = scores @ eigenspectra + X_centered.mean(axis=0)  # WRONG without centering fix
-```
-
-. . .
-
-```python
-# Correct full pipeline including mean restoration
-mean_spectrum = X.mean(axis=0)             # (D,) — mean of original (un-centered) data
-X_denoised    = (U[:, :K] * s[:K]) @ Vt[:K] + mean_spectrum   # shape (N, D)
+# Reconstruct (denoise): restore mean to get back to original scale
+X_denoised   = scores @ eigenspectra + mean_spectrum  # shape (N, D)
 ```
 
 :::: {.notes}
 - Walk through each line carefully. Students who did the Week 1 notebook will recognise the array operations. The only new call is `np.linalg.svd`.
 - The one point to land: the entire PCA pipeline — center, SVD, choose K, reconstruct — is five lines of NumPy. Every line corresponds to a geometric operation from the slides. There is no black box.
 - Misconception to preempt: "I forgot to add the mean back in the reconstruction." This is the most common error. The SVD was computed on the centered data; the reconstruction is in centered space. To get back to the original scale, you must add the mean spectrum to every reconstructed row. Forgetting this gives systematically wrong intensities.
+- Common mistake students make: writing `X_denoised = scores @ eigenspectra + X_centered.mean(axis=0)` — this uses the mean of the already-centered data (which is ≈ zero), so the mean is NOT restored and every reconstructed spectrum will have systematically wrong absolute intensities. Always save `mean_spectrum = X.mean(axis=0)` from the **original** un-centered data before centering.
 - EM anchor: hyperspy does this automatically — `s.decomposition()` stores the mean internally and adds it back in `s.get_decomposition_model()`. Understanding why this step exists means you can implement it outside hyperspy.
 - Forward link: the notebook in Part 4 uses exactly this code pattern. Students who type it themselves (rather than just running it) will own the pattern.
 - Transition: "Before running PCA, we need to know how many components to keep. The scree plot is the guide."
@@ -494,7 +487,7 @@ X_denoised    = (U[:, :K] * s[:K]) @ Vt[:K] + mean_spectrum   # shape (N, D)
 :::
 
 :::: {.notes}
-- Walk through the figure in detail. The two left bars (k=1 and k=2) are clearly taller than the rest — these capture the two latent EELS components. From k=3 onwards the bars are nearly equal height (the noise floor). The elbow is between k=2 and k=3.
+- Walk through the figure in detail. The two left bars (k=1 and k=2) are clearly taller than the rest — PC1 captures ~74.5% of variance, PC2 captures ~21.9%, and from k=3 onwards the bars are nearly equal height (the noise floor at ~0.1% each). The elbow is sharply between k=2 and k=3. Cumulative variance reaches ~96% at k=2.
 - The one point to land: the noise floor is approximately flat because Poisson noise is isotropic — it adds equal variance in every direction. Signal, by contrast, is structured and anisotropic — it clusters into a few directions. The elbow is where this transition happens.
 - Misconception to preempt: "the elbow is always obvious." For real data with many phases, the elbow can be gradual. In that case, inspect the eigenspectra and score maps for PCs near the elbow — if they look like recognizable spectral features, keep them; if they look like random noise, drop them. The scree plot is a starting point, not a definitive answer.
 - EM anchor: for a realistic EELS dataset from a multi-phase oxide with 5 distinct Fe/Cr/Ni environments, the elbow might be at k=6–8, not k=2. Rule of thumb: intrinsic dimensionality ≈ number of distinct chemical environments + 1–2 background components.
@@ -552,9 +545,9 @@ X_denoised    = (U[:, :K] * s[:K]) @ Vt[:K] + mean_spectrum   # shape (N, D)
 :::
 ::: {.column width="45%"}
 :::: {.incremental}
-- **Setup:** 48-pixel × 200-channel synthetic EELS line scan.
+- **Setup:** 64-pixel × 300-channel synthetic EELS line scan.
 - **Two latent components:** Fe-L edge (~710 eV) dominant in the centre; Cr-L edge (~580 eV) dominant at the edges.
-- **Noise:** Poisson (scale = 300 counts); realistic low-dose EM conditions.
+- **Noise:** Poisson (scale = 500 counts); realistic low-dose EM conditions.
 - **Goal:** recover the clean spectra from the noisy stack using PCA truncation.
 - **Signal is low-rank!** Only 2 true latent components → data matrix has rank ≤ 2.
 ::::
