@@ -28,7 +28,16 @@
 
 ## Week 2 — What is learning? EM data & noise origins
 
-- _(≤10 must-know statements — filled when this week's deck is authored)_
+1. **Learning vs classical analysis:** in classical data analysis the human writes the rules; in machine learning the optimiser infers the rules from labelled examples. Both require domain knowledge — ML uses it to define inputs, outputs, and the training set.
+2. **Model taxonomy (white / grey / black-box):** white-box = explicit mechanism with interpretable parameters (e.g. Bragg's law); black-box = high flexibility, no traceable internals (e.g. deep CNN); grey-box = physics structure with one learned sub-module (e.g. CPFEM + learned hardening law). Choice depends on how much physics is reliable at the relevant scale, not on personal preference.
+3. **EM data-tensor shapes:** HAADF image `(ny, nx)`; 4D-STEM cube `(ny, nx, ky, kx)`; EELS/EDS spectrum image `(ny, nx, E)`; tilt-series `(n_tilt, ny, nx)`. The tensor shape determines the correct ML architecture family.
+4. **Nyquist–Shannon theorem:** a signal with maximum frequency $f_\text{max}$ requires sampling rate $f_s \geq 2 f_\text{max}$; in imaging, pixel pitch $\Delta x \leq d/2$ to resolve features of size $d$. Practical target: 3–5× oversampling; bare Nyquist is a lower bound, not a target.
+5. **Aliasing / Moiré:** when $f_s < 2 f_\text{max}$, high-frequency components fold back into lower frequencies; in TEM this produces spurious long-period Moiré fringes that are *not* real structure. Diagnosis: change camera length or tilt — real structure moves predictably, aliasing artefacts do not.
+6. **Poisson noise (shot noise):** electron count $N \sim \text{Poisson}(\lambda)$ where $\lambda$ is the expected count; variance equals the mean: $\text{Var}(N) = \lambda$; therefore $\text{SNR} = \sqrt{\lambda}$. This is a fundamental quantum limit — it cannot be reduced by better electronics, only by increasing dose or improving detectors.
+7. **SNR–dose scaling:** $\text{SNR} \propto \sqrt{\text{dose}}$; doubling SNR requires quadrupling dose. At low dose (beam-sensitive samples), damage caps the dose budget, so SNR is physically bounded. Denoising algorithms can recover structure but cannot invent information not collected.
+8. **Gaussian noise (readout/thermal):** electronic amplifier and thermal fluctuations produce additive Gaussian noise $\mathcal{N}(0, \sigma_r^2)$ with variance *independent* of the signal. Real detectors have a Gaussian + Poisson mixture: $x_i = g \cdot \text{Poisson}(\lambda_i) + \mathcal{N}(0, \sigma_r^2)$; a variance–mean plot diagnoses the mixture.
+9. **Aleatory vs epistemic uncertainty:** aleatory uncertainty is irreducible (shot noise, thermal vibrations — quantum physics); epistemic uncertainty reflects missing knowledge (calibration error, small dataset, wrong model class) and *can* be reduced by more data, better calibration, or improved models. Active acquisition strategies target epistemic uncertainty.
+10. **Noise model → loss function:** Gaussian noise → MSE loss is the correct choice; Poisson noise → Poisson negative-log-likelihood loss. Using MSE on low-count EM data is a silent physics error that causes models to underfit noisy regions because it assumes signal-independent variance.
 
 ---
 
