@@ -58,7 +58,16 @@
 
 ## Week 4 — Regression, gradient descent & honest validation
 
-- _(≤10 must-know statements — filled when this week's deck is authored)_
+1. **ERM principle:** training a model = minimising the empirical risk $\hat{R}(\mathbf{w}) = \frac{1}{N}\sum_i L(f_\mathbf{w}(\mathbf{x}_i), y_i)$; every supervised algorithm is a choice of loss function + a choice of optimiser.
+2. **Loss–noise-model duality:** MSE is the correct loss when residuals are iid Gaussian; MAE is correct under Laplacian residuals; Huber combines quadratic core with linear tails. Choosing the wrong loss on low-count EM data (Poisson noise) silently biases the fit.
+3. **Gradient descent update:** $\mathbf{w}_{t+1} = \mathbf{w}_t - \eta\,\nabla_\mathbf{w}\hat{R}(\mathbf{w}_t)$; $\eta$ is the learning rate; too small → slow convergence, too large → oscillation or divergence.
+4. **SGD and minibatch SGD:** replacing the full-data gradient with a gradient estimated on one sample (SGD) or $b$ samples (minibatch) reduces per-step cost from $\mathcal{O}(N)$ to $\mathcal{O}(1)$ or $\mathcal{O}(b)$ while remaining unbiased in expectation. Batch sizes 32–256 are standard.
+5. **Adam:** combines SGD, momentum (exponential moving average of gradients, $\beta_1 = 0.9$), and per-parameter adaptive scaling (exponential moving average of squared gradients, $\beta_2 = 0.999$). Default optimiser for neural networks; typical $\eta = 0.001$.
+6. **Bias–variance decomposition:** test error = $\text{Bias}^2 + \text{Variance} + \sigma^2$. Underfitting = high bias (model too simple); overfitting = high variance (model memorised training noise). Noise floor $\sigma^2$ is irreducible. Regularisation (Ridge/Lasso) trades variance for bias.
+7. **Train/validation/test protocol:** train = fit parameters; validation = tune hyperparameters (may look repeatedly); test = final one-time honest report. Any modelling decision based on test-set results converts it to a validation set.
+8. **K-fold cross-validation:** split data into $k$ folds; each fold serves as test exactly once; report $\overline{\text{MSE}} \pm \text{std}$. More reliable than a single holdout; $k=5$ or $k=10$ are standard defaults.
+9. **The EM leakage trap (crop-vs-specimen):** if crops from the same EM specimen appear in both train and test, the model memorises specimen identity rather than the physical property. Fix: `GroupKFold(groups=specimen_id)` — entire specimens are in either train or test, never both. This is the default CV strategy whenever a `specimen_id` column exists.
+10. **Segmentation metrics:** IoU = $|A\cap B|/|A\cup B|$; Dice = $2|A\cap B|/(|A|+|B|) = 2\,\text{IoU}/(1+\text{IoU})$. Both range $[0,1]$; $R^2 < 0$ is possible and means the model is worse than predicting the mean. For imbalanced classification, report precision and recall, not accuracy.
 
 ---
 
