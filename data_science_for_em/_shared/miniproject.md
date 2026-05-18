@@ -44,10 +44,10 @@ Choose **one** of the four options below. If you have a compelling alternative f
 
 **Suggested datasets / sources:**
 - Synthetic Voronoi microstructures with perfect grain-boundary masks (generate in-notebook with `scipy.spatial.Voronoi` + Gaussian blur + Poisson noise — zero download required, explicitly labelled synthetic).
-- NFFA-EUROPE open TEM/SEM datasets if available at submission time: <https://www.nffa.eu/apply/data/>.
+- NFFA-EUROPE open TEM/SEM datasets (requires an NFFA user account — use the synthetic fallback if access is unavailable): <https://www.nffa.eu/apply/data/>.
 - Any SEM grain-boundary dataset you can export from your department's microscope (include a data-sharing statement).
 
-**Deliverable:** A segmentation notebook (data generation or loading → U-Net / a lighter CNN → IoU vs noise level curve → at least one Grad-CAM or saliency map on a failure case).
+**Deliverable:** A segmentation notebook (data generation or loading → lightweight CNN (≤3 conv layers) or a pretrained backbone (e.g. ResNet encoder) → IoU vs noise level curve → at least one Grad-CAM or saliency map on a failure case). A U-Net is an optional stretch goal for pairs with GPU access.
 
 ---
 
@@ -57,7 +57,7 @@ Choose **one** of the four options below. If you have a compelling alternative f
 
 **Suggested datasets / sources:**
 - Synthetic low-count EELS spectra: Poisson-noisy Gaussian peaks at known positions (generate in-notebook — zero download required, explicitly labelled synthetic).
-- `hyperspy` example datasets (installed in course environment): `hs.datasets.example_signals`.
+- `hyperspy` example datasets (installed in course environment): `hs.datasets.example_signals` (e.g. `hs.datasets.example_signals.EDS_TEM_Spectrum()`).
 - Public EELS Atlas spectra from <https://eelsdb.eu> for reference validation.
 
 **Deliverable:** A denoising + clustering notebook (spectra loading or generation → PCA/autoencoder → latent-space t-SNE/UMAP → phase map → comparison with ground-truth positions; uncertainty: reconstruction error distribution per phase).
@@ -69,7 +69,7 @@ Choose **one** of the four options below. If you have a compelling alternative f
 **Task:** Predict a scalar materials property (e.g. hardness, bandgap, corrosion rate) from tabular composition / processing descriptors; rigorously quantify aleatoric + epistemic uncertainty and flag out-of-distribution inputs.
 
 **Suggested datasets / sources:**
-- `matminer` datasets (installable, pip-accessible): `load_dataset("elastic_tensor_2015")` or similar; see <https://hackingmaterials.lbl.gov/matminer/dataset_summary.html>.
+- `matminer` datasets (`pip install matminer`): `from matminer.datasets import load_dataset; load_dataset("elastic_tensor_2015")` or similar; see <https://hackingmaterials.lbl.gov/matminer/dataset_summary.html>.
 - Synthetic composition-property data: linear model + heteroscedastic noise (generate in-notebook — explicitly labelled synthetic, useful for benchmarking your uncertainty estimates against the known ground truth).
 - Any tabular dataset from your group's experiments with ≥80 samples.
 
@@ -82,8 +82,8 @@ Choose **one** of the four options below. If you have a compelling alternative f
 **Task:** Solve a 2-D deblurring problem or a limited-angle tomographic reconstruction on a provided or synthetic phantom; study how regularisation strength controls the bias–variance trade-off.
 
 **Suggested datasets / sources:**
-- Synthetic disc/bar phantom (generate in-notebook with `skimage.draw`; add Gaussian PSF blur and Poisson noise — zero download required, explicitly labelled synthetic).
-- AAPM Low-Dose CT Challenge sinogram data if publicly available at submission time: <https://www.aapm.org/grandchallenge/lowdosect/>.
+- Synthetic disc/bar phantom (generate in-notebook with `skimage.draw`; add Gaussian PSF blur and Poisson noise — zero download required, explicitly labelled synthetic). This is the recommended zero-download fallback and sufficient for full marks.
+- Real electron-tomography tilt series from the EMPIAR database: <https://www.ebi.ac.uk/empiar/> (browse for suitable cryo-EM or STEM tomography entries; check file size before downloading).
 
 **Deliverable:** A regularisation-study notebook (phantom generation or loading → forward model → Tikhonov / TV regularisation at ≥5 λ values → SSIM/PSNR vs λ curve → at least one uncertainty map from a Bayesian or ensemble approach; explain which λ a materials scientist should pick and why).
 
@@ -91,7 +91,7 @@ Choose **one** of the four options below. If you have a compelling alternative f
 
 ## Deliverables
 
-1. **Notebook** (`miniproject_<surname>.ipynb`): self-contained, fully executable, ≤ 5 min runtime on a laptop CPU. All figures must be generated inside the notebook.
+1. **Notebook** (`miniproject_<surname>.ipynb`): self-contained, fully executable. All figures must be generated inside the notebook. Target runtime: ≤ 5 min on a laptop CPU for Options B, C, and D; image-segmentation submissions (Option A) using a small CNN should target ≤ 10 min (or use a pretrained backbone / Google Colab GPU).
 2. **Report** (`miniproject_<surname>.pdf`): ≈4–6 pages (A4, ≥11 pt font, figures included in the page count). Sections: Introduction / Dataset & Preprocessing / Methods / Results & Uncertainty / Explainability / Conclusion. References in any consistent style.
 
 Both files submitted as a single ZIP to Moodle by the deadline.
