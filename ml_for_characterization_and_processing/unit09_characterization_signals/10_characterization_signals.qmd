@@ -27,1361 +27,1126 @@ format:
       loadIcons: true
     footer: © Philipp Pelz - Machine Learning in Materials Processing & Characterization
 ---
-## 01. Learning Outcomes
+# §1 · Signals & their physics {.section}
+
+## 01. Unit 9 — The Signal Application & Domain Unit
+
+::: {.columns}
+::: {.column width="55%"}
+This unit is **not** a methods unit. The methods were derived elsewhere; here we ask **what the signal physics demands** of them.
+
+| Method | Owned by (derived in) |
+|:--|:--|
+| PCA / SVD | MFML u02 · ML-PC u02 |
+| Clustering, autoencoders | MFML u05 · ML-PC u05 |
+| NMF | MFML u02 · ML-PC u05 |
+| t-SNE / UMAP, latent spaces | MFML u09 |
+| MAE / SSL (DINOv2, I-JEPA) | MFML u09 · ML-PC u09b |
+
+::: {.callout-important .fragment}
+We **reference** these methods. We do **not** re-derive them. Unit 9 is about background subtraction, calibration transfer, quantification, rotational ambiguity, operando streaming — the things the *signal physics* forces on you.
+:::
+:::
+::: {.column width="45%"}
+::: {.fragment}
+**Learning outcomes.** After 90 minutes you can:
+
+1. Explain how the *probe physics* dictates the structure of XRD / EELS / EDX / XPS / Raman signals.
+2. Build a defensible **spectral preprocessing pipeline** (background → calibrate/align → normalize).
+3. Apply **MCR-ALS** and reason about **rotational ambiguity**.
+4. Turn a latent/peak into a **quantified concentration with an error bar** (Cliff-Lorimer / ζ-factor).
+5. Deploy SSL/MAE-pretrained spectral encoders and operando novelty detection.
+:::
+:::
+:::
+
+::: {.notes}
+**Why this slide exists.** The old version of this unit re-derived PCA and autoencoders that the students had just seen in two parallel tracks. That is wasted lecture time and it teaches students that the same idea has two unrelated names. Open by killing that confusion explicitly: the table is the contract for the next 90 minutes.
+
+**Say this out loud.** "If at any point today you think 'this is just PCA' or 'this is just an autoencoder' — you are right, and that is the point. The method is a black box you already own. What you do *not* own yet is the judgement about what the EELS edge, the Bragg peak, or the bremsstrahlung background does to that black box. That judgement is today."
+
+**Materials hook.** Frame the stakes: a metallurgist does not want a latent vector, they want "this region is 4.2 ± 0.3 at.% Cr, Fe³⁺-rich, and there is an unindexed phase at the interface." Every method we reference is only a means to that sentence.
+
+**Pre-empt the student question.** "Will the exam test PCA math?" — No, that is MFML u02 / ML-PC u02 weight. This unit's exam weight is the *pipeline reasoning*: which normalization, why a wrong background biases everything, what rotational ambiguity is, how a k-factor becomes a number with an uncertainty.
+
+**Forward link.** Outcomes 2 and 4 are the spine of the exercise; outcome 5 forward-links to Unit 10 (automation / self-driving microscopes).
+
+**Pacing.** 3 minutes max. The table is a reference the students will photograph; do not read it line by line.
+:::
+
+## 02. Beyond Images: 1-D Signals
 
 ::: {.fragment}
-After this unit, you will be able to:
+- Most of the course so far: **spatial data** (micrographs, microstructure maps).
 :::
 
 ::: {.fragment}
-1. **Describe** the characteristics of 1D characterization signals (XRD, EELS, EDS, XPS, Raman) and why ML is needed
+- But many instruments produce **1-D spectral signals** — intensity vs. energy / angle / wavenumber:
+  - **XRD** — crystal structure via Bragg peaks
+  - **EELS** — bonding and electronic structure (edges, fine structure)
+  - **EDX/EDS** — elemental composition (characteristic X-ray lines)
+  - **XPS** — surface chemistry and oxidation states (chemical shifts)
+  - **Raman** — molecular / phonon fingerprints
 :::
 
 ::: {.fragment}
-2. **Apply** PCA to spectral data for dimensionality reduction and denoising
+- Modern instruments collect **millions of spectra per experiment** — every pixel of a STEM scan is a spectrum (spectrum imaging).
 :::
 
-::: {.fragment}
-3. **Explain** the architecture and training of autoencoders and their variants (DAE, CAE, VAE)
+::: {.callout-note .fragment}
+A spectrum with $N$ channels is a vector $\mathbf{x} \in \mathbb{R}^N$. Every linear-algebra / ML tool applies directly — but each "dimension" is a *physical energy channel*, and that is what makes this unit different from generic vector ML.
 :::
 
-::: {.fragment}
-4. **Compare** PCA and autoencoders for spectral compression and feature extraction
-:::
+::: {.notes}
+**Mechanism in one sentence.** A spectrum is a histogram of counts versus a physical axis; the axis carries meaning (an eV, a 2θ, a cm⁻¹), so unlike a generic feature vector you cannot permute the dimensions.
 
-::: {.fragment}
-5. **Design** a signal processing pipeline for hyperspectral materials data
-:::
+**Materials hook.** Drive home scale: a single 4D-STEM-EDS map is routinely 512×512 pixels × 2048 channels ≈ half a billion numbers. Nobody hand-fits that. This is *the* reason ML enters — not because ML is fashionable, but because the data volume crossed a line around 2015.
 
-## 02. Beyond Images: 1D Characterization Signals
+**Anti-pattern to flag now.** Treating the energy axis as exchangeable features (e.g., shuffling channels before PCA "to be safe"). The ordering *is* the physics; convolutional and aligned methods exploit it, channel-permuting methods throw it away.
 
-::: {.fragment}
-- Most of our course so far: **spatial data** (micrographs, microstructure maps)
-:::
+**Forward link.** "Spectra are vectors" is the bridge to §2: every preprocessing step is a transformation of that vector chosen to make the *chemistry* (not the dose or the drift) the dominant source of variance.
 
-::: {.fragment}
-- But many instruments produce **1D spectral signals**:
-  - **XRD** — X-ray Diffraction: crystal structure via Bragg peaks
-  - **EELS** — Electron Energy Loss Spectroscopy: bonding and electronic structure
-  - **EDS** — Energy Dispersive X-ray Spectroscopy: elemental composition
-  - **XPS** — X-ray Photoelectron Spectroscopy: surface chemistry and oxidation states
-  - **Raman** — Vibrational spectroscopy: molecular fingerprints
-:::
-
-::: {.fragment}
-- Each technique produces a **spectrum**: intensity vs. energy (or angle, or wavenumber)
-:::
-
-::: {.fragment}
-- Modern instruments collect **millions** of spectra per experiment (spectrum imaging)
+**Pacing.** Light slide, ~2 minutes. Kept material from the old deck — keep it brisk.
 :::
 
 ## 03. The Nature of Characterization Signals
 
+::: {.columns}
+::: {.column width="50%"}
 ::: {.fragment}
-- **High dimensionality**: A single spectrum may have 1024, 2048, or 4096 channels
-  - Each spectrum is a point in $\mathbb{R}^{2048}$
+- **High dimensionality** — 1024–4096 channels; each spectrum a point in $\mathbb{R}^{N}$.
 :::
-
 ::: {.fragment}
-- **Sparse peaks**: Most channels contain background; only a few contain signal
+- **Sparse peaks** — most channels are background; the science lives in a handful of channels.
 :::
-
 ::: {.fragment}
-- **Continuous backgrounds**: Bremsstrahlung (EDS), plasmon tails (EELS), fluorescence
+- **Continuous backgrounds** — bremsstrahlung (EDX), plasmon tails (EELS), fluorescence (Raman).
 :::
-
+:::
+::: {.column width="50%"}
 ::: {.fragment}
-- **Noise**: Shot noise (Poisson) dominates at low dose; detector noise adds Gaussian contributions
+- **Noise** — Poisson (shot) noise dominates at low dose; Gaussian detector/readout noise adds on top.
 :::
-
 ::: {.fragment}
-- **Variability**: Peak positions shift with composition; peak shapes change with bonding
+- **Variability** — peak *positions* shift with composition; peak *shapes* change with bonding/oxidation.
 :::
-
-::: {.callout-note}
-## Spectra as Vectors
-A spectrum with $N$ channels is simply a vector $\mathbf{x} \in \mathbb{R}^N$. All the linear algebra and ML tools we have learned apply directly — but the physical meaning of each "dimension" (an energy channel) matters for interpretation.
-:::
-
-## 04. The Need for ML
-
 ::: {.fragment}
-### Traditional Analysis Is Breaking Down
+- **Low intrinsic dimensionality** — a sample with $P$ phases spans $\approx P$ + a few directions, $\ll N$.
+:::
+:::
 :::
 
+::: {.callout-important .fragment}
+The signal-to-noise is *Poisson*: variance equals the mean. A peak with 100 counts has $\pm 10$ noise; a background of 10 000 counts has $\pm 100$. This is why dose, normalization, and background all couple — you cannot treat them independently.
+:::
+
+::: {.notes}
+**Mechanism.** Counting experiments obey Poisson statistics: $\mathrm{Var}=\mathrm{mean}$. This single fact propagates through the entire unit — it is why total-count normalization changes the noise model, why background subtraction must precede variance-stabilizing transforms, and why MSE losses are technically wrong for raw counts (Poisson NLL is right).
+
+**Materials hook / quantitative anchor.** EELS core-loss edge on a power-law plasmon tail: the edge might be 5% of the local intensity. At realistic dose the Poisson noise on the *background* can exceed the entire *signal*. That is the daily reality of valence-state mapping — not a corner case.
+
+**War story.** A student "discovers" a new phase in PCA component 4. It is the detector's per-channel gain pattern beating against Poisson noise. Diagnostic symptom: the "phase" has no spatial coherence and its spectrum is high-frequency hash with no physical edges. Always check spatial coherence and physical plausibility before celebrating a component.
+
+**Pre-empt the question.** "Why not just acquire longer to beat the noise?" — Beam damage and instrument time. Doubling SNR needs 4× dose (Poisson), and the specimen is often destroyed first. This is exactly why denoising/SSL matter — but see slide 20 for the trap.
+
+**Forward link.** Low intrinsic dimensionality is *why* PCA/AE/NMF work on spectra — referenced, not re-derived. Today's consequence: the preprocessing pipeline (§2) must not inject artificial dimensions (a bad baseline adds a spurious component).
+
+**Pacing.** ~3 minutes. The Poisson callout is exam-weight; say it twice.
+:::
+
+## 04. Signal Formation: The Physics of the Probe
+
+The signal's **structure is dictated by the physics of the probe** — every method in §2–§4 must respect it.
+
+::: {.columns}
+::: {.column width="50%"}
 ::: {.fragment}
-- **Manual peak fitting** is slow, subjective, and does not scale
-  - Fitting 10 peaks in 1 spectrum: feasible
-  - Fitting 10 peaks in 1,000,000 spectra: impossible
+- **EELS** — ionization **edges** (sawtooth/hydrogenic) on a steep **plasmon / power-law background** ($\sim AE^{-r}$); near-edge fine structure (ELNES) encodes valence.
 :::
-
 ::: {.fragment}
-- **Overlapping peaks** make decomposition ambiguous
-  - Fe-L and Mn-L edges in EELS overlap at ~640 eV
-  - Ti-K$\alpha$ and Ba-L$\alpha$ overlap in EDS at ~4.5 keV
+- **EDX** — characteristic lines (Gaussian-ish, detector-broadened) on a **bremsstrahlung continuum**; absorption + fluorescence distort intensities.
 :::
-
 ::: {.fragment}
-- **Subtle spectral changes** encode critical physics
-  - The Fe-L$_{2,3}$ edge shape distinguishes Fe$^{2+}$ from Fe$^{3+}$
-  - Peak shift of 0.3 eV indicates a change in oxidation state
+- **XRD** — **Bragg peaks** at $2\theta$ from $d$-spacings; instrumental + size/strain broadening (Caglioti, Scherrer); preferred orientation reweights intensities.
 :::
-
+:::
+::: {.column width="50%"}
 ::: {.fragment}
-- **Batch effects**: Instrument calibration drifts, detector aging, beam damage
+- **XPS** — core-level lines whose **binding-energy shift** (chemical shift, ~0.1–3 eV) encodes oxidation state; inelastic background (Shirley/Tougaard).
 :::
-
-## 05. Goals: Compression, Denoising, Phase ID
-
 ::: {.fragment}
-### Three Core Tasks for ML on Spectra
+- **Raman** — sharp phonon lines on a broad, sample-dependent **fluorescence background** that can dwarf the signal.
+:::
+::: {.callout-note .fragment}
+Different physics → **different background model, different noise, different invariances**. There is no universal preprocessing. The pipeline must be chosen per modality.
+:::
+:::
 :::
 
-::: {.fragment}
-1. **Compression**: Reduce $\mathbf{x} \in \mathbb{R}^{2048}$ to $\mathbf{z} \in \mathbb{R}^{K}$ with $K \ll 2048$
-   - Store and transmit massive spectral maps efficiently
+> **[FIGURE: five mini-panels, one per modality, each showing the characteristic peak/edge shape sitting on its characteristic background, annotated with the physical origin of each component]**
+
+::: {.notes}
+**Why this slide is new and essential.** The old deck jumped straight to "spectrum = vector, apply PCA," hiding the most important teaching point: the *shape* of the background and the *invariances* of the signal are physics, and they tell you which method is legal.
+
+**Mechanism, one line each.** EELS: a core electron is ejected, cross-section gives the hydrogenic edge; background is the tail of lower-energy losses (plasmons). EDX: an inner-shell hole is filled emitting a characteristic photon; continuum is decelerated beam electrons (bremsstrahlung). XRD: constructive interference at the Bragg condition. XPS: photoemission; binding energy depends on chemical environment (the chemical shift *is* the measurement). Raman: inelastic scattering off phonons; fluorescence is a competing radiative process orders of magnitude stronger.
+
+**Materials hook / exam trap.** A student SNV-normalizes EELS *before* removing the power-law background. SNV assumes per-spectrum mean and std are meaningful; with a steep $E^{-r}$ background dominating the integral, SNV encodes the *background slope*, not chemistry. Order matters and is dictated by the physics on this slide.
+
+**Quantitative anchor.** XPS chemical shift: metallic Fe 2p₃/₂ ≈ 707 eV, Fe³⁺ in Fe₂O₃ ≈ 711 eV — a ~3–4 eV shift that *is* the oxidation-state signal. A 1 eV calibration drift (slide 08) throws away a quarter of the discriminating signal.
+
+**Pre-empt the question.** "Can a foundation model just learn the background?" — In principle (slide 19), but only if the corpus spans the background variability; physical background models remain more sample-efficient and auditable. Revisited on slide 20.
+
+**Forward link.** Every §2 slide is "given *this* physics, here is the right operation": 07 = these background models; 08 = the calibration the XPS shift demands; 09 = why each normalization assumes a particular physics.
+
+**Pacing.** 4–5 minutes — the conceptual keystone of §1. Two sentences per modality; do not turn it into a spectroscopy lecture.
 :::
 
-::: {.fragment}
-2. **Denoising**: Recover the clean signal from noisy measurements
-   - Equivalent to faster acquisition or higher beam current — without the dose
-:::
-
-::: {.fragment}
-3. **Phase Identification**: Group similar spectra and identify distinct phases
-   - Automated chemical/structural mapping across entire specimens
-:::
-
-::: {.fragment}
-- All three tasks are connected through **dimensionality reduction**
-- If we find the right low-dimensional representation, compression, denoising, and clustering all follow naturally
-:::
-
-## {background-color="#1a1a2e"}
-
-::: {.r-fit-text}
-Section 2: PCA for Spectra
-:::
-
-::: {.fragment}
-Eigenspectra, Scree Plots, and Linear Denoising
-:::
-
-## 06. PCA for Spectra
-
-### The Classical Tool for Spectral Decomposition [@sandfeld_materials_data_science]
+## 05. Why ML — and Where Manual Fitting Breaks
 
 ::: {.fragment}
-- Given $N$ spectra, each with $D$ channels, form the data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$
-:::
-
-::: {.fragment}
-- PCA finds orthogonal directions of **maximum variance** in this $D$-dimensional space
+- **Manual peak fitting** is slow, subjective, non-reproducible, and does not scale.
+  - 10 peaks in 1 spectrum: a Friday afternoon. 10 peaks in $10^6$ spectra: impossible.
 :::
 
 ::: {.fragment}
-- Each spectrum can be approximated as a **linear combination** of $K$ basis vectors:
-
-$$\mathbf{x}_i \approx \bar{\mathbf{x}} + \sum_{k=1}^{K} c_{ik} \, \mathbf{v}_k$$
+- **Overlapping peaks** make decomposition ambiguous.
+  - Fe-L and Mn-L (EELS) overlap near ~640 eV; Ti-Kα and Ba-Lα (EDX) overlap near ~4.5 keV.
 :::
 
 ::: {.fragment}
-- $\bar{\mathbf{x}}$: mean spectrum (average over all $N$ spectra)
-- $\mathbf{v}_k$: the $k$-th eigenvector of the covariance matrix (the $k$-th **eigenspectrum**)
-- $c_{ik}$: the score (coefficient) of spectrum $i$ on component $k$
+- **Subtle spectral changes encode the science.**
+  - The Fe-L₂,₃ white-line ratio distinguishes Fe²⁺ from Fe³⁺; a 0.3 eV onset shift = an oxidation-state change.
 :::
 
 ::: {.fragment}
-- **Compression**: Store only the $K$ scores $c_{ik}$ instead of the full $D$ channels
+- **Batch effects** — calibration drift, detector aging, beam damage, contamination — break naïve models.
 :::
 
-## 07. The Basis Function View: Eigenspectra
+::: {.callout-important .fragment}
+**Pointer.** The *methods* that solve these — PCA/SVD (**MFML u02**, **ML-PC u02**), autoencoders / VAE / conv-AE (**MFML u05**, **ML-PC u05**), t-SNE/UMAP & latent spaces & MAE/DINOv2/I-JEPA (**MFML u09**) — were all derived there. From here we *apply* them to what the signal physics demands.
+:::
+
+::: {.notes}
+**Purpose.** The hinge slide. Justify ML on materials-domain grounds (scale, overlap, subtlety, drift) and then *explicitly* hand off the method derivations so §2 onward is unambiguously application.
+
+**Materials hook / war story.** "Monday model fails on Friday": a CNN trained on one detector session, deployed a week later, silently mispredicts because the energy axis drifted 0.4 eV and bremsstrahlung shape changed with new contamination. Diagnostic symptom: training-week hold-out fine, new sessions collapse; residual spectra show a *coherent* shift, not random error. Motivates slides 08 and 11.
+
+**Pre-empt the question.** "If 0.3 eV shifts matter, can ML even resolve that under Poisson noise?" — Yes, with correct preprocessing and enough averaging / SSL priors; the through-line of §2 and §4. Plant the question now, pay it off later.
+
+**Cross-reference discipline.** Read the callout verbatim — it is the contract. Whenever a student later asks "how does the autoencoder train?", point here: "MFML u05 — we do not re-derive; today we ask what the spectrum forces on it."
+
+**Pacing.** ~3 minutes. End §1; the divider to §2 is the natural breath.
+:::
+
+# §2 · The spectral preprocessing pipeline {.section}
+
+## 06. The Pipeline — Garbage In Dominates Everything
 
 ```{mermaid}
-%%| fig-width: 14
+%%| fig-width: 18
 flowchart LR
-    A["Raw Spectrum<br>x ∈ ℝ²⁰⁴⁸"] --> B["Center<br>x - x̄"]
-    B --> C["Project onto<br>Eigenspectra V"]
-    C --> D["Score Vector<br>c ∈ ℝᴷ"]
-    D --> E["Reconstruct<br>x̂ = x̄ + Vc"]
-    E --> F["Denoised<br>Spectrum"]
-
+    A["Raw spectra<br>(N × D)"] --> B["Background /<br>baseline subtraction"]
+    B --> C["Energy / 2θ<br>calibration & alignment"]
+    C --> D["Normalization"]
+    D --> E["(optional)<br>reduction / decomposition"]
+    E --> F["Downstream:<br>quant · phase ID · anomaly"]
     style A fill:#2d5016,stroke:#4a8c2a,color:#fff
     style D fill:#1a3a5c,stroke:#2a6a9c,color:#fff
     style F fill:#5c1a1a,stroke:#9c2a2a,color:#fff
 ```
 
 ::: {.fragment}
-- The eigenspectra $\{\mathbf{v}_1, \mathbf{v}_2, \ldots, \mathbf{v}_K\}$ form an **orthonormal basis**
+- Every box is a **physics-informed choice**, not a default. Order matters (slide 04).
 :::
 
 ::: {.fragment}
-- Each eigenspectrum is a "building block" — a spectral shape that varies across the dataset
+- The reduction/decomposition box is the **referenced methods** (PCA/AE/NMF) — it is *one* box, not the unit.
 :::
 
-::: {.fragment}
-- The scores $c_{ik} = \mathbf{v}_k^\top (\mathbf{x}_i - \bar{\mathbf{x}})$ are computed by simple inner products
-:::
-
-::: {.fragment}
-- This is computationally cheap: once the eigenspectra are computed, projecting a new spectrum is a matrix-vector multiply
-:::
-
-## 08. Interpreting Eigenspectra
-
-::: {.fragment}
-- **PC1** (first eigenspectrum): Typically resembles the **mean spectrum**
-  - Captures the dominant overall shape (background + major peaks)
-:::
-
-::: {.fragment}
-- **PC2, PC3**: Capture the **dominant variations**
-  - Often correspond to specific chemical differences between phases
-  - Example: PC2 might show positive Fe peaks and negative Cr peaks (Fe vs. Cr variation)
-:::
-
-::: {.fragment}
-- **Higher PCs** ($k > K_{\text{signal}}$): Capture **noise**
-  - Appear as random oscillations with no physical meaning
-:::
-
-::: {.fragment}
-![](images/pca_projection.png){width=80%}
-:::
-
-## 09. Intrinsic Dimensionality
-
-::: {.fragment}
-- A 2048-channel spectrum lives in $\mathbb{R}^{2048}$ — but how many dimensions does the **data** actually use?
-:::
-
-::: {.fragment}
-- If the sample has 4 distinct phases, the spectra approximately span a **4-dimensional subspace**
-:::
-
-::: {.fragment}
-- The **intrinsic dimensionality** $K$ is the number of independent spectral variations
-:::
-
-::: {.fragment}
-- For most materials datasets: $K \sim 3\text{--}20 \ll D = 2048$
-:::
-
-::: {.callout-tip}
-## Rule of Thumb
-The intrinsic dimensionality of a spectral dataset is typically close to the number of distinct phases or chemical environments in the sample, plus a few components for background variations and thickness effects.
-:::
-
-## 10. Scree Plots: Choosing the Number of Components
-
-### How Many PCs to Keep? [@sandfeld_materials_data_science]
-
-::: {.fragment}
-- The **scree plot** shows the explained variance (eigenvalue) for each component
-:::
-
-::: {.fragment}
-- Signal components have **large** eigenvalues; noise components have **small**, roughly equal eigenvalues
-:::
-
-::: {.fragment}
-![](images/scree_plot.png){width=80%}
-:::
-
-::: {.fragment}
-- **The Elbow Rule**: Keep components before the "elbow" where eigenvalues level off
-:::
-
-::: {.fragment}
-- **Cumulative variance**: Often 95% or 99% of total variance is captured by $K \sim 5\text{--}15$ components
-:::
-
-::: {.fragment}
-- Alternative: **Parallel analysis** — compare eigenvalues against those from random data
-:::
-
-## 11. Denoising via Reconstruction
-
-### Truncated PCA as a Filter [@sandfeld_materials_data_science]
-
-::: {.fragment}
-**Algorithm:**
-
-1. Compute eigenspectra from the dataset: $\mathbf{V}_K = [\mathbf{v}_1, \ldots, \mathbf{v}_K]$
-2. Project each noisy spectrum: $\mathbf{c}_i = \mathbf{V}_K^\top (\mathbf{x}_i - \bar{\mathbf{x}})$
-3. Reconstruct: $\hat{\mathbf{x}}_i = \bar{\mathbf{x}} + \mathbf{V}_K \mathbf{c}_i$
-:::
-
-::: {.fragment}
-- The reconstruction $\hat{\mathbf{x}}_i$ retains only the signal subspace — **noise is discarded**
-:::
-
-::: {.fragment}
-![](images/pca_denoising.png){width=80%}
-:::
-
-::: {.fragment}
-- Equivalent to **reducing acquisition time by 10x** while maintaining chemical sensitivity
-:::
-
-## 12. Think About This...
-
-### PCA Denoising: Free Lunch?
-
-::: {.fragment}
-**Question:** If PCA denoising is so effective, why not always reduce acquisition time by 10x and denoise afterwards?
-:::
-
-::: {.fragment}
-**Hint:** Think about what happens when a spectrum contains a feature that is unique — present in only one or two pixels of the map.
-:::
-
-::: {.fragment .fade-in-then-semi-out}
-**Consider:**
-
-- PCA eigenspectra are computed from the **entire dataset**
-- Rare features may not contribute enough variance to be captured by the top-$K$ components
-- PCA denoising can **erase rare phases** — minority signals get projected away
-- This is a fundamental tension: **denoising vs. discovery**
-:::
-
-::: {.fragment}
-::: {.callout-tip}
-## Key Insight
-PCA denoising is excellent for **known, common features** but can suppress **rare or unexpected signals**. Always inspect the residuals $\mathbf{x}_i - \hat{\mathbf{x}}_i$ for signs of discarded information.
-:::
-:::
-
-## 13. PCA Limitations
-
-::: {.fragment}
-### The Linearity Constraint
-:::
-
-::: {.fragment}
-- PCA assumes that spectral variations can be expressed as **linear combinations**
-- This works well when: phases mix additively (Beer-Lambert law, EDS from thin sections)
-:::
-
-::: {.fragment}
-- PCA **fails** when:
-  - Peak positions **shift** with composition (e.g., XRD peak shift with lattice parameter)
-  - Peak shapes **change** non-linearly (e.g., EELS fine structure with oxidation state)
-  - Backgrounds are multiplicative rather than additive
-:::
-
-::: {.fragment}
-- PCs are **orthogonal** — but physical phases are **not** orthogonal
-  - PCs can have negative values, but spectra are non-negative
-  - Alternative: **NMF** (Non-negative Matrix Factorization) enforces $\mathbf{V} \geq 0$, $\mathbf{C} \geq 0$
-:::
-
-::: {.fragment}
-- These limitations motivate **autoencoders**: non-linear generalizations of PCA
-:::
-
-## 14. Summary: PCA for Spectra
-
-::: {.fragment}
-| Aspect | PCA |
-|--------|-----|
-| **Type** | Linear dimensionality reduction |
-| **Speed** | Very fast (SVD or eigendecomposition) |
-| **Solution** | Unique, deterministic |
-| **Interpretation** | Eigenspectra = orthogonal basis functions |
-| **Denoising** | Truncated reconstruction |
-| **Compression** | Store $K$ scores instead of $D$ channels |
-| **Limitation** | Cannot handle non-linear variations |
-:::
-
-::: {.fragment}
-**When to use PCA:**
-
-- As the **first step** in any spectral analysis pipeline
-- When variations are approximately **linear** (additive mixing)
-- When you need **fast, reproducible** results
-- For **denoising** large spectral maps
-:::
-
-## {background-color="#1a1a2e"}
-
-::: {.r-fit-text}
-Section 3: Autoencoders for Signals
-:::
-
-::: {.fragment}
-Non-linear Compression, Denoising, and Feature Extraction
-:::
-
-## 15. Autoencoder Concept
-
-### A Neural Network That Learns to Compress [@sandfeld_materials_data_science]
-
-::: {.fragment}
-- An **autoencoder** (AE) is a neural network trained to **reconstruct its own input**
-:::
-
-::: {.fragment}
-- The identity function $f(\mathbf{x}) = \mathbf{x}$ is trivial — so we add a **bottleneck**
-:::
-
-::: {.fragment}
-- The network must learn a **compressed representation** $\mathbf{z}$ that captures the essential information
-:::
-
-::: {.fragment}
-$$\mathbf{z} = f_{\text{enc}}(\mathbf{x}; \theta_{\text{enc}}) \quad \quad \hat{\mathbf{x}} = f_{\text{dec}}(\mathbf{z}; \theta_{\text{dec}})$$
-:::
-
-::: {.fragment}
-- If $\dim(\mathbf{z}) \ll \dim(\mathbf{x})$, the AE must discover **meaningful features**
-:::
-
-::: {.fragment}
-- With **linear** activations and one hidden layer, an AE recovers **PCA** [@sandfeld_materials_data_science]
-- With **non-linear** activations, it learns more powerful representations
-:::
-
-## 16. AE Architecture: The Hourglass
-
-```{mermaid}
-%%| fig-width: 16
-flowchart LR
-    subgraph Encoder
-        I["Input<br>2048 channels"] --> H1["Dense 512<br>ReLU"]
-        H1 --> H2["Dense 128<br>ReLU"]
-        H2 --> H3["Dense 32<br>ReLU"]
-    end
-
-    subgraph Bottleneck
-        H3 --> Z["Latent z<br>dim = 8"]
-    end
-
-    subgraph Decoder
-        Z --> H4["Dense 32<br>ReLU"]
-        H4 --> H5["Dense 128<br>ReLU"]
-        H5 --> H6["Dense 512<br>ReLU"]
-        H6 --> O["Output<br>2048 channels"]
-    end
-
-    style I fill:#2d5016,stroke:#4a8c2a,color:#fff
-    style Z fill:#8B0000,stroke:#cc3333,color:#fff
-    style O fill:#2d5016,stroke:#4a8c2a,color:#fff
-```
-
-::: {.fragment}
-- **Encoder** $f_{\text{enc}}$: Progressively reduces dimensionality (2048 → 512 → 128 → 32 → 8)
-:::
-
-::: {.fragment}
-- **Bottleneck** $\mathbf{z}$: The latent representation — the "compressed DNA" of the spectrum
-:::
-
-::: {.fragment}
-- **Decoder** $f_{\text{dec}}$: Mirrors the encoder, reconstructing from the latent code (8 → 32 → 128 → 512 → 2048)
-:::
-
-## 17. Why the Bottleneck?
-
-::: {.fragment}
-- Without a bottleneck, the network would learn the **identity function** — trivial and useless
-:::
-
-::: {.fragment}
-- The bottleneck creates an **information bottleneck**: the network must decide what to keep and what to discard
-:::
-
-::: {.fragment}
-- What gets kept: **systematic, recurring patterns** — peaks, backgrounds, spectral shapes shared across the dataset
-:::
-
-::: {.fragment}
-- What gets discarded: **random, non-repeating variations** — noise, detector artifacts, cosmic rays
-:::
-
-::: {.fragment}
-- The bottleneck size is a **hyperparameter**:
-  - Too large: noise passes through (undercomplete but still noisy)
-  - Too small: signal is lost (over-compressed)
-  - Just right: captures the intrinsic dimensionality
-:::
-
-## 18. Non-linearity: The Power of AE vs PCA
-
-::: {.fragment}
-- **PCA**: Finds the best **linear subspace** (a hyperplane)
-:::
-
-::: {.fragment}
-- **AE**: Finds the best **non-linear manifold** (a curved surface)
-:::
-
-::: {.fragment}
-- **Example — XRD peak shift:**
-  - As lattice parameter $a$ increases, the (111) peak shifts to lower $2\theta$
-  - PCA needs **multiple components** to approximate this shift
-  - An AE learns: "one latent variable controls peak position" — direct physical meaning
-:::
-
-::: {.fragment}
-![](images/pca_vs_ae.png){width=80%}
-:::
-
-::: {.fragment}
-- Non-linearity lets the AE learn **physically meaningful** latent variables
-:::
-
-## 19. Training: Reconstruction Loss
-
-::: {.fragment}
-- The training objective is to minimize the **reconstruction error**:
-
-$$\mathcal{L}(\theta) = \frac{1}{N} \sum_{i=1}^{N} \|\mathbf{x}_i - \hat{\mathbf{x}}_i\|^2$$
-:::
-
-::: {.fragment}
-- This is the **mean squared error** (MSE) between input and output spectra
-:::
-
-::: {.fragment}
-- Training is **unsupervised**: no labels needed — the spectrum itself is the target
-:::
-
-::: {.fragment}
-- Optimization: **Adam** optimizer, mini-batch gradient descent
-- Training on $10^5$--$10^6$ spectra typically takes minutes on a GPU
-:::
-
-::: {.fragment}
-- Alternative losses:
-  - **Poisson negative log-likelihood**: Better for photon-counting data
-  - **Spectral angle distance**: Focuses on spectral shape, not intensity
-:::
-
-## 20. Latent Space Properties
-
-::: {.fragment}
-- The latent variables $\mathbf{z}$ often develop **physically interpretable** meanings during training
-:::
-
-::: {.fragment}
-- Examples of latent-physical correlations:
-  - $z_1 \leftrightarrow$ specimen **thickness** (controls overall intensity)
-  - $z_2 \leftrightarrow$ **Fe/Cr ratio** (controls relative peak heights)
-  - $z_3 \leftrightarrow$ **oxidation state** (controls edge fine structure)
-:::
-
-::: {.fragment}
-- These correlations are **emergent** — not programmed, but discovered by the network
-:::
-
-::: {.fragment}
-- The latent space can be used for:
-  - **Clustering**: Group spectra by latent coordinates
-  - **Visualization**: Plot $z_1$ vs. $z_2$ as a chemical map
-  - **Interpolation**: Generate intermediate spectra by moving through latent space
-:::
-
-## 21. Denoising Autoencoders (DAE)
-
-### Learning the Clean Manifold [@mcclarren2021machine]
-
-::: {.fragment}
-- **Standard AE**: Input = clean spectrum, Target = clean spectrum
-- **Denoising AE**: Input = **noisy** spectrum, Target = **clean** spectrum
-:::
-
-::: {.fragment}
-$$\mathcal{L}_{\text{DAE}} = \frac{1}{N}\sum_{i=1}^{N} \|\mathbf{x}_i^{\text{clean}} - f_{\text{dec}}(f_{\text{enc}}(\mathbf{x}_i^{\text{clean}} + \boldsymbol{\eta}_i))\|^2$$
-:::
-
-::: {.fragment}
-- The noise $\boldsymbol{\eta}_i$ can be:
-  - **Gaussian**: $\eta \sim \mathcal{N}(0, \sigma^2)$
-  - **Poisson**: Resample from $\text{Poisson}(\mathbf{x}_i^{\text{clean}})$
-  - **Masking**: Randomly zero out spectral channels
-:::
-
-::: {.fragment}
-- The DAE learns to project noisy spectra **back onto the clean data manifold**
+::: {.callout-important .fragment}
+**The dominant error term in any spectral-ML result is almost never the model — it is the preprocessing.** A 2% baseline error swamps the difference between PCA and a transformer. §2 is the unit's real content because almost none of it exists in the methods units.
 :::
 
-::: {.callout-note}
-## DAE vs. PCA Denoising
-Both discard noise by projecting onto a low-dimensional representation. But a DAE explicitly trains on noisy-clean pairs, making it more robust when the noise model is known. PCA denoising is implicit — it assumes noise is in the discarded components.
-:::
-
-## 22. DAE Example: EELS Spectra
-
-::: {.fragment}
-### Denoising the Fe-L$_{2,3}$ Edge
-:::
-
-::: {.fragment}
-- **Problem**: At low dose, the EELS fine structure that distinguishes Fe$^{2+}$ from Fe$^{3+}$ is buried in noise
-:::
-
-::: {.fragment}
-- **Approach**:
-  1. Train a DAE on simulated Fe-L edge spectra with known oxidation states
-  2. Add Poisson noise at realistic dose levels during training
-  3. Apply trained DAE to experimental spectra pixel-by-pixel
-:::
-
-::: {.fragment}
-![](images/pca_denoising.png){width=80%}
-:::
-
-::: {.fragment}
-- **Result**: Clear Fe$^{2+}$/Fe$^{3+}$ discrimination at 10x lower dose than conventional analysis
-:::
-
-## 23. Convolutional Autoencoders for Spectra
-
-::: {.fragment}
-- Standard AEs use **fully connected** (dense) layers — every channel connects to every neuron
-:::
-
-::: {.fragment}
-- Problem: Dense layers do not know that **nearby channels are related**
-:::
-
-::: {.fragment}
-- **1D Convolutional AE**: Replace dense layers with **1D convolution + pooling**
-:::
-
-::: {.fragment}
-- Advantages:
-  - **Shift invariance**: A peak at 640 eV is recognized the same way as at 650 eV
-  - **Fewer parameters**: Weight sharing across the spectral axis
-  - **Local feature detection**: Learns peak shapes, edge onsets, and local patterns
-:::
-
-::: {.fragment}
-- Architecture: Input → [Conv1D → ReLU → MaxPool1D] × 3 → Latent → [ConvTranspose1D → ReLU] × 3 → Output
-:::
-
-::: {.fragment}
-- Particularly effective for **XRD** and **Raman** where peak shapes are well-defined
-:::
-
-## 24. Variational Autoencoders (VAE)
+::: {.notes}
+**Purpose.** Reframe the whole unit: the methods units gave them the *reduction* box; this unit is the other five boxes, which nobody else teaches and which dominate real results.
 
-::: {.fragment}
-- Standard AE: The latent space $\mathbf{z}$ has **no structure** — just whatever the network finds useful
-:::
+**War story / quantitative anchor.** In real EELS quant, a 2–3% systematic error in the power-law background shifts the extracted Fe²⁺/Fe³⁺ ratio by more than the Fe²⁺/Fe³⁺ ELNES difference itself. The entire downstream ML is then fitting a background artifact. Lesson: spend effort on boxes 1–3, not on swapping PCA for a transformer.
 
-::: {.fragment}
-- **VAE**: The encoder outputs a **probability distribution** $q(\mathbf{z}|\mathbf{x}) = \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\sigma}^2)$
-:::
+**Anti-pattern.** "We improved phase-ID accuracy by switching to a deep model." Viva question: did you hold preprocessing fixed? Nine times in ten the gain came from a bundled preprocessing change; the model contribution is noise.
 
-::: {.fragment}
-- Training loss adds a **KL divergence** term:
+**Pre-empt the question.** "Is the reduction box ever skippable?" — Yes; for quantification (slide 15) you go straight from a clean, calibrated, background-subtracted spectrum to a physical model. Reduction is for compression/discovery/denoising, not mandatory.
 
-$$\mathcal{L}_{\text{VAE}} = \underbrace{\|\mathbf{x} - \hat{\mathbf{x}}\|^2}_{\text{reconstruction}} + \beta \cdot \underbrace{D_{\text{KL}}(q(\mathbf{z}|\mathbf{x}) \| p(\mathbf{z}))}_{\text{regularization}}$$
-:::
+**Forward link.** Next four slides walk boxes 1→3 in order: 07 background, 08 calibration/alignment, 09 normalization, 10 deconvolution, 11 cross-instrument transfer, 12 spatial-spectral.
 
-::: {.fragment}
-- The KL term encourages the latent space to be **smooth and continuous**
-  - Nearby points in latent space produce similar spectra
-  - You can **sample** from the latent space to generate new, realistic spectra
+**Pacing.** ~2 minutes; this is the map. Energy on the *callout*.
 :::
 
-::: {.fragment}
-- **Materials application**: Generate synthetic training spectra, explore phase space, uncertainty estimation
-:::
+## 07. Baseline / Background Subtraction
 
-## 25. PCA vs. Autoencoder: Head-to-Head
+::: {.columns}
+::: {.column width="50%"}
+**Algorithmic (model-free)**
 
 ::: {.fragment}
-| Feature | PCA | Autoencoder |
-|---------|-----|-------------|
-| **Linearity** | Linear only | Non-linear |
-| **Speed** | Very fast (SVD) | Slower (GPU training) |
-| **Solution** | Unique, deterministic | Depends on initialization |
-| **Interpretability** | Eigenspectra are intuitive | Latent space needs probing |
-| **Data requirement** | Works with small datasets | Needs more data |
-| **Peak shifts** | Needs many components | Handles naturally |
-| **Denoising** | Truncated reconstruction | DAE with noise model |
-| **Generative** | No | Yes (VAE) |
+- **SNIP** — Statistics-sensitive Nonlinear Iterative Peak-clipping [@ryan1988snip]: iteratively clip each channel to the min of itself and the mean of its $\pm m$ neighbours; peaks survive, the smooth continuum is estimated.
 :::
-
 ::: {.fragment}
-**Practical recommendation:**
-
-- Start with **PCA** — it is fast, unique, and gives you a baseline
-- Switch to **AE** when PCA reconstruction error plateaus or non-linear effects are important
-- Use **DAE** when you have a good noise model
-- Use **VAE** when you need generative capabilities or uncertainty
+- **Asymmetric Least Squares (AsLS)** [@eilers2005baseline]: penalized smoother with asymmetric weights — points above the baseline are down-weighted. Two knobs: smoothness $\lambda$, asymmetry $p$.
 :::
-
-## 26. Think About This...
-
-### The Latent Space as a Chemical Compass
-
-::: {.fragment}
-**Question:** You train an autoencoder with a 2D latent space on EDS spectra from a ternary alloy (Fe-Cr-Ni). You plot the latent coordinates for each pixel and color them by known composition. What do you expect to see?
 :::
+::: {.column width="50%"}
+**Physical (model-based)**
 
 ::: {.fragment}
-**Hint:** The alloy has three independent compositional degrees of freedom, but they sum to 100%.
+- **EELS**: power-law $A E^{-r}$ fitted in a pre-edge window; or plasmon/Drude model.
+- **EDX**: bremsstrahlung continuum (Kramers + detector response + absorption).
+- **XPS**: Shirley / Tougaard inelastic background.
 :::
-
-::: {.fragment .fade-in-then-semi-out}
-**Consider:**
-
-- Three elements with the constraint $c_{\text{Fe}} + c_{\text{Cr}} + c_{\text{Ni}} = 1$ means **two** independent compositional variables
-- A 2D latent space should be sufficient to capture this variation
-- You would expect the latent space to look like a **triangle** (the ternary phase diagram!)
-- The autoencoder has rediscovered the Gibbs triangle — without being told anything about thermodynamics
+::: {.callout-important .fragment}
+A wrong background **biases every downstream feature** — peak areas, ratios, latent coordinates. It is a *systematic*, not random, error: averaging more spectra does **not** remove it.
 :::
-
-::: {.fragment}
-- **Follow-up:** What if you used a 1D latent space? What would be lost?
 :::
-
-## 27. Anomaly Detection with Autoencoders
-
-::: {.fragment}
-- Train the AE on "normal" spectra from the expected phases
 :::
 
-::: {.fragment}
-- For a new spectrum $\mathbf{x}$, compute the **reconstruction error**: $e = \|\mathbf{x} - \hat{\mathbf{x}}\|^2$
-:::
+> **[FIGURE: a Raman spectrum with a strong fluorescence background; overlay of SNIP vs AsLS vs a too-stiff polynomial fit, with the resulting baseline-subtracted spectra below]**
 
-::: {.fragment}
-- If $e > \tau$ (threshold), the spectrum is **anomalous** — it does not fit the learned representation
-:::
+::: {.notes}
+**Mechanism.** SNIP = morphological erosion: narrow tall peaks get clipped over iterations, the broad continuum survives; iteration count sets the maximum peak width treated as "signal." AsLS = minimize $\|y-b\|_W^2 + \lambda\|D^2 b\|^2$ with $w_i=p$ if $y_i>b_i$ else $1-p$; asymmetry lets the baseline hug the bottom of the signal.
 
-::: {.fragment}
-- **Materials applications:**
-  - Detecting **unexpected phases** or contamination
-  - Flagging **instrument malfunctions** (detector artifacts, calibration drift)
-  - Finding **rare events** (nano-precipitates, grain boundary segregation)
-:::
+**Quantitative recipe anchor.** AsLS for Raman: $\lambda \in [10^5,10^8]$ (more = stiffer), $p \in [0.001,0.01]$. SNIP for EDX: window $m$ ≈ FWHM of the broadest line; ~24 iterations. Day-one numbers.
 
-::: {.fragment}
-![](images/anomaly_score.png){width=80%}
-:::
+**War story / diagnostic.** AsLS with $\lambda$ too small chews into broad-peak bases — symptom = negative lobes flanking strong peaks. $\lambda$ too large and a sloping fluorescence leaks through — symptom = a residual ramp that PCA/t-SNE then "discovers" as a fake component.
 
-::: {.fragment}
-- Unlike supervised anomaly detection, this requires **no labels** — only knowledge of what "normal" looks like
-:::
+**Materials hook.** Raman fluorescence can be 10–100× the phonon signal and varies pixel-to-pixel with heterogeneity — *the* reason Raman mapping is hard; background subtraction is the core of the measurement, not housekeeping.
 
-## 28. Summary: Autoencoders for Spectra
+**Pre-empt the question.** "Model-free or physical?" — Physical when you trust the physics and want auditable, transferable parameters (EELS power-law for quant); model-free when no clean parametric form (Raman fluorescence). Hybrid is common.
 
-::: {.fragment}
-- Autoencoders are the **non-linear generalization of PCA** for spectral data
-:::
+**Cross-reference.** Systematic-vs-random ties back to slide 03 (Poisson): random → average down; background bias → identical in every spectrum, cannot. Forward to slide 14 (ambiguity) and 16 (uncertainty budget).
 
-::: {.fragment}
-- Key variants:
-  - **Standard AE**: Compression and feature extraction
-  - **DAE**: Denoising with explicit noise models
-  - **CAE**: 1D convolutions for shift-invariant peak detection
-  - **VAE**: Probabilistic latent space for generation and uncertainty
+**Pacing.** ~5 minutes — one of the highest-value slides. Exam-weight: the systematic-vs-random distinction.
 :::
 
-::: {.fragment}
-- The **latent space** is the central concept — it provides:
-  - A compressed representation for storage
-  - A denoised representation for analysis
-  - A feature space for clustering and classification
-  - A basis for anomaly detection
-:::
+## 08. Energy / 2θ Calibration & Spectral Alignment
 
 ::: {.fragment}
-- **Best practice**: Always compare AE results against PCA as a baseline
+- **The problem.** The physical axis is not stable: EELS energy offset drifts (zero-loss wander), XRD $2\theta$ has zero/sample-height errors, Raman wavenumber depends on laser/grating. A 0.3 eV / 0.05° shift destroys cross-spectrum ML.
 :::
-
-## 29. MAE Pretraining on Unlabelled Spectra
 
 ::: {.columns}
 ::: {.column width="50%"}
 ::: {.fragment}
-**The masking trick.** Masked Autoencoder [@he_2022_mae] adapted to 1-D spectra.
+**Peak-referenced calibration.** Anchor to known features:
 
-- Split each spectrum into **64 patches** (e.g., 32 bins each on a 2048-channel spectrum).
-- **Randomly mask 75%** — keep only 16 patches as visible input.
-- Encode the visible patches with a **small transformer** (4 layers, 128 dim).
-- A **lightweight decoder** sees encoder outputs + mask tokens, predicts the masked bins.
-:::
-
-::: {.fragment}
-**Loss.** MSE on **masked bins only**:
-$$\mathcal{L}_{\text{MAE}} = \frac{1}{|\mathcal{M}|}\sum_{j \in \mathcal{M}} (x_j - \hat{x}_j)^2$$
-The visible bins do not contribute — the model is forced to reconstruct what it has not seen.
-:::
-
-::: {.fragment}
-**Pretrain on all unlabelled spectra** the lab has — EELS, Raman, XRD pooled together. No labels needed.
+- EELS: zero-loss peak (0 eV), a known edge onset.
+- XRD: a silicon / LaB₆ standard, known reflections.
+- Raman: a Si line at 520.7 cm⁻¹.
 :::
 :::
-
 ::: {.column width="50%"}
 ::: {.fragment}
-**Why this is the natural materials move.**
+**Warping for non-rigid misalignment.**
 
-- Lab inventory: $10^4$–$10^5$ **unlabelled** spectra accumulating on the file server, $10^2$ **labelled** ones (peak areas, phase tags, valence).
-- Classical pipeline wastes the unlabelled bulk — PCA/AE use it only for compression, not for downstream task transfer.
-- MAE turns the unlabelled bulk into a **feature extractor**: freeze the encoder, attach a linear probe or LoRA head, fine-tune on the 100 labelled spectra.
+- **DTW** — dynamic time warping: optimal monotone alignment of two spectra.
+- **COW** — correlation-optimized warping [@nielsen1998cow]: piecewise stretch maximizing segment correlation; the chemometrics workhorse.
+:::
+:::
+:::
+
+::: {.callout-important .fragment}
+Misalignment is the silent killer of **cross-instrument** ML: PCA "discovers" a component that is just the shift; a classifier learns the instrument, not the chemistry. Always align *before* reduction.
+:::
+
+::: {.notes}
+**Mechanism.** Calibration = an affine (or low-order polynomial) map of the axis fixed by reference peaks. Warping = a *non-rigid* monotone reparametrization; DTW finds it by dynamic programming under monotonicity+continuity; COW restricts to piecewise-linear segments with a slack parameter, maximizing correlation — cheaper and less pathological than raw DTW.
+
+**War story / diagnostic.** Two-instrument study: a phase classifier hits 98% on instrument A's hold-out, 61% on B. The "discriminative" PCA loading is a derivative-of-a-peak shape — the textbook signature of a rigid energy shift (a shift adds a multiple of $dx/dE$). Fix calibration, the gap collapses. Teach them to recognize the derivative-shaped loading.
+
+**Quantitative anchor.** EELS valence needs the axis stable to ≤0.1 eV (the chemical signal is ~0.3 eV, slide 04). XRD: a 0.05° zero-error shifts a refined lattice parameter enough to misassign a phase. Tighter than students expect — say the numbers.
+
+**Anti-pattern.** Over-warping: unconstrained DTW warps peak A onto peak B of a *different* compound and reports great alignment. Symptom: alignment "succeeds" but peak areas become physically impossible. Constrain warp flexibility; sanity-check against reference peaks.
+
+**Pre-empt the question.** "Isn't shift augmentation enough?" — Buys robustness to small shifts but is a band-aid; cannot recover signal when test shift exceeds the augmentation range, and dilutes the model. Augmentation + explicit calibration is the robust combination (revisited slide 11).
+
+**Cross-reference.** Same domain-shift phenomenon ML-PC u11 treats from the uncertainty side; here we fix the cause. Forward to slide 11 (full response-function mismatch).
+
+**Pacing.** ~4 minutes. The derivative-shaped-loading diagnostic is a memorable examable nugget.
+:::
+
+## 09. Normalization Strategies — and What Each Assumes
+
+| Strategy | Formula | Physical assumption |
+|:--|:--|:--|
+| **Total count / area** | $\mathbf{x}' = \mathbf{x}/\sum_j x_j$ | All variation in *total* intensity is dose/thickness, not chemistry |
+| **Max-peak height** | $\mathbf{x}' = \mathbf{x}/\max_j x_j$ | A reference peak is composition-invariant |
+| **SNV** | $\mathbf{x}' = (\mathbf{x}-\bar x)/s_x$ | Per-spectrum mean & std are nuisance scatter/offset (chemometrics) |
+| **Reference-peak ratio** | $\mathbf{x}/x_{\text{ref}}$ | An internal-standard line is constant (e.g. matrix element) |
+
+::: {.fragment}
+- Normalization is **not cosmetic**: without it PCA/AE learn *dose and thickness*, not chemistry (variance is dominated by the largest, least interesting effect).
+:::
+
+::: {.callout-important .fragment}
+Every normalization **changes the noise model**. Total-count normalization correlates channels and breaks the clean Poisson assumption — do it *after* any variance-stabilizing / Poisson-aware step, not before.
+:::
+
+::: {.notes}
+**Mechanism / the trap.** Each row is an *assumption* false in some regime. Max-peak assumes the reference peak is composition-invariant — but in EDX the biggest peak is often the matrix line, which *does* change with composition, so you normalize away signal. SNV assumes per-spectrum mean/std are nuisance — true for diffuse-reflectance NIR (its origin), often false for sparse-peak EELS where the mean is background-dominated.
+
+**Why it's not cosmetic (core point).** PCA/AE maximize variance. The largest variance in raw spectra is overall intensity (dose × thickness), scientifically boring. Skip normalization and PC1 is "thickness," chemistry is buried in PC5+ under noise. Normalization makes the *interesting* variance dominant so referenced methods point at chemistry.
+
+**War story.** A student's beautiful UMAP "phase map" was a thickness map — wedge-polished foil. Diagnostic: clusters formed a smooth gradient correlating 0.95 with sample position, not composition. Total-count normalization collapsed the gradient, revealing the actual two phases.
+
+**Quantitative recipe.** EDX/EELS SI: total-count (or post-background characteristic-counts) is the safe default. Raman/XPS: area or reference-line. SNV: for vibrational reflectance; be suspicious elsewhere.
+
+**Pre-empt the question.** "Which should I always use?" — None always; the third column is the answer. Exam-weight: given modality + question, justify normalization from physics.
+
+**Cross-reference.** Noise-model callout ties to slide 03 (Poisson) and slide 19 (Poisson NLL must see counts).
+
+**Pacing.** ~3 minutes. Kept-and-tightened; the callout is the new examable part.
+:::
+
+## 10. Peak Deconvolution & Physically-Constrained Fitting
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- Real peaks have **physical line shapes**: **Gaussian** (instrumental/Doppler) ⊗ **Lorentzian** (lifetime) = **Voigt** / pseudo-Voigt; EELS edges have hydrogenic/ELNES shape.
+:::
+::: {.fragment}
+- **Overlap separation** = constrained non-linear least squares: shared widths, fixed multiplet ratios, non-negative amplitudes, positions from physics.
+:::
+::: {.fragment}
+- **Differentiable forward models** $f_\theta(\text{physics}) \to$ spectrum: fit by gradient descent, drop into autograd → the bridge to **physics-informed** fitting and to slide 27 (inverse problems).
+:::
+:::
+::: {.column width="45%"}
+::: {.callout-note .fragment}
+**Applied callout — DAE-assisted EELS.** At low dose the Fe-L₂,₃ fine structure separating Fe²⁺/Fe³⁺ is buried in Poisson noise. A denoising autoencoder *trained on simulated Fe-L edges* (the **method** is ML-PC u05 §D) is used here purely as a **preprocessing denoiser feeding the constrained fit** — not as the analysis. Result: clean white-line ratios at ~10× lower dose. The AE is a tool inside box 1–4, not the deliverable.
+:::
+:::
+:::
+
+> **[FIGURE: two overlapping EELS L₃/L₂ white lines, raw noisy data, the constrained Voigt-multiplet fit with shared width and fixed branching ratio, and residuals]**
+
+::: {.notes}
+**Mechanism.** A Voigt is Lorentzian (natural lifetime, physical) ⊗ Gaussian (instrument + thermal). Pseudo-Voigt is a cheap linear-combination approximation (true Voigt has no closed form). Constrained NLLS = Levenberg-Marquardt / trust-region with constraints encoding physics (L₃:L₂ branching, fixed spin-orbit splitting, amplitudes ≥ 0).
+
+**Why constraints are the whole game.** Unconstrained, two overlapping peaks are *non-identifiable* — infinitely many (position, width, amplitude) triples fit within noise. Physics constraints collapse that to a unique answer. Same identifiability theme as *rotational ambiguity* in MCR-ALS (slide 14) — flag the parallel.
+
+**Differentiable forward model — the modern point.** If $f_\theta$ (peak model, or a FEFF/Rietveld surrogate) is differentiable, fitting is gradient descent and chains with neural components — the seed for physics-informed ML and the inverse problems of slide 27.
+
+**Materials hook / war story.** Folded-in old slide 22: low-dose Fe valence mapping. Anti-pattern: using the *autoencoder's latent value itself* as "the oxidation state." It is not — it is an uncalibrated coordinate. Defensible pipeline: AE denoises, constrained physical fit extracts the white-line ratio, slide 15 turns it into a number. Diagnostic symptom of the anti-pattern: latent "oxidation state" changes when you retrain with a different seed.
+
+**Pre-empt the question.** "Why not end-to-end concentration?" — You can, but uncertainty and audit trail vanish; a constrained fit gives parameters a referee can check. ML for the hard representation step, physics for the accountable readout.
+
+**Cross-reference.** Denoising method = ML-PC u05 §D (do not re-derive). Differentiable model = forward link to slide 27 and ML-PC u08.
+
+**Pacing.** ~5 minutes. "Constraints resolve non-identifiability" is the spine connecting this slide to 14.
+:::
+
+## 11. Calibration Transfer Between Instruments
+
+::: {.fragment}
+- **Industrial reality.** A model trained on instrument A *fails* on B: different detector response, resolution, geometry — even after axis calibration. Re-labelling per instrument is unaffordable.
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Piecewise Direct Standardization (PDS)** [@wang1991pds]
+
+- Measure a few **transfer standards** on both A and B.
+- Learn a banded linear map $\mathbf{X}_B \approx \mathbf{X}_A \mathbf{P}$ (each B-channel from a local window of A-channels).
+- Apply $\mathbf{P}^{-1}$ to bring B into A's space → reuse A's model.
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+**Simpler & more general**
+
+- **Slope/bias correction** — affine fix when only gain+offset differ.
+- **Domain adaptation** — align *feature distributions* A↔B (the DA *idea* is **MFML u09**; reference, do not re-derive).
+:::
+:::
+:::
+
+::: {.callout-important .fragment}
+PDS needs only a handful of standards measured on both instruments — orders of magnitude cheaper than re-labelling. The difference between a model that ships to one lab and one that ships to a fleet.
+:::
+
+::: {.notes}
+**Mechanism.** PDS: for each target channel $j$, regress it on a *window* of source channels $[j-w,j+w]$ using paired standards (PLS/ridge per window), assembling a banded $\mathbf{P}$. The band encodes "B's channel $j$ is a local blur/shift/rescale of A's neighbourhood" — the response-function mismatch a scalar calibration (slide 08) cannot fix.
+
+**Why slide 08 is not enough.** Slide 08 fixes the *axis* (where peaks sit). PDS fixes the *response* (width/height, detector tails). Both can be wrong; align first, then standardize.
+
+**War story / anchor.** NIR chemometrics (PDS's birthplace) transfers a calibration with 15–30 transfer samples instead of re-measuring a 1000-sample set per spectrometer. Same logic now in multi-microscope EDX/EELS facilities: a shared standard (NIST glass, known oxide) measured on each tool is the transfer set.
+
+**Anti-pattern / diagnostic.** Shipping with no transfer plan, then retraining from scratch per instrument — multiplies labelling cost by instrument count, yields $N$ silently divergent models. Symptom: same specimen, different quant on two tools, nobody can say which is right.
+
+**Pre-empt the question.** "DA or PDS?" — PDS when you can measure paired standards (best, auditable, few samples). DA when you cannot pair (only unlabelled target). State which and why — exam-weight.
+
+**Cross-reference.** DA idea: MFML u09. Uncertainty consequence of unhandled transfer: ML-PC u11. Expands the old "robustness to instrumental shifts" slide into a named, cheap procedure. Forward: §5 case studies only work because the model is portable.
+
+**Pacing.** ~4 minutes.
+:::
+
+## 12. Spatial-Spectral Models for Spectrum Images
+
+::: {.fragment}
+- A spectrum image is a **cube** $(x, y, E)$ — STEM-EDS easily $256{\times}256{\times}2048$, STEM-EELS $100{\times}100{\times}1024$.
 :::
 
 ::: {.fragment}
-**Downstream wins.**
-
-- Peak-area regression (small-data).
-- Phase classification (few-shot).
-- Anomaly detection in latent space (no labels at all).
+- **Naïve**: unfold to $N_\text{pix}\times D$, treat each pixel independently. Throws away that **neighbouring pixels are almost the same spectrum**.
 :::
 
+::: {.fragment}
+- **Better**: exploit spatial correlation — factored **2-D spatial + 1-D spectral** convolutions, or a 3-D conv-AE. (The conv-AE *architecture* is **MFML u05** / **ML-PC u05** — referenced, not re-derived.)
+:::
+
+::: {.fragment}
+- **Benefit**: implicit spatial averaging denoises *for free*; spatial context separates interface pixels from bulk; learns core-shell / gradient structure.
+:::
+
+::: {.callout-important .fragment}
+**Trade-off.** Spatial smoothing blurs sharp interfaces and can *invent* mixed spectra at boundaries — choose the receptive field to match the smallest real feature, not the noise.
+:::
+
+> **[FIGURE: (x,y,E) datacube schematic; one slice as a noisy single-pixel spectrum vs the same pixel reconstructed by a spatial-spectral model that borrowed strength from its neighbourhood]**
+
+::: {.notes}
+**Mechanism.** Factored conv: depthwise 2-D conv over (x,y) per energy band + 1-D conv over E — far fewer parameters than full 3-D conv, with the right inductive bias (spatial smoothness AND spectral locality) separated. The denoising is bias-variance: borrowing counts from spatially adjacent, chemically-identical pixels raises effective dose without raising actual dose.
+
+**Materials hook / war story.** Interface-blur failure: a 5×5 spatial receptive field on 2 nm pixels averages a 10 nm window — wider than the grain-boundary segregation layer you want to image. Symptom: the segregation "disappears" and reviewers think the sample is clean. The model did not lie; the receptive field was wrong for the science.
+
+**Anti-pattern.** Cranking smoothing until the phase map looks "clean" for the figure. Clean is not the objective; *correct at the relevant length scale* is. Honest move: show the receptive field next to the smallest feature claimed.
+
+**Pre-empt the question.** "Why not just bin pixels?" — Binning is uniform non-adaptive smoothing; a learned model can preserve edges where data demand (non-linear). Same fundamental risk if the receptive field is too large — no free lunch, only a better-shaped one.
+
+**Cross-reference.** Conv-AE / 3-D conv: MFML u05, ML-PC u05. The denoising-vs-discovery tension here is paid off on slide 20 (rare-phase erasure).
+
+**Pacing.** ~3 minutes. End §2; last preprocessing/representation box before decomposition.
+:::
+
+# §3 · Decomposition & quantification {.section}
+
+## 13. Reference Recap — Spectral Decomposition (one slide)
+
+::: {.callout-important}
+**Derived elsewhere — results only here.** PCA/SVD: **MFML u02**, **ML-PC u02**. NMF: **MFML u02**, **ML-PC u05 s28**. Autoencoders: **MFML u05**, **ML-PC u05**. We do **not** re-derive any of them.
+:::
+
+| Decomposition | Factorization | Spectral interpretation |
+|:--|:--|:--|
+| **PCA / SVD** | $\mathbf{X}\approx \bar{\mathbf{x}} + \mathbf{C}\mathbf{V}^\top$, $\mathbf{V}$ orthonormal | Eigenspectra = orthogonal *variation* directions (can be negative — **not** physical phases) |
+| **NMF** | $\mathbf{X}\approx \mathbf{W}\mathbf{H}$, $\mathbf{W},\mathbf{H}\ge 0$ | $\mathbf{H}$ = end-member spectra (≈ pure phases), $\mathbf{W}$ = abundance maps |
+| **AE / conv-AE** | $\mathbf{x}\!\to\!\mathbf{z}\!\to\!\hat{\mathbf{x}}$ | Non-linear latent; handles peak *shift*, not just mixing |
+
+::: {.fragment}
+- The **only** thing this unit adds: the *spectral reading* — non-negativity is physical because **photon counts and concentrations cannot be negative**; orthogonality is a math convenience with **no physical mandate**.
+:::
+
+::: {.notes}
+**Purpose.** One slide, on purpose: the explicit "we are not re-teaching factorization" slide. Spend time on the *interpretation column*, the only domain content.
+
+**Teaching point.** Why NMF is "the natural choice for spectra" in one breath: a spectrum is non-negative counts; a mixture of phases is a non-negative combination of non-negative pure spectra; PCA's orthogonality forces negative lobes with no physical referent (you cannot have −3 counts at 700 eV). NMF's constraint *is* the physics — one sentence, not a section.
+
+**Pre-empt the question.** "Then why ever use PCA?" — Speed, uniqueness, denoising, and as initialization/whitening for everything (including NMF and MCR-ALS init). The fast first look; just not the physical model. (Salvaged content of the old PCA/AE/NMF slides, compressed to one row each.)
+
+**Cross-reference discipline.** If asked for multiplicative-update NMF or the SVD proof: "MFML u02 — open your notes; today the question is what $\mathbf{H}$ *means*." Hold the line.
+
+**Forward link.** Sets up slide 14: NMF gives *a* non-negative factorization, not a unique one — that non-uniqueness (rotational ambiguity) and how constraints fix it is the genuinely new content.
+
+**Pacing.** ~3 minutes, table-driven. Resist deriving.
+:::
+
+## 14. MCR-ALS & Rotational Ambiguity
+
+::: {.columns}
+::: {.column width="52%"}
+::: {.fragment}
+**MCR-ALS** — Multivariate Curve Resolution by Alternating Least Squares [@dejuan2014mcr]: solve $\mathbf{X}=\mathbf{C}\mathbf{S}^\top+\mathbf{E}$ by alternating non-negative least squares for concentrations $\mathbf{C}$ and spectra $\mathbf{S}$.
+:::
+::: {.fragment}
+**Rotational ambiguity.** For any invertible $\mathbf{T}$:
+$$\mathbf{X} = (\mathbf{C}\mathbf{T})(\mathbf{T}^{-1}\mathbf{S}^\top)$$
+fits **equally well**. Non-negativity alone leaves a *feasible band* of solutions, not a unique answer.
+:::
+:::
+::: {.column width="48%"}
+::: {.fragment}
+**Constraints collapse the band:**
+
+- **Closure** — abundances sum to 1 (mass balance).
+- **Unimodality** — a concentration profile has one maximum.
+- **Known spectra** — fix a reference end-member.
+- **Selectivity / local rank** — zones where only one component exists.
+:::
+::: {.callout-important .fragment}
+Genuinely **not** in the methods units. NMF is taught there; **MCR-ALS + rotational ambiguity + how physical constraints resolve it** is the new content.
+:::
+:::
+:::
+
+> **[FIGURE: feasible band of resolved spectra under non-negativity only (a fan of curves) collapsing to a single curve as closure + unimodality + a known end-member are added]**
+
+::: {.notes}
+**Why this is the intellectual heart of §3.** Students leave the methods units thinking "NMF gives the pure phases." It does not — it gives one member of a *continuum* of equally-good factorizations (rotational/intensity ambiguity). The craft of curve resolution is choosing physically-motivated constraints to shrink that continuum to a unique defensible answer. Same *identifiability* idea as slide 10, now at dataset level — say it out loud.
+
+**Mechanism.** ALS: fix $\mathbf{S}$, solve non-negative LS for $\mathbf{C}$; fix $\mathbf{C}$, solve for $\mathbf{S}$; iterate. The $\mathbf{T}/\mathbf{T}^{-1}$ argument is the key board derivation: write it, then note non-negativity restricts $\mathbf{T}$ but does not pin it — hence a "feasible band."
+
+**Materials hook.** EELS/EDX of a diffusion couple or battery cathode: MCR-ALS resolves pure phase spectra and abundance maps directly, *with* abundances non-negative and summing to one (closure = a real material, fractions must add up). Unimodality is natural for a diffusion profile.
+
+**War story / diagnostic.** Two groups publish "the pure phase spectrum" of the same sample and they differ — both valid points in the feasible band, neither reported their constraints. Symptom of unresolved ambiguity: resolved spectra change qualitatively when you re-run from a different initial guess. The fix is more physics in the constraints, not a better optimizer.
+
+**Pre-empt the question.** "Just NMF with extra steps?" — NMF *is* a special case (non-negativity only). MCR-ALS adds the *other* physical constraints (closure, unimodality, selectivity, known spectra) that make the solution unique. The constraints are the science.
+
+**Cross-reference.** Non-negativity result: slide 13 / MFML u02. Identifiability parallel: slide 10. Uncertainty on resolved profiles: forward to slide 16.
+
+**Pacing.** ~5 minutes. Exam-weight: state rotational ambiguity and name two constraints that resolve it.
+:::
+
+## 15. Quantification — From Spectra to Concentrations
+
+::: {.fragment}
+- A latent coordinate or a peak area is **not** a number a metallurgist trusts. Quantification produces *at.%* with a physical basis.
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**Cliff-Lorimer** (EDX, thin film) [@cliff1975quantitative]
+$$\frac{C_A}{C_B} = k_{AB}\,\frac{I_A}{I_B}$$
+Ratio of background-subtracted line intensities × a known **$k$-factor**. Needs the thin-film approximation (no absorption).
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+**ζ-factor method** [@watanabe2006zeta]
+$$C_A = \zeta_A \frac{I_A}{\rho t}\cdot(\dots)$$
+Absolute quantification from first principles; folds in **mass-thickness**, handles **absorption** self-consistently — the modern standard.
+:::
+:::
+:::
+
+::: {.callout-important .fragment}
+ML can predict $I_A$ robustly (denoising, deconvolution); the **$k$/ζ-factor step is physics**. Skipping it and regressing concentration end-to-end discards the physical audit trail a lab/certifier requires.
+:::
+
+::: {.notes}
+**Mechanism.** Cliff-Lorimer: in a thin specimen, generated X-ray intensity ∝ concentration; the proportionality constants cancel into one ratio factor $k_{AB}$ (element pair, beam energy, detector). ζ-factor: keeps the absolute proportionality (ζ relates counts to mass-thickness), so no reference element needed and an absorption correction is built in iteratively with estimated thickness — why it is the modern standard for light elements / thicker foils where Cliff-Lorimer's no-absorption assumption fails.
+
+**Why this must exist in an ML unit.** End-to-end-trained students want to regress composition directly. The domain answer: a referee, an ISO certification, or a failure investigation needs to see *which physical model and which factor* produced the number. A black box saying "4.2% Cr" with no traceable physics is not a deliverable in a certified lab. ML's job is clean unbiased $I_A$ (slides 07–10); physics turns $I_A$ into $C_A$.
+
+**Quantitative anchor.** Cliff-Lorimer breaks exactly where it matters: light elements (O, N, C) and thicker regions, absorption biasing results 10–30%. Precisely why Watanabe-Williams ζ exists; quote the failure regime, not just the formula.
+
+**War story / anti-pattern.** "Our network predicts at.% directly and beats Cliff-Lorimer on the test set." On *whose* labels? Usually labels were themselves Cliff-Lorimer outputs — the network mimics the method it claims to beat, plus its biases, with no error model. Diagnostic: ask for absolute-accuracy validation against a certified reference material, not other software.
+
+**Pre-empt the question.** "Is ML useless for quant?" — No: best tool for *intensity extraction* under overlap/noise (07, 10) and for *uncertainty propagation* (next slide). Wrong tool for replacing the traceable physical conversion.
+
+**Cross-reference.** Intensity extraction = 07/10. Uncertainty on $C_A$ = slide 16 + ML-PC u11.
+
+**Pacing.** ~4 minutes. Exam-weight: why the k/ζ step is not replaceable by end-to-end regression.
+:::
+
+## 16. Uncertainty on the Quantification
+
+::: {.fragment}
+- A concentration without an error bar **is not a deliverable** (recall the ML-PC u11 thesis: a threshold decision needs a distribution, not a number).
+:::
+
+::: {.fragment}
+- **Error budget for $C_A$:** counting statistics on $I_A$ (Poisson) · background-model error (systematic, slide 07) · $k$/ζ-factor uncertainty · absorption/thickness uncertainty · ML denoiser bias.
+:::
+
+::: {.fragment}
+- **Propagation.** Analytic error propagation through the Cliff-Lorimer / ζ equation for the physical terms; **the UQ machinery for the ML-predicted parts is ML-PC u11** (GP CIs, deep ensembles, MC-dropout) — referenced, not re-derived.
+:::
+
+::: {.callout-important .fragment}
+The often-dominant term is **not** counting statistics — it is the **background-model systematic** (slide 07). Reporting only $\sqrt{N}$ Poisson error bars is the most common honest-looking lie in the field.
+:::
+
+::: {.notes}
+**Purpose.** Close the quantification arc honestly. The deliverable is $C_A \pm \sigma_{C_A}$ with a *decomposed* error budget, not a bare number with a cosmetic Poisson bar.
+
+**Mechanism.** Error propagation on $C_A/C_B = k\,I_A/I_B$: relative variances add — $(\sigma_C/C)^2 \approx (\sigma_k/k)^2 + (\sigma_{I_A}/I_A)^2 + (\sigma_{I_B}/I_B)^2 + \dots$. Each term has a different *character*: counting is random (shrinks with dose), background and k-factor are systematic (do not shrink — connect to 03/07). The ML denoiser contributes a *bias* invisible to internal cross-validation; assess against a reference.
+
+**The honest-looking lie (say it slowly).** Most published spectral quant reports $\pm\sqrt{N}$ bars. That term is frequently the *smallest*. A 2% background systematic on a peak with 1% Poisson error means the real uncertainty is dominated by a term they did not report. The single most important integrity message of §3 — it ties slide 07 (background bias is systematic) to slide 15 (quant) to ML-PC u11 (calibrated uncertainty is the actual deliverable).
+
+**Materials hook / anchor.** Light-element EDX (oxygen in an oxide): k-factor uncertainty alone routinely 5–15%; absorption-correction uncertainty similar in thick regions. Counting error might be 1%. Reporting 1% is off by an order of magnitude — a referee should reject it.
+
+**Pre-empt the question.** "How do I get the ML part's uncertainty?" — Do not invent it here; it is ML-PC u11's content (GP closed-form CI, deep-ensemble disagreement, MC-dropout per-pixel variance). This slide says *which terms exist and which dominates*, and hands ML-UQ to u11.
+
+**Cross-reference.** Background systematic: 07. Quant equations: 15. UQ methods: ML-PC u11. MCR-ALS feasible-band width (14) is itself an uncertainty contribution for decomposition-based quant — mention if time.
+
+**Pacing.** ~3 minutes. High exam-weight and integrity-weight; do not rush the "dominant term" callout.
+:::
+
+## 17. Non-Linear Unmixing — When Linear Mixing Fails
+
+::: {.fragment}
+- The comfortable model: a boundary pixel is $\mathbf{x} = \alpha\,\mathbf{e}_A + (1-\alpha)\,\mathbf{e}_B + \boldsymbol{\eta}$ — *linear* mixing; estimate $\alpha$ from a latent coordinate. Often fine.
+:::
+
+::: {.fragment}
+- **When linear mixing breaks:**
+  - **EELS multiple scattering** — thick specimen: losses convolve, not add.
+  - **EDX absorption / fluorescence** — emitted X-rays re-absorbed depth-dependently.
+  - **XRD channelling / extinction**, preferred orientation — intensities not additive in phase fraction.
+:::
+
+::: {.fragment}
+- **What to do:** physical forward model (deconvolve plural scattering; absorption correction) → *then* unmix; or a **non-linear decoder** (AE — *method* in ML-PC u05) whose non-linearity absorbs the curvature. Validate against a known mixture.
+:::
+
+::: {.callout-important .fragment}
+A non-linear method *fitting* a non-linear mixture does **not** prove it recovered the physics. Always check against a sample of known fractional composition.
+:::
+
+::: {.notes}
+**Mechanism.** Linear unmixing assumes intensities superpose. They do not when the measurement is non-linear in path: EELS, a thicker region means multiple energy losses, so the spectrum is the Poisson-weighted self-convolution series of the single-scattering distribution — not $\alpha\mathbf{e}_A+(1-\alpha)\mathbf{e}_B$. EDX, generated photons re-absorbed depth-/matrix-dependently — same reason ζ beats Cliff-Lorimer (slide 15). Tie it back.
+
+**Materials hook.** Sub-pixel composition at an interface where the probe straddles two phases: linear unmixing gives a clean $\alpha$ only if thin and absorption-negligible. In a real 80 nm foil it is biased, and the bias looks like a *shifted phase boundary* — a metallurgically meaningful error from a modelling shortcut.
+
+**War story / the punchline anti-pattern.** An AE reconstructs mixed spectra beautifully and someone reads $\alpha$ off the latent axis. Low reconstruction error proves the decoder can *represent* the data; it says nothing about whether the latent equals the physical phase fraction. Diagnostic: a known 30/70 specimen; if the recovered fraction is not ~0.30 with a sane error bar, the latent is not the physics. Same "latent ≠ physical quantity" warning as slide 10 — repeat it; students forget.
+
+**Pre-empt the question.** "So non-linear methods are dangerous?" — Not dangerous, just non-self-validating. The discipline is identical across the unit: ML for representation, *physics + a known reference* for the quantitative claim.
+
+**Cross-reference.** Decoder/AE method: ML-PC u05. Absorption link: 15. Latent-is-not-physics theme: 10, 20.
+
+**Pacing.** ~3 minutes. Salvaged from the old "signal separation" slide, reframed entirely around failure modes and validation discipline.
+:::
+
+# §4 · Representation learning for spectra, applied {.section}
+
+## 18. MAE Pretraining on Unlabelled Spectra
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+**The masking trick.** Masked Autoencoder [@he_2022_mae] on 1-D spectra:
+
+- Split each spectrum into ~64 patches.
+- **Mask 75%**; encode only the visible 25% with a small transformer.
+- Lightweight decoder + mask tokens predicts the masked bins.
+- Loss = MSE on **masked bins only** → forced to model spectral structure, not copy.
+:::
+::: {.fragment}
+**Pretrain on the lab's entire unlabelled archive** (EELS+Raman+XRD pooled); fine-tune a tiny head on the ~100 labelled spectra.
+:::
+:::
+::: {.column width="50%"}
+::: {.fragment}
+**Why this is the natural materials move.** $10^4$–$10^5$ unlabelled spectra rot on the file server; $10^2$ labelled (labelling = the expensive expert step). MAE converts the unlabelled bulk into a feature extractor.
+:::
 ::: {.callout-note .fragment}
-**Numerical example.** A 200 k-spectrum pretraining corpus + 100-labelled-spectrum fine-tuning typically beats a from-scratch CNN by **5–15 points** on a small-data benchmark, depending on signal-to-noise.
+**Rule of thumb.** Need $\gtrsim 10\times$ more unlabelled than labelled spectra before MAE pays off. 200 k pretrain + 100 fine-tune typically beats a from-scratch CNN by **5–15 points** small-data.
+:::
+::: {.fragment}
+**Method derived in MFML u09** (SSL family). Here: the **spectra-specific deployment**.
 :::
 :::
 :::
 
 ::: {.notes}
-**Why this slide exists.** Sections 2 and 3 covered PCA and AE — both **purely unsupervised compression**. Neither one uses the unlabelled bulk to *improve* a downstream supervised task. MAE is the bridge: it is self-supervised pretraining, not just compression. The encoder learned on unlabelled spectra becomes the initialisation for the labelled task.
+**Why mask 75%.** Empirical, confirmed for 1-D spectra: at 50% the network interpolates from immediate neighbours (trivial smoothing); at 75% only a quarter is visible, so it must learn *what a spectrum of this class looks like* — peak positions, edge shapes, baseline — to inpaint. 90% underfits. Sweet spot 75%.
 
-**One-sentence definition.** Masked Autoencoder is an autoencoder where the **input is corrupted by hiding 75% of the signal**, and the loss is computed only on the hidden part — forcing the encoder to learn structure that *generalises across the spectrum*, not just memorises local intensity.
+**Connection to the vanilla AE (ML-PC u05).** Same MSE, same encoder-decoder. The *only* change is input-side masking + loss on hidden bins. That single change is why it generalises: full-input reconstruction rewards copying through the bottleneck; masked-bin reconstruction rewards modelling structure.
 
-**Why mask 75% and not 50%.** Empirical finding from the original vision paper, confirmed for 1-D spectra in subsequent work. At 50%, the network can interpolate masked bins from immediate neighbours — the task is too easy and the encoder learns a low-level smoothing function. At 75%, only a quarter of the spectrum is visible; the encoder must learn **what a spectrum of this class looks like** to fill in the gaps. Higher (90%) starts to underfit. Sweet spot is 75% for spectra with smooth + peak structure.
+**Materials hook.** Every spectroscopy lab has years of archived, never-labelled data — labelling is the expensive expert step. MAE finally gives a reason to pay the storage cost: the archive becomes the pretraining corpus for *every future* supervised task.
 
-**Connection to the Unit-5 vanilla autoencoder.** Same MSE loss structure; same encoder–decoder architecture. The **only architectural change** is the input-side masking + mask tokens on the decoder side. The reason the result is dramatically better is that the loss is *self-supervised on hidden bins*, not *self-supervised on the full input* — the latter rewards trivial copying through the bottleneck, the former rewards modelling spectral structure.
+**Anti-pattern.** Running MAE on a labelled-but-scarce set with no unlabelled bulk (100 spectra, nothing else). The whole value is leveraging unlabelled data; with 100 total a GP classifier or augmented CNN wins. The rule-of-thumb callout is exam-weight.
 
-**1080Ti budget.** A 4-layer, 128-dim transformer with 64 patches per spectrum has $\sim 1$M parameters. On 200 k spectra, batch 256, AdamW, $\sim 100$ epochs → trains **overnight on a single 1080Ti** (or in $\sim 2$ h on an A100). The fine-tuning step on the 100 labelled spectra takes minutes.
+**Compute anchor.** 4-layer, 128-dim transformer, 64 patches ≈ 1M params; 200 k spectra trains overnight on a single 1080Ti; fine-tuning the head on 100 labelled spectra takes minutes.
 
-**Materials hook.** Every spectroscopy lab has years of archived data that was never labelled because labelling is the expensive step (an expert annotates each spectrum's phase / peak / valence by hand). MAE finally gives a reason to pay the storage cost: those archives become the pretraining corpus for *every future supervised task* the lab will run.
+**Cross-reference.** SSL family derived MFML u09 (masking / contrastive / JEPA). Today = the MAE branch on spectra. Forward link: the frozen encoder reappears in Unit 10 as the active-learning feature extractor.
 
-**Anti-pattern.** Applying MAE directly to a **labelled-but-scarce** dataset (100 spectra, no unlabelled bulk). The whole value proposition is *leveraging unlabelled data*. With only 100 spectra total, MAE gives you nothing — the encoder cannot learn spectral structure from 100 examples. In that regime, a simple CNN with strong augmentation or a Gaussian-process classifier beats MAE. **Rule of thumb: you need $\geq 10\times$ more unlabelled than labelled spectra before MAE pretraining pays off.**
-
-**MFML W9 cross-reference.** The SSL refresh slide (MAE / DINOv2 / I-JEPA) introduced this family abstractly — masking-based self-supervision, contrastive self-supervision, joint-embedding predictive architectures. Today's slide is the **spectra-specific deployment** of the MAE branch. DINOv2 / I-JEPA would also work on spectra and are arguably better for very small downstream sets; we pick MAE here because reconstruction loss is the natural progression from PCA → AE → MAE in this unit's story.
-
-**Chalkboard suggestion.** Draw a 64-bin toy spectrum on the board. Hatch out 48 of the bins (75%). Ask the class: "What information would you need to reconstruct the hatched parts?" — guide them to: peak positions, peak shapes, baseline. That **is** the spectral structure the encoder is forced to learn.
-
-**Forward link.** The MAE encoder reappears in Unit 10 (Automation) as the on-the-fly feature extractor that an active-learning loop queries to decide which spectrum to label next.
+**Pacing.** ~4 minutes. Kept-and-tightened; old long notes condensed but the teaching beats preserved.
 :::
 
-## {background-color="#1a1a2e"}
+## 19. Self-Supervised & Foundation Models for Spectra
 
-::: {.r-fit-text}
-Section 4: Practical Signal Processing
+::: {.fragment}
+- MAE (slide 18) is **reconstruction-based** SSL. Two other families transfer to spectra:
+  - **DINOv2-style** [@oquab_2024_dinov2] — self-distillation / invariance to augmentations (shift, broaden, rescale, add Poisson noise).
+  - **I-JEPA-style** — predict *latent* representations of masked regions, not bins: less low-level, more semantic.
 :::
 
 ::: {.fragment}
-Pipelines, Hyperspectral Data, and Transfer Learning
+- **Spectral foundation models**: one encoder pretrained on a huge cross-modality unlabelled corpus, then probed/fine-tuned per task (phase ID, valence, quant features).
 :::
 
-## 30. Signal Processing Workflow
+::: {.callout-important .fragment}
+**Method = MFML u09 (SSL) + ML-PC u09b (transformer backbone). Reference, do not re-derive.** Today's content: which augmentations are *physically valid* for spectra, and the evidence that pretrained encoders beat from-scratch on small materials sets.
+:::
 
-```{mermaid}
-%%| fig-width: 16
-flowchart TD
-    A["Raw Spectra<br>(N × D)"] --> B["Preprocessing"]
-    B --> B1["Background Subtraction"]
-    B --> B2["Normalization"]
-    B --> B3["Alignment / Calibration"]
-    B1 & B2 & B3 --> C["Dimensionality Reduction"]
-    C --> C1["PCA"]
-    C --> C2["Autoencoder"]
-    C1 & C2 --> D["Latent Representation<br>(N × K)"]
-    D --> E1["Clustering<br>(Phase Maps)"]
-    D --> E2["Anomaly Detection<br>(Rare Phases)"]
-    D --> E3["Classification<br>(Known Phases)"]
+::: {.notes}
+**The genuinely new, domain-specific content.** Not the algorithms (MFML u09 / ML-PC u09b) but *which augmentations encode true spectral invariances*. Energy shift within calibration tolerance — valid (it is just drift). Peak broadening within instrumental range — valid. Poisson resampling at lower dose — valid, physically motivated. But arbitrary intensity flips, channel permutation, large nonphysical warps — these teach *false* invariances and quietly destroy the chemical signal (recall slide 02: the axis is physics). The augmentation set *is* the inductive bias; choosing it is a materials decision, not an ML default.
 
-    style A fill:#2d5016,stroke:#4a8c2a,color:#fff
-    style D fill:#1a3a5c,stroke:#2a6a9c,color:#fff
-    style E1 fill:#5c1a1a,stroke:#9c2a2a,color:#fff
-    style E2 fill:#5c1a1a,stroke:#9c2a2a,color:#fff
-    style E3 fill:#5c1a1a,stroke:#9c2a2a,color:#fff
-```
+**Why I-JEPA is interesting for spectra.** Predicting in latent space avoids wasting capacity reconstructing the noisy, scientifically-irrelevant background — capacity goes to peak/edge structure. Pre-empt the obvious question: "better than MAE for spectra?" — Often for very small downstream sets; MAE is the safer default and the natural PCA→AE→MAE progression.
 
-::: {.fragment}
-- **Preprocessing**: Prepare spectra for ML (remove artifacts, normalize, align)
-:::
+**Materials hook / war story.** A "spectral foundation model" pretrained with vision-style augmentations (random brightness/contrast): brightness scaling ≈ dose (fine), but contrast stretching distorts peak ratios = the chemistry. Symptom: great pretraining loss, downstream valence prediction no better than from-scratch — the encoder learned invariance to exactly the signal you need.
 
-::: {.fragment}
-- **Dimensionality Reduction**: PCA or AE to extract the latent representation
-:::
+**Cross-reference.** SSL families: MFML u09. Transformer backbone: ML-PC u09b. This slide = application + the physics-of-augmentation judgement only.
 
-::: {.fragment}
-- **Downstream Analysis**: Clustering, anomaly detection, or classification in latent space
+**Forward link.** Slide 20 immediately problematises all of this: powerful unsupervised compression can erase the rare science.
+
+**Pacing.** ~3 minutes.
 :::
 
-## 31. Normalization Strategies
+## 20. Why Unsupervised Compression Can Destroy the Science
 
-::: {.fragment}
-### Why Normalize?
-- Raw spectral intensities depend on **dose, dwell time, specimen thickness** — not just chemistry
-- Without normalization, PCA/AE will learn intensity variations, not chemical variations
-:::
+### Think About This — the PCA rare-phase trap
 
 ::: {.fragment}
-### Common Strategies
+**Question.** PCA denoising lets you cut acquisition dose 10×. Why not always do it?
 :::
 
 ::: {.fragment}
-1. **Total-count normalization**: $\mathbf{x}' = \mathbf{x} / \sum_j x_j$
-   - Makes all spectra have unit area — removes thickness/dose effects
+**Hint.** Think about a feature present in only **one or two pixels** of a million-pixel map.
 :::
 
-::: {.fragment}
-2. **Peak-height normalization**: $\mathbf{x}' = \mathbf{x} / \max_j x_j$
-   - Makes the strongest peak equal to 1 — preserves relative peak ratios
-:::
+::: {.fragment .fade-in-then-semi-out}
+**Consider.**
 
-::: {.fragment}
-3. **Standard Normal Variate (SNV)**: $\mathbf{x}' = (\mathbf{x} - \bar{x}) / s_x$
-   - Centers and scales each spectrum individually — common in chemometrics
+- Eigenspectra are computed from the **whole dataset** — they encode the *common*.
+- A rare phase contributes negligible **variance** → it falls outside the top-$K$ subspace.
+- Truncated reconstruction **projects the rare phase away**: denoising literally **erases the discovery**.
+- The same logic indicts MAE/SSL latents, NMF with too-few components, aggressive spatial smoothing (slide 12).
 :::
 
-::: {.fragment}
-4. **Min-max per channel**: Normalize each energy channel across the dataset
-   - Ensures all channels contribute equally to the loss
+::: {.callout-important .fragment}
+**Denoising vs. discovery is a fundamental tension, not a tuning issue.** Always inspect the **residual** $\mathbf{x}-\hat{\mathbf{x}}$ spatially — a rare phase hides there, not in the reconstruction.
 :::
 
-## 32. Multi-Spectral and Hyperspectral Data
+::: {.notes}
+**Why this kept slide is reframed.** Originally a PCA-specific aside. Here it is the *philosophical hinge* of §4: every powerful unsupervised compressor in this course — PCA, AE, MAE, SSL, NMF, spatial-spectral — optimises for the *common* and is structurally blind to the *rare*. Make that the general lesson, PCA the cleanest illustration.
 
-::: {.fragment}
-### The Data Cube: $(x, y, E)$
-:::
+**Mechanism.** Variance-maximising / reconstruction-minimising objectives weight a component by how many spectra exhibit it. A precipitate in 2 of 10⁶ pixels contributes ~$10^{-6}$ of the variance — below the noise eigenvalues — so any top-$K$ truncation discards it by construction. Not a tunable hyperparameter; it is what the objective *is*.
 
-::: {.fragment}
-- In **spectrum imaging**, every pixel $(x, y)$ has an associated spectrum $\mathbf{s}(E)$
-:::
+**Materials hook / war story.** Real case: an unexpected intermetallic at a diffusion-couple interface, in a thin pixel band, vanished from the PCA-denoised map and was found only because someone plotted the *reconstruction residual* and saw a spatially-coherent hot region. The discovery lived entirely in the discarded subspace. Diagnostic recipe: residual must be spatially *incoherent* (looks like noise) if denoising was safe; any spatial structure in the residual = you threw away physics.
 
-::: {.fragment}
-- The result is a **3D data cube**: two spatial dimensions + one spectral dimension
-:::
+**Pre-empt the question.** "So never denoise?" — Denoise for *known, common* features (matrix-phase quant). Do *not* trust a denoised map for *discovery*; for discovery work with anomaly/residual maps (slide 25). Different question → different tool. This is the through-line that makes §5's discovery workflow honest.
 
-::: {.fragment}
-- Typical sizes:
-  - STEM-EDS: $256 \times 256$ pixels $\times$ $2048$ channels $= 134$ million values
-  - STEM-EELS: $100 \times 100$ pixels $\times$ $1024$ channels $= 10$ million values
-:::
+**Cross-reference.** Indicts methods from MFML u02/u05/u09 — as an *application caution*, not a re-derivation. Forward to slide 25 (anomaly workflow) and 26 (operando novelty).
 
-::: {.fragment}
-- **Naive approach**: Unfold to a $N_{\text{pixels}} \times D_{\text{channels}}$ matrix, apply PCA/AE per spectrum
-- **Better approach**: Exploit **spatial correlations** — neighboring pixels likely have similar spectra
+**Pacing.** ~4 minutes. Run as a genuine think-pause; let them answer the hint before revealing. High exam-weight: state the tension and the residual-inspection remedy.
 :::
 
-::: {.fragment}
-![](images/data_cube.png){width=80%}
-:::
+## 21. What the Latent Learns — and Seeding It From Simulation
 
-## 33. Spatial-Spectral Autoencoders
+::: {.columns}
+::: {.column width="50%"}
+**The latent can rediscover the physics.**
 
 ::: {.fragment}
-- **Idea**: Use spatial context to improve spectral analysis
+- Train a 2-D-latent AE on EDX of a ternary Fe-Cr-Ni alloy; colour latent points by known composition.
 :::
-
 ::: {.fragment}
-- **Architecture**: Instead of encoding a single spectrum $\mathbf{x}(x,y)$, encode a **patch** of spectra around each pixel
-  - Input: $P \times P \times D$ (e.g., $5 \times 5 \times 2048$)
-  - Use **3D convolutions** or factored **2D spatial + 1D spectral** convolutions
+- $c_\text{Fe}+c_\text{Cr}+c_\text{Ni}=1$ → only **2** free composition variables → the latent forms a **triangle**: the network re-derived the **Gibbs ternary** with no thermodynamics input.
 :::
-
 ::: {.fragment}
-- **Benefits**:
-  - Neighboring pixels provide **implicit averaging** (denoising)
-  - Spatial context helps distinguish **interface regions** from bulk phases
-  - Can learn **spatially correlated features** (e.g., core-shell structures)
+- Emergent, not programmed — but **only** if preprocessing (§2) made composition the dominant variance.
 :::
-
-::: {.fragment}
-- **Trade-off**: Spatial smoothing can blur sharp interfaces — choose patch size carefully
 :::
-
-## 34. Learning the Peak Dictionary: End-Members
+::: {.column width="50%"}
+**Seed it from simulation when labels are scarce.**
 
 ::: {.fragment}
-- **Goal**: Decompose every spectrum as a **non-negative mixture** of "pure" end-member spectra
+- Pretrain on **simulated** spectra, fine-tune on few real ones:
+  - XRD: Rietveld / structure-factor simulation
+  - EELS: FEFF / DFT
+  - EDX: Monte-Carlo (CASINO, DTSA-II)
+- Add realistic Poisson + readout noise + drift to the sim.
 :::
-
-::: {.fragment}
-$$\mathbf{x}_i \approx \sum_{k=1}^{K} a_{ik} \, \mathbf{e}_k, \quad a_{ik} \geq 0, \quad \mathbf{e}_k \geq 0$$
+::: {.callout-important .fragment}
+The sim must capture the **right physics** (peak shapes, backgrounds, artifacts) or you transfer a **simulation accent** the real instrument never speaks.
 :::
-
-::: {.fragment}
-- This is **Non-negative Matrix Factorization (NMF)** — physically more meaningful than PCA
-- End-members $\mathbf{e}_k$ resemble actual spectra of pure phases
 :::
-
-::: {.fragment}
-- **Autoencoder variant**: The decoder weights, if constrained to be non-negative, act as a learned dictionary of end-member spectra
 :::
 
-::: {.fragment}
-- **Advantage over database matching**: Learns end-members **from the data** — accounts for instrument-specific peak shapes and backgrounds
-:::
+::: {.notes}
+**Purpose.** Merge two kept insights (ternary→Gibbs latent; synthetic→real transfer) into one coherent "what the latent is and how to bootstrap it" slide. They belong together: the latent only rediscovers physics if (a) preprocessing exposed the chemistry and (b) the training distribution contains the physics — simulation guarantees (b) when real labels are scarce.
 
-## 35. Signal Separation: Unmixing Overlapping Peaks
+**Mechanism — the Gibbs point.** Three concentrations with sum-to-one live on a 2-simplex (triangle). A 2-D-bottleneck AE trained on normalized composition-dominated spectra must lay the data on that 2-manifold; coloured by composition it *is* the Gibbs triangle. The caveat is the teaching point: skip normalization (slide 09) and the latent encodes thickness, not the simplex — the "magic" is downstream of §2.
 
-::: {.fragment}
-- **Problem**: At a grain boundary between phase A and phase B, the measured spectrum is a **mixture**
-:::
+**Follow-up to pose.** "What if the latent were 1-D?" — Collapse the triangle onto a line; two alloys with different Cr/Ni but similar Fe alias to the same code. 60-second Socratic beat.
 
-::: {.fragment}
-- **Linear unmixing**: $\mathbf{x} = \alpha \, \mathbf{e}_A + (1-\alpha) \, \mathbf{e}_B + \boldsymbol{\eta}$
-  - Estimate $\alpha$ from the latent space position
-:::
+**Materials hook / war story (the simulation accent).** A DAE pretrained on FEFF EELS edges that omitted the experimental point-spread / energy-resolution broadening learned to expect sharper near-edge structure than any real spectrometer delivers; on real data it "sharpened" artifacts into fake fine structure mis-read as a valence change. Diagnostic: synthetic-validation excellent, real-data features that disappear when the microscope's actual energy resolution is convolved into the sim. Fix: physics in the simulator (instrument response, realistic noise, drift), not more network.
 
-::: {.fragment}
-- **Non-linear unmixing**: When mixing is not additive
-  - Multiple scattering in EELS
-  - Absorption effects in thick EDS specimens
-  - Autoencoders handle this naturally through non-linear decoder
-:::
+**Pre-empt the question.** "How much real data to fine-tune?" — Enough to correct the residual sim-to-real gap, typically tens to low hundreds if sim physics is good; the regime where slide 18's SSL pretraining and this slide's sim pretraining are complementary (sim = physics priors, SSL = instrument-specific structure).
 
-::: {.fragment}
-- **Application**: Sub-pixel composition mapping
-  - Even when the beam probe is larger than the feature, unmixing recovers fractional compositions
+**Cross-reference.** Latent/AE method: MFML u05 / ML-PC u05. Transfer-learning idea: MFML u09. Today = the materials reading + simulation-fidelity caution.
+
+**Pacing.** ~3–4 minutes. The Gibbs reveal is a delight — let it land before the caveat.
 :::
 
-## 36. Transfer Learning for Signals: Synthetic to Real
+# §5 · Applications & operando {.section}
 
-::: {.fragment}
-- **Problem**: Real spectral datasets for training may be scarce or lack ground truth labels
-:::
+## 22. Case: Automatic XRD Phase Identification
 
 ::: {.fragment}
-- **Solution**: Pre-train on **simulated spectra**, fine-tune on real data
+**Problem.** Given a noisy multi-phase XRD pattern, identify the crystallographic phases. Database (ICDD) peak-matching is manual, slow, and brittle for mixtures, preferred orientation, and broadening.
 :::
 
 ::: {.fragment}
-- **Simulation tools**:
-  - XRD: CrystalDiffract, VESTA, Rietveld simulation
-  - EELS: FEFF, DFT-based calculations
-  - EDS: Monte Carlo (CASINO, DTSA-II)
-:::
+**Pipeline (methods referenced, not re-derived).**
 
-::: {.fragment}
-- **Pipeline**:
-  1. Simulate spectra for all expected phases with realistic parameters
-  2. Add synthetic noise (Poisson + readout noise)
-  3. Pre-train DAE or classifier on simulated data
-  4. Fine-tune on a small number of real experimental spectra
+1. §2 preprocessing: background (SNIP), $2\theta$ calibration (LaB₆ standard), normalization.
+2. Encode with an AE/classifier *pretrained on simulated patterns* for all candidate phases (slide 21).
+3. Nearest-neighbour / clustering in latent space → phase set; high reconstruction error → amorphous / unknown (slide 20 residual logic).
 :::
 
 ::: {.fragment}
-- **Key**: The simulation must capture the relevant physics — peak shapes, backgrounds, artifacts
+**Why it beats database matching.** Robust to peak broadening (size/strain) and preferred orientation that defeat rigid peak-position matching; decomposes mixtures in latent space.
 :::
 
-## 37. Robustness to Instrumental Shifts
+> **[FIGURE: noisy multiphase XRD pattern; below, resolved phase fractions and a flagged unindexed amorphous halo highlighted via reconstruction residual]**
 
-::: {.fragment}
-- Real instruments are not perfectly stable:
-  - Energy **calibration drift** (peak positions shift over time)
-  - **Gain changes** (detector sensitivity varies)
-  - **Contamination** buildup (affects background)
-:::
+::: {.notes}
+**Purpose.** First case study — show the *whole pipeline assembled*, every box pointing back at §2–§4. The teaching value is the assembly, not new method content.
 
-::: {.fragment}
-- A model trained on Monday's data may fail on Friday's data
-:::
+**Materials hook.** Preferred orientation is the killer for classical matching: a rolled or thin-film sample suppresses/enhances reflections so the *intensity pattern* no longer matches the powder reference even though the phase is correct. A representation trained on simulated patterns *with* texture variation learns the position structure and tolerates intensity reweighting — the concrete win.
 
-::: {.fragment}
-- **Strategies for robustness:**
-:::
+**War story / diagnostic.** Amorphous content reported as "phase X at 12%" by naive matching because the broad amorphous halo overlapped X's strongest line. The residual/anomaly route (slide 20) flags it as "unindexed broad feature" — the honest answer. Failure symptom: a phase fraction that depends strongly on the background window chosen (slide 07 — backgrounds bias everything).
 
-::: {.fragment}
-1. **Data augmentation**: During training, randomly shift, scale, and broaden spectra
+**Pre-empt the question.** "Why not a supervised classifier on labelled patterns?" — Labels are scarce for mixtures and the combinatorial mixture space is huge; the sim-pretrain + latent approach (slide 21) sidesteps the labelling bottleneck and gives an anomaly channel for the unexpected.
+
+**Cross-reference.** Sim pretrain: 21. Anomaly/residual: 20. Methods: MFML u02/u05.
+
+**Pacing.** ~3 minutes. Brisk; an integration showcase.
 :::
+
+## 23. Case: EELS Spectrum Imaging — Fe²⁺/Fe³⁺ Mapping
 
 ::: {.fragment}
-2. **Calibration layer**: Learn an alignment transformation as part of the model
+**Problem.** Map iron oxidation state at nm resolution. The Fe-L₂,₃ white-line ratio ($L_3/L_2$) and onset shift (~0.3 eV, slide 04) separate Fe²⁺ from Fe³⁺ — but it is buried in Poisson noise at usable dose.
 :::
 
 ::: {.fragment}
-3. **Domain adaptation**: Align feature distributions between source and target instruments
+**Pipeline.** Power-law background (slide 07) → energy calibration to ZLP (slide 08) → DAE denoise *pretrained on simulated Fe-L edges* (method ML-PC u05; sim slide 21) → **constrained white-line fit** (slide 10) → continuous valence via the fitted ratio, **not** a raw latent (slide 17 caution).
 :::
 
 ::: {.fragment}
-4. **Convolutional architectures**: Inherently more robust to small shifts (shift equivariance)
+**Impact.** Oxidation-state mapping at ~5× lower dose; resolves **continuous mixed-valence gradients** at interfaces; validated against Fe²⁺/Fe³⁺ **reference standards** (slide 16 discipline).
 :::
 
-## 38. Summary: Signal Processing Pipeline
+::: {.notes}
+**Purpose.** The flagship characterization case — the slide where the *entire unit's discipline* is visible in one pipeline: background (07) → calibration (08) → denoise (referenced AE) → constrained physical fit (10) → number not latent (17) → reference-validated (16).
 
-::: {.fragment}
-| Stage | Method | Purpose |
-|-------|--------|---------|
-| **Preprocessing** | Normalization, alignment | Remove instrumental effects |
-| **Reduction** | PCA or AE | Compress to latent representation |
-| **Denoising** | Truncated PCA or DAE | Remove noise while preserving signal |
-| **Decomposition** | NMF or constrained AE | Identify end-member spectra |
-| **Clustering** | K-means, UMAP in latent space | Map spatial phase distribution |
-| **Anomaly detection** | Reconstruction error | Flag unexpected features |
-:::
+**Materials hook / anchor.** $L_3/L_2$ white-line ratio is the textbook valence proxy; it shifts measurably between Fe²⁺ and Fe³⁺, onset moves ~0.3 eV. The 5× dose saving matters because the oxides of interest (battery cathodes, corrosion layers) are beam-sensitive — over-dose and you reduce Fe³⁺→Fe²⁺ *with the beam*, measuring an artifact of your own probe.
 
-## 39. Non-Negative Matrix Factorization (NMF)
+**War story / killer anti-pattern.** Beam-induced reduction: scan too slow/hot and the act of measuring changes the oxidation state, producing a gorgeous fake valence gradient that "correlates with dose." Diagnostic symptom: the gradient tracks scan direction / dwell time, not microstructure. Why low-dose + denoising is not a convenience here — it is the difference between measuring the sample and measuring the beam. Forward-link to slide 26 (dose-fractionation / beam-damage detection).
 
-### The Natural Choice for Spectra
+**Pre-empt the question.** "Why not classify Fe²⁺ vs Fe³⁺ with a CNN?" — The science is the *continuous mixed-valence gradient*, not a binary label; and a fitted physical ratio is referee-checkable while a softmax is not (slide 15 logic).
 
-::: {.fragment}
-**Constraint:** Spectra $\mathbf{X}$ and their components must be **non-negative**:
+**Cross-reference.** Every arrow points to a §2–§4 slide on purpose — say it: "this case study introduced no new method; it is §2–§4 assembled for one physics question."
 
-$$\mathbf{X} \approx \mathbf{W}\mathbf{H} \quad \text{s.t. } W_{ik}, H_{kj} \ge 0$$
+**Pacing.** ~3 minutes.
 :::
 
+## 24. Case: Large-Scale EDS Maps — the Throughput Story
+
 ::: {.fragment}
-| Matrix | Characterization Meaning |
-|:--|:--|
-| $\mathbf{X}$ ($N \times D$) | Raw dataset (spatial pixels $\times$ energy channels) |
-| $\mathbf{W}$ ($N \times K$) | **Abundance maps** (spatial distribution of each phase) |
-| $\mathbf{H}$ ($K \times D$) | **End-member spectra** (pure phase signatures) |
+**The scale challenge (the point of the slide).** $512{\times}512{\times}2048 \approx 5\times10^5$ spectra per field; multiple fields → $10^6$–$10^7$ spectra per sample. The bottleneck is **engineering**, not method novelty.
 :::
 
 ::: {.fragment}
-**Why NMF beats PCA for spectra:**
-
-- **Interpretability**: Components (H) are "real" spectra, not abstract "variations"
-- **Physicality**: No negative concentrations or negative photon counts
-- **Parts-based**: Naturally learns additive "building blocks" of the signal
+**Why PCA, specifically, here.** Linear, one-pass, $O(\min(N,D)^2)$, deterministic, streamable (incremental SVD). Denoise via top-$K$ reconstruction → K-means in score space → map clusters back to $(x,y)$ → phase map in **minutes on a workstation**. (Method: ML-PC u02 — referenced.)
 :::
 
 ::: {.fragment}
-**Key takeaways:**
+**Engineering reality.** Memory-mapped datacubes, chunked/out-of-core SVD, GPU only where it pays. The win is *throughput at fixed accuracy*, not a better model.
+:::
 
-- The latent space is the **universal interface** between raw spectra and scientific insight
-- Choose the right normalization for your data type
-- Always validate against known references and physical expectations
+::: {.callout-important .fragment}
+And it inherits slide 20's caveat: trace elements below the noise floor and rare phases can be denoised **away**. Keep a residual/anomaly pass alongside the phase map.
 :::
 
-## {background-color="#1a1a2e"}
+::: {.notes}
+**Purpose.** Deliberately *not* a method slide. The lesson: at $10^7$ spectra, the right question is "what is fast, streamable, deterministic?" — and the boring linear method wins on engineering grounds. Students over-index on model sophistication; this slide is the antidote.
 
-::: {.r-fit-text}
-Section 5: Case Studies
-:::
+**Materials hook / anchor.** A modern silicon-drift-detector EDS map is acquired in minutes; analysis taking hours per map is a throughput crisis in a service lab running dozens of samples a day. PCA+K-means at minutes/map is what makes routine phase mapping operationally viable — why it is the production default despite AEs being "better."
 
-::: {.fragment}
-From XRD Phase ID to Real-time Signal Monitoring
-:::
+**War story.** A group replaced PCA with a deep AE for "better" phase maps; per-sample processing went 4 → 40 minutes, the queue backed up two weeks, and the maps were not measurably better because preprocessing (slide 06!) was the actual limiter. The fix was a better background model, not a bigger network.
 
-## 40. Case Study: Automatic XRD Phase Identification
+**Pre-empt the question.** "When *is* the AE worth it at scale?" — When non-linear effects (peak shift, slide 17) genuinely break the linear subspace *and* you amortise training across many samples. Otherwise PCA. Decision = effect size vs throughput cost, same logic as ML-PC u11's budget table.
 
-::: {.fragment}
-### Problem
-- Given a noisy XRD pattern, identify which crystallographic phases are present
-- Traditional: Match peaks against the ICDD database (manual, slow, error-prone for mixtures)
-:::
+**Cross-reference.** PCA method: ML-PC u02. Rare-phase caveat: 20. Streaming connects forward to slide 26 (operando).
 
-::: {.fragment}
-### ML Approach
-1. Train an autoencoder on simulated XRD patterns for all candidate phases
-2. Encode the unknown pattern into latent space
-3. Use **nearest-neighbor classification** or **clustering** in latent space
+**Pacing.** ~2–3 minutes.
 :::
 
-::: {.fragment}
-### Results
-- Handles **multi-phase mixtures** by decomposition in latent space
-- Robust to **preferred orientation** and **peak broadening** (which confuse database matching)
-- Can detect **amorphous phases** as anomalies (high reconstruction error)
-:::
+## 25. Discovery via Anomaly — the Workflow
 
 ::: {.fragment}
-![](images/sem_results.png){width=80%}
+- Train a representation on spectra from **known** phases only (clean nominal set — *the* prerequisite, ML-PC u05 §E).
 :::
-
-## 41. Case Study: EELS Spectrum Imaging — Fe$^{2+}$/Fe$^{3+}$ Mapping
 
 ::: {.fragment}
-### Problem
-- Map the spatial distribution of iron oxidation states at nanometer resolution
-- The Fe-L$_{2,3}$ white line ratio ($L_3/L_2$) and onset energy differ between Fe$^{2+}$ and Fe$^{3+}$
+**Workflow:**
+
+1. Apply to a new sample; most pixels reconstruct well.
+2. Map reconstruction error spatially → **anomaly map** (the slide-20 residual, used deliberately).
+3. Extract spectra from high-error regions; inspect *physically*.
+4. Identify the unknown phase; add to training; retrain.
 :::
 
 ::: {.fragment}
-### ML Approach
-- Train a **denoising autoencoder** on simulated Fe-L edges for both oxidation states
-- Apply to experimental EELS spectrum image pixel by pixel
-- Use the **latent space** to map oxidation state continuously (not just binary classification)
+- **Example.** AE trained on two base metals of a diffusion couple; a high-error band at the interface revealed an unexpected intermetallic invisible in the denoised map.
 :::
 
-::: {.fragment}
-### Impact
-- Enables oxidation state mapping at **5x lower dose** than conventional analysis
-- Captures **continuous gradients** (e.g., mixed-valence regions at interfaces)
-- Validated against reference spectra from known Fe$^{2+}$ and Fe$^{3+}$ standards
+::: {.callout-important .fragment}
+**The AE-anomaly *method* is ML-PC u05 §E (threshold from nominal validation error, never from anomalies).** This slide is the *materials discovery workflow* wrapped around it.
 :::
 
-## 42. Case Study: Large-Scale EDS Maps
+::: {.notes}
+**Purpose.** Convert slide 20's warning into a constructive procedure. Deliberate pairing: slide 20 says "denoising hides the rare," slide 25 says "so make the residual your *primary* discovery instrument." Same mathematics, opposite intent.
 
-::: {.fragment}
-### The Scale Challenge
-- Modern SEM/STEM-EDS: $512 \times 512$ pixels, 2048 channels = **~500,000 spectra**
-- Multiple fields of view → **millions of spectra** per sample
-:::
+**Mechanism / non-negotiable rule.** Reconstruction error is an anomaly score *only if the training set is clean nominal*. The threshold comes from the nominal validation-error distribution (e.g., 99th percentile), never from labelled anomalies (you usually have none; if you did it would be supervised). Exactly ML-PC u05 §E — say "method is u05 §E, do not re-derive; today is the workflow and the materials judgement."
 
-::: {.fragment}
-### PCA-Based Pipeline
-1. Apply PCA to the unfolded data cube ($N \times D$ matrix)
-2. Denoise: Reconstruct using top-$K$ components (typically $K = 10\text{--}20$)
-3. Cluster in score space using K-means
-4. Map cluster assignments back to spatial coordinates → **phase map**
-:::
+**War story / diagnostic.** Nominal set quietly contaminated with a few unknown-phase pixels → the AE learns to reconstruct the anomaly → never flags it. Symptom: anomaly map uniformly low even on a sample you *know* contains a surprise. Curation of the nominal set is the real work; the algorithm is trivial.
 
-::: {.fragment}
-### Results
-- **Denoised maps** reveal trace elements below the raw noise floor
-- **Phase maps** identify 5-8 distinct phases automatically
-- **Processing time**: Minutes on a standard workstation (PCA is fast!)
-:::
+**Materials hook.** The diffusion-couple intermetallic: trained on Cu and Ni, the Cu-Ni interface intermetallic lights up the residual because it is in neither training class — discovery precisely *because* the model is blind to it (slide 20 inverted). Step 4 (add & retrain) is the human-in-the-loop closure forward-linking to Unit 10's active learning.
 
-::: {.fragment}
-![](images/leaf_colors.png){width=80%}
-:::
+**Pre-empt the question.** "Different from OOD detection?" — It *is* OOD detection; the materials specifics are (a) the nominal set is *your known phases*, (b) the score must be *spatially mapped* (an isolated hot pixel is noise, a coherent region is a phase), (c) the loop ends in a physical identification, not just a flag.
 
-## 43. Clustering in Latent Space: UMAP Visualization
+**Cross-reference.** Method: ML-PC u05 §E. Residual logic: 20. Streaming version: 26. Active-learning closure: Unit 10.
+
+**Pacing.** ~3 minutes.
+:::
 
-### From Latent Codes to Phase Maps [@sandfeld_materials_data_science]
+## 26. Operando / Streaming Spectral Monitoring
 
 ::: {.fragment}
-- After dimensionality reduction (PCA or AE), each spectrum is a point $\mathbf{z}_i \in \mathbb{R}^K$
+- **Operando**: time-resolved XRD / Raman / EELS *during* synthesis, cycling, heating, catalysis — a spectrum **stream**, not a static cube.
 :::
 
+::: {.columns}
+::: {.column width="50%"}
 ::: {.fragment}
-- **UMAP** (Uniform Manifold Approximation and Projection) projects $K$-dimensional latent codes to 2D for visualization
-  - Preserves both local **and** global structure (better than t-SNE for this)
-:::
+**New problems the stream creates**
 
+- **Drift over time** — the nominal distribution itself moves; a fixed threshold goes stale.
+- **Novelty detection online** — a new phase appearing *is the result*.
+- **Adaptive acquisition** — spend dose where the spectrum is changing.
+:::
+:::
+::: {.column width="50%"}
 ::: {.fragment}
-![](images/umap_clusters.png){width=80%}
+**Beam-damage / dose-fractionation**
+
+- Track spectral change vs accumulated dose; **stop or fractionate** before the probe alters the sample (recall slide 23: beam-induced Fe³⁺→Fe²⁺).
+- Poisson model (slide 03) sets the detectable-change floor per frame.
 :::
+:::
+:::
 
-::: {.fragment}
-- **Clusters** in UMAP space correspond to distinct material phases
-- **Bridges** between clusters indicate transition regions (interfaces, diffusion zones)
-- **Outliers** flag anomalies or rare phases
+::: {.callout-important .fragment}
+**Methods referenced: AE-anomaly ML-PC u05 §E; Poisson noise ML-PC u02.** New here: *time* — non-stationarity, online thresholds, dose as a budgeted resource.
 :::
 
-## 44. Discovering New Phases with Anomaly Detection
+::: {.notes}
+**Why this slide is new and important.** Everything before §5 assumed a static dataset. Operando breaks that and creates genuinely new domain problems no methods unit covers: the *nominal distribution is non-stationary* (it drifts as the reaction proceeds), so a fixed anomaly threshold (slide 25) silently degrades; and *dose is a depletable budget* spent in real time against an irreversible sample.
 
-::: {.fragment}
-### When the Model Says "I Don't Know"
-:::
+**Mechanism.** Streaming/online anomaly: maintain a running (e.g., exponentially-weighted) estimate of the nominal distribution and distinguish *expected* drift (reaction progressing) from *novelty* (a new phase nucleating) — that separation is the hard, materials-specific part. Dose-fractionation: the Poisson floor (slide 03, variance=mean) tells you the minimum counts per frame to detect a change of a given size; below that you integrate noise, above it you waste dose / damage the sample — an explicit information-vs-damage optimisation.
 
-::: {.fragment}
-- Train an autoencoder on spectra from **known phases**
-- Apply it to a **new sample** — most spectra reconstruct well
-:::
+**Materials hook / war story.** Operando battery-cycling XRD: the cathode phase genuinely evolves every cycle (that *is* the experiment), so a naive anomaly detector screams every frame. The skill is modelling the expected reaction trajectory and flagging only departures. Diagnostic symptom of getting it wrong: anomaly score perfectly correlated with state-of-charge — you are detecting the experiment, not a surprise (compare slide 20's "you detected thickness").
 
-::: {.fragment}
-- **High reconstruction error pixels** indicate spectra that differ from all known phases
-:::
+**Beam damage — the integrity point.** Connect to slide 23: in beam-sensitive operando EELS the probe changes the very quantity measured. Online dose tracking that halts acquisition when cumulative spectral change exceeds a threshold is not optimisation polish — it is the difference between data and artifact.
 
-::: {.fragment}
-- **Discovery workflow:**
-  1. Map reconstruction error spatially → **anomaly map**
-  2. Extract spectra from high-error regions
-  3. Inspect these spectra manually → **identify the unknown phase**
-  4. Add to the training set and retrain
-:::
+**Pre-empt the question.** "Just slide 25 in a loop?" — No: slide 25's nominal set is fixed; here it moves, the threshold must adapt, and the cost of a query (dose) is itself the thing being optimised. That non-stationarity + budgeted-resource framing is the new content and the forward link to Unit 10 (self-driving microscope).
 
-::: {.fragment}
-- **Example**: Discovery of an unexpected intermetallic compound at a diffusion couple interface
-  - The AE was trained on the two base metals
-  - High reconstruction error at the interface revealed a third phase
+**Cross-reference.** Anomaly method: ML-PC u05 §E. Poisson: ML-PC u02. Beam damage: 23. Adaptive acquisition closure: Unit 10.
+
+**Pacing.** ~3–4 minutes.
 :::
 
-## 45. Real-time Signal Monitoring
+## 27. Spectral Inverse Problems — EXAFS → Local Structure (stretch)
 
 ::: {.fragment}
-### Closing the Loop: ML During Acquisition
+- Some spectra are an **encoded structure**, not a feature list. **EXAFS** oscillations $\chi(k)$ are a sum over scattering paths → Fourier-related to a **radial distribution** (neighbour distances, coordination numbers).
 :::
 
 ::: {.fragment}
-- **Conventional workflow**: Acquire → Store → Analyze offline
-- **ML-enabled workflow**: Acquire → Analyze **in real time** → Adjust acquisition
+- This is a **modality-specific inverse problem**: recover the structure that *generates* the spectrum via a known forward model (FEFF), not a generic decomposition.
 :::
 
 ::: {.fragment}
-- **Applications:**
-  - Monitor reconstruction error during scanning — **stop early** when all phases are mapped
-  - Detect **beam damage** by tracking spectral changes in real time
-  - **Adaptive acquisition**: Spend more time on interesting regions, less on uniform areas
+- ML role: a **differentiable / surrogate forward model** (seeded on slide 10's idea) for fast amortised inversion + uncertainty — *the general inverse-problem theory is **ML-PC u08**; reference it, do not re-derive*.
 :::
 
-::: {.fragment}
-- **Requirements:**
-  - Model must be fast enough for real-time inference (PCA: trivially fast; small AE: ~ms per spectrum)
-  - Must handle streaming data (incremental PCA, online AE updates)
+::: {.callout-important .fragment}
+An inverse problem can be **ill-posed**: many structures fit one spectrum. Same disease as MCR rotational ambiguity (slide 14) — physical constraints (known coordination chemistry, path filtering) are the cure.
 :::
 
-::: {.callout-tip}
-## The Future Is Adaptive
-Combining real-time ML with instrument control creates **self-driving microscopes** that autonomously explore materials, guided by the scientific questions encoded in the ML model. This is the topic of Unit 10.
-:::
+::: {.notes}
+**Purpose / status.** Marked stretch — include if pace allows; it generalises the unit's recurring identifiability theme to a third instance and links to ML-PC u08. If short, state the headline (some spectra are inverse problems; ill-posedness is the recurring disease; constraints the recurring cure) and move to the wrap.
 
-## 46. Exercise Preview
+**Mechanism.** EXAFS: photoelectron scattering off neighbours modulates the absorption fine structure; $\chi(k)$ is, to first approximation, a sum of damped sinusoids whose frequencies encode neighbour distances — a Fourier transform gives a (phase-shifted) radial distribution. The forward model (FEFF) is well-understood; inversion is the hard, ill-posed direction. ML contributes an amortised/differentiable surrogate for fast inversion with uncertainty.
 
-::: {.fragment}
-### Hands-on: PCA and Autoencoder for EDS Spectra
-:::
+**The unifying teaching point (why the slide earns its place).** Three times now the same disease: constrained peak fitting (slide 10, non-identifiable peaks), MCR-ALS (slide 14, rotational ambiguity), inverse problems (here, ill-posedness). Same cure: *physical constraints reduce a continuum of fits to a defensible one*. Say it explicitly — the single most transferable idea in the unit and a likely exam synthesis question.
 
-::: {.fragment}
-**Part 1: PCA Analysis**
+**Materials hook.** EXAFS routinely over-fitted: add enough shells/paths and you fit noise, reporting meaningless coordination numbers. Diagnostic symptom: fit quality keeps improving with more free paths while parameters become physically absurd (negative Debye-Waller factors, non-physical distances). The constraint discipline (path filtering, known chemistry, bounded parameters) is identical in spirit to slide 10's shared-width/branching-ratio constraints.
 
-1. Load a simulated EDS spectrum image (100 $\times$ 100 pixels, 1024 channels, 3 phases)
-2. Compute PCA and plot the scree plot — determine the intrinsic dimensionality
-3. Reconstruct the data using $K = 3, 5, 10$ components — compare denoised spectra
-4. Plot PCA score maps and identify the three phases
-:::
+**Pre-empt the question.** "Why not just slide 10?" — Slide 10 fits peaks *in the spectrum*; here the unknown is a *structure* behind a non-trivial physical forward operator. The machinery (differentiable forward model, constraints) is shared; the object recovered differs and ill-posedness is more severe.
 
-::: {.fragment}
-**Part 2: Autoencoder**
+**Cross-reference.** General inverse theory: ML-PC u08. Differentiable forward model: 10. Identifiability/ambiguity family: 10, 14.
 
-5. Build a fully-connected autoencoder with bottleneck size 4
-6. Train on the same dataset — compare reconstruction loss vs. PCA
-7. Visualize the latent space and compare clustering to PCA scores
-8. Introduce an "unknown" phase in a few pixels — use reconstruction error to detect it
+**Pacing.** ~2–3 minutes, or a 30-second headline if compressing.
 :::
-
-::: {.fragment}
-**Part 3: Denoising**
 
-9. Add Poisson noise at various dose levels — compare PCA and DAE denoising
-:::
+# Wrap {.section}
 
-## 47. Summary and Key Takeaways
+## 28. Key Takeaways — It Was Never About the Method
 
+::: {.columns}
+::: {.column width="50%"}
 ::: {.fragment}
-### What We Learned Today
+1. The signal's structure is **dictated by the probe physics** — that, not the algorithm, dictates the pipeline.
 :::
-
 ::: {.fragment}
-1. **Characterization signals** (XRD, EELS, EDS, XPS, Raman) are high-dimensional but lie on **low-dimensional manifolds**
+2. **Preprocessing dominates**: a wrong background/calibration is a *systematic* error no model fixes (slides 06–11).
 :::
-
 ::: {.fragment}
-2. **PCA** provides fast, linear dimensionality reduction — excellent for denoising and compression, but limited to linear variations
+3. **Identifiability is the recurring disease** — peak overlap (10), MCR rotational ambiguity (14), inverse ill-posedness (27); **physical constraints are the recurring cure**.
 :::
-
-::: {.fragment}
-3. **Autoencoders** extend PCA to **non-linear** settings — handling peak shifts, shape changes, and complex backgrounds
 :::
-
+::: {.column width="50%"}
 ::: {.fragment}
-4. **Denoising autoencoders** explicitly learn to map noisy spectra to clean ones — enabling lower-dose characterization
+4. A latent is **not** a quantity: physics + a reference standard turn it into a number with an **honest error budget** (15–17).
 :::
-
 ::: {.fragment}
-5. **Masked Autoencoders** [@he_2022_mae] turn the lab's $10^4$–$10^5$ **unlabelled** spectra into a pretrained feature extractor — small-data property prediction with linear probing or LoRA
+5. Unsupervised compression **erases the rare** — denoising vs discovery; live in the residual (20, 25, 26).
 :::
-
 ::: {.fragment}
-6. The **latent space** is the universal interface: it enables compression, denoising, clustering, anomaly detection, and visualization
+6. SSL/MAE turns the unlabelled archive into a feature extractor — *if* augmentations are physically valid (18, 19).
 :::
+:::
+:::
 
-::: {.fragment}
-7. **Practical pipelines** require careful normalization, validation, and robustness to instrumental shifts
+::: {.callout-important .fragment}
+**The methods live in MFML u02/u05/u09 and ML-PC u02/u05. This unit was about what the signal physics demands.** Next: Unit 9b — Transformers for materials.
 :::
 
-::: {.fragment}
-**Next unit**: Unit 10 — Automation in Microscopy (closing the loop)
+::: {.notes}
+**Purpose.** Land the thesis the unit opened with (slide 01). The six points are the examable spine; read them as "if you remember six things." The closing callout is the literal contract from slide 01 — closing the frame deliberately.
+
+**Five must-know statements for the exam (state now, they recur).**
+1. Probe physics → pipeline; there is no universal preprocessing (slide 04).
+2. Background/calibration error is *systematic* — averaging does not remove it; usually the dominant uncertainty term (07, 16).
+3. Rotational ambiguity / identifiability: non-uniqueness is the default; constraints encode the physics that resolves it (10, 14, 27).
+4. A latent/peak ≠ a concentration; the k/ζ physical step is non-negotiable and gives the audit trail (15).
+5. Unsupervised compression is structurally blind to the rare; discovery lives in the residual/anomaly channel (20, 25).
+
+**Anti-pattern recap.** The single behaviour to leave them fearing: swapping in a fancier model while leaving preprocessing untouched and claiming the gain. Nine times in ten the gain was preprocessing bundled with the swap.
+
+**Pre-empt the exam-strategy question.** "What will be tested?" — Not PCA/AE/MAE math (u02/u05/u09). Domain judgement: choose & justify a pipeline for a given modality+question; explain a failure (drift, background bias, rare-phase erasure); decompose a quantification error budget.
+
+**Forward link.** Unit 9b (transformers) supplies the backbone behind slide 19's foundation models; Unit 10 (automation) closes the operando/anomaly loop into active learning.
+
+**Pacing.** ~3 minutes. End on the callout; add no new content.
 :::
 
 <!-- BEGIN prev-next -->
@@ -1394,32 +1159,26 @@ Combining real-time ML with instrument control creates **self-driving microscope
 
 <!-- END prev-next -->
 
-## 48. References
+## 29. References
 
 ::: {.fragment}
-### Core References
-
-- **@sandfeld_materials_data_science**: Ch. 15 (PCA), Ch. 15.3.2 (Scree Plots), Ch. 15.3.3 (Denoising), Ch. 15.6 (Clustering), Ch. 19.4 (Autoencoders)
-- **@mcclarren2021machine**: Ch. 8.3.2 (Denoising Autoencoders)
-- **@neuer2024machine**: Ch. 5 (Unsupervised Learning)
+### Preprocessing & chemometrics
+- Background: **@ryan1988snip** (SNIP), **@eilers2005baseline** (Asymmetric Least Squares)
+- Alignment: **@nielsen1998cow** (correlation-optimized warping)
+- Calibration transfer: **@wang1991pds** (piecewise direct standardization)
+- Curve resolution: **@dejuan2014mcr** (MCR-ALS review)
 :::
 
 ::: {.fragment}
-### Further Reading
-
-- Kingma & Welling (2014): "Auto-Encoding Variational Bayes" — the original VAE paper
-- Lee & Seung (1999): "Learning the parts of objects by non-negative matrix factorization" — NMF
-- McInnes et al. (2018): "UMAP: Uniform Manifold Approximation and Projection" — dimensionality reduction for visualization
+### Quantification
+- **@cliff1975quantitative** (Cliff-Lorimer $k$-factors) · **@watanabe2006zeta** (ζ-factor method)
 :::
 
 ::: {.fragment}
-### Software
-
-- **HyperSpy**: Open-source Python library for multi-dimensional spectral data analysis
-- **scikit-learn**: PCA, NMF, K-means implementations
-- **PyTorch / TensorFlow**: Autoencoder implementations
+### Representation learning (referenced — derived in MFML u05/u09)
+- **@he_2022_mae** (Masked Autoencoders) · **@oquab_2024_dinov2** (DINOv2)
+- Course texts: **@sandfeld_materials_data_science**, **@mcclarren2021machine**, **@neuer2024machine**
 :::
 
 ::: {#refs}
 :::
-

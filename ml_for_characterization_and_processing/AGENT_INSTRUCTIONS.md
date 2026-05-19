@@ -71,13 +71,13 @@ buffer/review/mini-project slot with no unit deck. Folder index == week number.
 - unit07_time_series -> Week 7 (self-study lecture + in-class exercise): Time-series and process monitoring
 - unit08_inverse_problems -> Week 8 (lecture + self-study exercise): Inverse problems and process maps
 - unit09_characterization_signals -> Week 9: ML for characterization signals
-- unit09b_transformers_for_materials -> Companion deck within Week 9: Transformers for materials (ViT, Flash Attention, Mamba)
-- unit10_automation -> Week 10: Automation in microscopy and characterization
+- unit10_transformers_for_materials -> Week 10: Transformers for materials characterization (ViT, Flash Attention, Mamba) — promoted from the former Week 9 companion deck unit09b
 - unit11_uncertainty_gp -> Week 11: Uncertainty-aware regression & Gaussian Processes
 - unit12_pinns -> Week 12: Physics-informed and constrained ML
 - unit13_reflection -> Week 13: Integration, limits, and reflection
 - (no unit) -> Week 14: Buffer / review / mini-project work
 - Deleted 2026-05-19: unit07_generalization_robustness (backup: /tmp/unit07_generalization_robustness_backup_2026-05-19.tar.gz). See REALIGNMENT_2026-05-19.md.
+- Archived 2026-05-19: unit10_automation (RL/automation lecture, skipped this course) moved to `_archive/unit10_automation/` — Quarto-excluded, kept in git history. See REALIGNMENT_2026-05-19_b.md.
 
 ## Development Workflow
 1.  Check `unitN_plan.md` for the pedagogical structure.
