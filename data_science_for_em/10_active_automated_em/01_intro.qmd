@@ -55,13 +55,13 @@ format:
 
 :::: {.incremental}
 - **Road map:** recap Week 9 + today's question (2) · from uncertainty map to next measurement (3) · experiment-design problem in EM (3) · Bayesian optimisation loop: surrogate + acquisition + measure + update (4) · acquisition functions: EI / UCB / PI as explore–exploit scores (5) · BO in practice for EM (4) · deep kernel learning: NN feature map + GP head (3) · automated / self-driving 4D-STEM (4) · automation as control: sensors, actuators, feedback (3) · reinforcement learning framing: agent, environment, reward (4) · autofocus & beam alignment as RL (4) · the autonomous-lab vision, limits & risks + forward link (2) — **41 content slides** + References slide.
-- **Self-study:** `notebooks/week10_bayesian_optimization.ipynb` — implement a 1-D BO loop from scratch (GP surrogate + UCB acquisition, sklearn, CPU, < 60 s); show BO finds the optimal 4D-STEM parameter in 8 iterations (best found: **0.9133** vs random **0.7950**); exercise: vary the UCB $\kappa$ (exploit vs explore) and the acquisition function (EI).
+- **Self-study:** `notebooks/week10_bayesian_optimization.ipynb` — implement a 1-D BO loop from scratch (GP surrogate + UCB acquisition, sklearn, CPU, < 60 s); show BO finds the optimal 4D-STEM parameter on a **multi-modal objective** in 12 iterations, escaping a deceptive local optimum (best found: **0.9323** vs random **0.7229**); exercise: vary the UCB $\kappa$ (exploit vs explore) and the acquisition function (EI).
 ::::
 
 :::: {.notes}
-- Read the roadmap at medium pace. Two anchors to call out: (1) "acquisition function = explore vs exploit score" — that phrase is the conceptual core of the whole week; (2) "BO finds the optimum in 8 iterations" — the honest notebook result. Everything else supports those two payoffs.
+- Read the roadmap at medium pace. Two anchors to call out: (1) "acquisition function = explore vs exploit score" — that phrase is the conceptual core of the whole week; (2) "BO escapes the deceptive local optimum and finds the global peak in 12 iterations" — the honest notebook result. Everything else supports those two payoffs.
 - One pacing note: this slide is orientation — 1 minute maximum. Do not read every bullet. Gesture at the structure.
-- The notebook numbers (0.9133 vs 0.7950) are real and match the executed notebook (SEED=42). Mention them now to give students a concrete target.
+- The notebook numbers (0.9323 vs 0.7229) are real and match the executed notebook (SEED=42, N_INIT=3, N_ITER=12, κ=3.0). Mention them now to give students a concrete target.
 - Transition: "Let's start with the bridge picture from Week 9."
 ::::
 
@@ -179,12 +179,12 @@ format:
 
 ## BO loop in action: 4 snapshots
 
-![Four snapshots of the BO loop optimising a 4D-STEM acquisition parameter. Blue region: GP ±2σ. Blue line: GP mean. Dashed red vertical: next query chosen by the UCB acquisition function (red dotted curve, scaled). Green dashed: true hidden objective. Black dots: evaluated points. By iteration 7 the loop has concentrated measurements near the true optimum at x≈0.65. [@shahriari2016taking]](img/bo_loop_snapshots.png){width="90%"}
+![Four snapshots of the BO loop optimising a multi-modal 4D-STEM acquisition parameter (SEED=42, κ=3.0). Blue region: GP ±2σ. Blue line: GP mean. Dashed red vertical: next query chosen by the UCB acquisition function (red dotted, scaled). Green dotted: true global optimum (x≈0.78). Orange dotted: deceptive local optimum (x≈0.25). Gold star: current best observed point. By iteration 10 the loop has escaped the local optimum and concentrated measurements near the true global peak. [@shahriari2016taking]](img/bo_loop_snapshots.png){width="90%"}
 
 :::: {.notes}
-- Walk through the four panels left to right. Iter 1: only 3 initial points; the GP is widely uncertain; the UCB acquisition selects a new point near x≈0.66 — correctly identifying the promising region. Iter 3: the cluster near the optimum is building; UCB now also explores an uncertain flank. Iter 5: the GP mean is closely tracking the true objective; most remaining uncertainty is far from the optimum. Iter 7: the black dots are densely clustered near x≈0.65; the band is tight there; the best observed value is close to the true maximum.
+- Walk through the four panels left to right. Iter 1: only 3 initial points; the GP is widely uncertain; with κ=3 the UCB sends the first query to an unexplored boundary (x=1.0) — exploration, not exploitation. Iter 3: the GP has discovered the global peak region (x≈0.77, found at iter 2); subsequent queries explore flanks to reduce uncertainty. Iter 6: the GP mean is tracking the right half of the objective well; the deceptive local optimum (orange dotted, x≈0.25) was visited early but did not attract further queries once the global peak was found. Iter 10: the black dots are concentrated near x≈0.78; the best observed value (gold star) is close to the true global maximum.
+- Key teaching point: the orange dotted line (deceptive local opt at x=0.25) was where the initial measurements pointed. The high-κ UCB escaped by sending early queries to the boundary and uncertain region, discovering the global peak. Low κ (e.g. 0.5) would have stayed near x=0.25 for all 12 iterations — never finding the global maximum.
 - The "true hidden objective" (green dashed) is shown only for pedagogy — in a real EM experiment, we never see it. The whole point of BO is that we don't need to see it; the GP + acquisition function guides us there.
-- Note that the acquisition function (red dotted, scaled to the lower part of each panel) starts broad (exploration) and narrows toward the promising region over iterations. This is the automatic balance: as we learn more, exploitation increases.
 - Transition: "Now let's look at the three main acquisition functions."
 ::::
 
@@ -194,7 +194,7 @@ format:
 - **Requirement 1 — uncertainty quantification:** the acquisition function needs both $\mu^*(x)$ and $\sigma^*(x)$. A GP provides both analytically, at every point, in closed form.
 - **Requirement 2 — data efficiency:** with only 3–20 EM observations, we cannot train a deep neural network. The GP is non-parametric — it adapts its complexity to the data, no layer-count decisions needed.
 - **Requirement 3 — analytic acquisition:** UCB and EI have closed-form expressions in terms of $\mu^*$ and $\sigma^*$. This makes the inner optimisation (find $\arg\max_x \alpha(x)$) fast — just evaluate on a dense grid, no gradient descent.
-- **Limitations:** $O(N^3)$ cost (fine for $N \leq 500$ EM measurements); sensitive to kernel choice; struggles in $> 10$ input dimensions. For image-patch inputs, use DKL (later today). [@williams2006gaussian]
+- **Limitations:** $O(N^3)$ cost (fine for $N \leq 500$ EM measurements); sensitive to kernel choice; struggles in $> 10$ input dimensions. For image-patch inputs, use DKL (later today). [@rasmussen2006gaussian]
 ::::
 
 :::: {.notes}
@@ -210,7 +210,7 @@ format:
 - **Posterior mean** $\mu^*(x^*)$: the best estimate of the objective value at the candidate location $x^*$. From Week 9: $\mu^*(x^*) = \mathbf{k}_*^\top (\mathbf{K} + \sigma_n^2 \mathbf{I})^{-1}\mathbf{y}$.
 - **Posterior standard deviation** $\sigma^*(x^*)$: our uncertainty about the objective value. From Week 9: $\sigma^{*2}(x^*) = k(x^*,x^*) - \mathbf{k}_*^\top (\mathbf{K} + \sigma_n^2 \mathbf{I})^{-1}\mathbf{k}_*$.
 - **Key insight for BO:** $\sigma^*(x^*)$ is *large* where we have not yet measured (unexplored regions) and *small* where we have measured (explored regions). The acquisition function uses this to decide where information is most needed.
-- **The inner loop:** after each new observation $(x_\text{next}, y_\text{next})$, the GP is updated: $\mathbf{K}$ gains a new row and column; the matrix inverse is updated (Cholesky update in practice — $O(N^2)$, not $O(N^3)$). [@williams2006gaussian]
+- **The inner loop:** after each new observation $(x_\text{next}, y_\text{next})$, the GP is updated: $\mathbf{K}$ gains a new row and column; the matrix inverse is updated (Cholesky update in practice — $O(N^2)$, not $O(N^3)$). [@rasmussen2006gaussian]
 ::::
 
 :::: {.notes}
@@ -276,32 +276,33 @@ $$\alpha_\text{PI}(x) = \Phi\!\left(\frac{\mu^*(x) - f^+ - \xi}{\sigma^*(x)}\rig
 
 :::: {.incremental}
 - **κ = 0 (pure exploitation):** always measure at the highest GP mean. Risk: stuck in a local optimum. No exploration of uncertain regions. Can confirm the current best very precisely but may miss a better global optimum.
-- **κ = 0.5 (mild exploration):** mostly exploits; quickly confirms the current best; may miss global optima hidden behind uncertainty. Notebook result with SEED=42: best found **0.9131**.
-- **κ = 2.0 (default):** balanced — explores uncertain regions while still preferring areas with high predicted value. Notebook result with SEED=42: best found **0.9133**.
-- **κ = 5.0 (high exploration):** spreads measurements widely before converging; better at finding multi-modal objectives; slower convergence for unimodal problems. Notebook result with SEED=42: best found **0.9125**.
-- **Practical insight:** for the smooth unimodal EM objective, all three κ values converge similarly. κ matters most for objectives with multiple local optima. [@shahriari2016taking]
+- **κ = 0.5 (low exploration):** mostly exploits; gets stuck at the deceptive local optimum on the multi-modal notebook objective. Notebook result with SEED=42: best found **0.7440** — never reaches global peak.
+- **κ = 2.0:** borderline for this problem. Notebook result with SEED=42: best found **0.7438** — also stuck at local optimum within 12 iterations.
+- **κ = 3.0 (lecture default for this problem):** enough exploration to escape the local optimum. Notebook result with SEED=42: best found **0.9323** — finds the global peak.
+- **κ = 5.0 (high exploration):** also escapes; wider initial search. Notebook result with SEED=42: best found **0.9331**. [@shahriari2016taking]
+- **Key insight:** on multi-modal objectives, κ is the difference between finding the global optimum and getting stranded. On unimodal objectives the choice matters less.
 ::::
 
 :::: {.notes}
-- The three κ values give nearly identical results (0.913x) because the objective is unimodal and the first UCB evaluation already jumps near the true peak at x=0.66. For a multimodal objective — e.g., a material with two competing phases each producing high SNR at different parameter settings — high κ would genuinely win over low κ.
-- Ask students to think of an EM experiment with multiple local optima: finding the best tilt angle for a GaN/AlGaN superlattice in HAADF. The [0001] zone axis is best, but [10-10] also gives a sharp image. A high-κ BO would explore both before committing; a low-κ BO might get stuck on [10-10].
-- The "$\xi$ in EI" analogy: the same control over exploitation/exploration. Set $\xi=0$ for a pure-exploitation EI that greedily refines near the current best; set $\xi=0.1$ for an EI that requires at least 0.1 units of improvement (encourages broader exploration).
+- This is the key result that only emerges on a genuinely multi-modal objective: κ=0.5 and κ=2.0 both get stuck at the deceptive local optimum (best ≈ 0.74), while κ=3.0 and κ=5.0 escape and find the global peak (best ≈ 0.93). This is NOT visible on a unimodal problem where all κ values give ≈ 0.913.
+- Concrete EM analogy for the local-vs-global dilemma: finding the best tilt angle for a GaN/AlGaN superlattice in HAADF. The [0001] zone axis is optimal, but [10-10] also gives a sharp image. A low-κ BO finds [10-10] and stays there; a high-κ BO explores both before committing and finds the better [0001] axis.
+- The "$\xi$ in EI" analogy: the same control over exploitation/exploration. Set $\xi=0$ for a pure-exploitation EI; set $\xi=0.1$ for an EI that requires at least 0.1 units of improvement (encourages broader exploration on multi-modal problems).
 - Transition: "Now a concrete EM example where BO genuinely beats random search."
 ::::
 
 ## Acquisition function comparison: EI vs UCB
 
 :::: {.incremental}
-- **EI (Expected Improvement):** best suited for noisy objectives where the magnitude of improvement matters more than the probability. Naturally avoids tiny gains near the current best. Notebook result (SEED=42): best found **0.9113**.
-- **UCB (Upper Confidence Bound):** best suited for noiseless or low-noise objectives. κ is intuitive and easy to tune. Notebook result (κ=2, SEED=42): best found **0.9133**.
-- **PI (Probability of Improvement):** maximises the probability of any improvement, regardless of size. Tends to be too greedy — it can waste evaluations improving from 0.90 to 0.901 rather than exploring a potentially better region.
-- **All three beat random sampling:** best found 0.911–0.913 vs random 0.795. The choice of acquisition function matters less than the choice to use BO at all.
-- **Rule of thumb:** start with UCB (κ=2) for EM experiments. Switch to EI with ξ=0.01 if the objective is noisy or multi-modal.
+- **EI (Expected Improvement):** requires expected gain to exceed a threshold $\xi$. With $\xi=0.01$, also escapes the local optimum on the multi-modal objective. Notebook result (SEED=42, N_ITER=12): best found **0.9323**.
+- **UCB κ=3.0 (lecture default):** best suited for the multi-modal EM objective with sufficient exploration. Notebook result (SEED=42): best found **0.9323**.
+- **PI (Probability of Improvement):** maximises the probability of any improvement, regardless of size. Tends to be greedy — may get stuck near the local optimum if the probability of improvement there exceeds the global peak region's probability.
+- **All three (EI, UCB κ=3, UCB κ=5) beat random sampling:** best found ≈ 0.93 vs random 0.7229. The choice of acquisition function matters less than choosing a sufficient exploration level.
+- **Rule of thumb:** start with UCB (κ=3.0) for multi-modal EM experiments. Use EI with ξ≥0.01 for noisy objectives.
 ::::
 
 :::: {.notes}
-- The "choice of acquisition function matters less than using BO at all" statement is the practical conclusion. On the fixed SEED=42 unimodal problem, UCB κ=2 gives 0.9133 and EI gives 0.9113 — a difference of 0.002. Both are vastly better than random (0.795). The big win is BO vs random; the small win is choosing the right acquisition function.
-- The EI vs UCB comparison is qualitatively different for genuinely noisy experiments. In a 4D-STEM experiment with beam-induced specimen drift, the same convergence angle measured twice gives different SNR values. In this noisy case, EI is more robust because it requires *expected* improvement — it won't rush to re-measure at x=0.90 just because one noisy observation was high.
+- On the multi-modal objective, EI with xi=0.01 also escapes the local optimum and finds the global peak (0.9323). This is because EI with a small xi still generates non-zero expected improvement in the unexplored right flank — enough to pull queries away from the local optimum region.
+- The practical conclusion: with a multi-modal objective, the key parameter is κ (for UCB) or ξ (for EI) — both must be large enough to provide sufficient exploration. The "choice of acquisition function matters less than the choice to explore enough" is the correct summary for a multi-modal problem.
 - Research context: the choice of acquisition function is an active research area. Thompson sampling, knowledge gradient, and entropy search are newer alternatives that outperform UCB/EI on some problem classes. For EM applications, UCB or EI remain the practical defaults.
 - Transition: "Concrete EM BO results."
 ::::
@@ -323,29 +324,29 @@ $$\alpha_\text{PI}(x) = \Phi\!\left(\frac{\mu^*(x) - f^+ - \xi}{\sigma^*(x)}\rig
 ## BO notebook results: key numbers
 
 :::: {.incremental}
-- **Objective:** maximise a synthetic 4D-STEM SNR curve — a Gaussian centred at $x=0.65$ with $\sigma=0.18$ and peak value 0.90. True maximum: $y^* = 0.90$ at $x=0.65$.
-- **BO (UCB, κ=2, SEED=42):** 3 initial + 8 BO measurements. **Best found: 0.9133** at x=0.6421. Reached within 0.05 of true max at iteration 1; remains there for all subsequent iterations.
-- **Random sampling (SEED=42, same budget):** 3 initial + 8 random measurements. **Best found: 0.7950** at x=0.7321.
-- **BO advantage:** 0.9133 − 0.7950 = **+0.1183** (14.9% improvement in objective value over random). BO finds x within 0.008 of the true optimum; random is 0.082 away.
-- **Honest caveat:** on this smooth unimodal problem, BO's advantage is clear. On multi-modal objectives or with very limited budgets, BO can still get stuck in local optima — honest error bars and multiple restarts are recommended for real experiments.
+- **Objective:** multi-modal 4D-STEM SNR curve — broad deceptive local optimum near $x=0.25$ (peak ≈0.73) and narrow global peak near $x=0.78$ (peak $y^* = 0.9205$). Initial measurements near the local optimum: init best = 0.6985.
+- **BO (UCB, κ=3, SEED=42):** 3 initial + 12 BO measurements = 15 total. **Best found: 0.9323** at x=0.7759. First reaches within 0.05 of true max at iteration 2 (not at init — genuine search required). Init best was NOT within tol.
+- **Random sampling (SEED=42+333, same budget):** 3 initial + 12 random measurements. **Best found: 0.7229** at x=0.2361 — stranded near the local optimum; never reaches the global peak.
+- **BO advantage:** 0.9323 − 0.7229 = **+0.2094** (29.0% improvement over random). BO finds x within 0.003 of the true optimum; random is 0.543 away.
+- **Lesson:** on a multi-modal objective with a deceptive local optimum, BO with sufficient exploration (κ=3) escapes and finds the global peak while random search gets stranded. This is the real pedagogical point.
 ::::
 
 :::: {.notes}
-- These numbers are exactly what the notebook produces on SEED=42. They are verified by assert statements in the notebook and must not be changed without re-running the notebook.
-- The "within 0.05 of true max at iteration 1" deserves emphasis: on this problem, the very first UCB query (using only 3 initial measurements) jumped almost directly to the optimum. This is because the initial measurement at x=0.50 gave a high value, the UCB uncertainty bonus then pushed the next query to the right flank, and it landed near x=0.659 — essentially the maximum.
-- The "honest caveat" is not boilerplate — it is a real limitation. On the exercise function (try this yourself: switch to the multimodal variant), BO occasionally spends several iterations on a side lobe before finding the global optimum. Students who observe this are observing BO's actual failure mode, not a code bug.
+- These numbers are exactly what the notebook produces on SEED=42. They are verified by 4 assert statements in the notebook and must not be changed without re-running the notebook.
+- The narrative: BO starts near the deceptive local opt (init best = 0.6985). Iteration 1 goes to the boundary (x=1.0, high uncertainty). Iteration 2 discovers the global peak (x=0.77, y=0.895). Iterations 3–8 continue exploring. Iterations 9–12 refine the global peak to 0.9323. This is NOT a single jump — it is genuine iterative explore-then-exploit search.
+- Random search with seed+333 lands near the local optimum and the right-side boundaries, but misses the narrow global peak (width ~0.05) with all 12 measurements.
 - Transition: "BO with a simple RBF kernel works well for tabular inputs. But what about 4D-STEM where the input is an image patch?"
 ::::
 
 ## BO convergence: best observed value vs iteration
 
-![Convergence plot: BO (UCB, κ=2, blue) vs random sampling (red dashes) over 8 iterations after 3 initial measurements. BO reaches within 0.05 of the true maximum (0.90, green dotted) at the very first BO step and maintains this through all iterations. Random sampling achieves best 0.795 — a gap of 0.118 over the same total budget. The blue shaded region shows the BO advantage over random. (SEED=42, N_INIT=3, N_ITER=8)](img/bo_vs_random.png){width="80%"}
+![Convergence plot: BO (UCB, κ=3, blue) vs random sampling (red dashes) over 12 iterations after 3 initial measurements. Both start at init best = 0.6985 (near the deceptive local optimum). BO discovers the global peak region at iteration 2 (best jumps to 0.8947), then refines further to 0.9323. Random sampling stays stranded near the local optimum (best 0.7229) — never reaching the narrow global peak. BO advantage: +0.2094 (29.0%) at equal budget. Green dotted: true global max (0.9205). Orange dotted: deceptive local max (0.73). (SEED=42, N_INIT=3, N_ITER=12, κ=3.0)](img/bo_vs_random.png){width="80%"}
 
 :::: {.notes}
-- Walk through the figure. The x-axis is the iteration index (0 = best of 3 initial measurements, 1–8 = BO or random iterations). The y-axis is the cumulative best observed value.
-- The blue curve (BO) jumps immediately to ≈0.90 at iteration 1 and stays there. The random curve (red dashes) climbs slowly as it happens to sample closer to the optimum over time, but never reaches the BO level within 8 iterations.
-- The shaded blue area is the BO advantage: the cumulative benefit of using a principled acquisition function over random sampling. In EM terms: if each measurement costs 30 minutes, the BO strategy achieves in 30 minutes what random sampling needs 240+ minutes to match.
-- Honest note: the large advantage here is partly because the true optimum is at x=0.65 and the first BO query happens to land at x=0.659. On a different seed (try SEED=7 in the notebook), the convergence is slightly slower. The assert checks that BO > random holds at SEED=42 and is confirmed.
+- Walk through the figure. The x-axis is the iteration index (0 = best of 3 initial measurements, 1–12 = BO or random iterations). The y-axis is the cumulative best observed value.
+- The blue BO curve: starts at 0.6985 (local opt), stays flat at iteration 1 (boundary query), jumps to 0.8947 at iteration 2 (discovers global peak), then improves further in iterations 9–12 as it refines near x=0.78. This is genuine multi-step convergence.
+- The red random curve: stays at 0.70 for iterations 1–3, then improves slightly to 0.7229 as one random draw lands near the local optimum. Never reaches the global peak region (width ~0.05 in x — hard to hit by chance with 12 random draws).
+- The shaded blue area is the BO advantage. In EM terms: if each measurement costs 30 minutes, the BO strategy's 15 measurements find the global peak in ~7.5 hours; the same 15 random measurements would need hundreds of additional random tries to land near x=0.78.
 - Transition: "BO with RBF kernel works for 1-D tabular inputs. But for image inputs (4D-STEM patches), we need DKL."
 ::::
 
@@ -399,13 +400,14 @@ $$\alpha_\text{PI}(x) = \Phi\!\left(\frac{\mu^*(x) - f^+ - \xi}{\sigma^*(x)}\rig
 
 :::: {.incremental}
 - **Kernel transformation:** the standard GP RBF kernel $k(\mathbf{x},\mathbf{x}')$ is replaced by $k(g(\mathbf{x};w), g(\mathbf{x}';w))$ where $g$ is a deep network. This is a *deep kernel* — the kernel itself is parameterised by the NN weights $w$.
-- **Training objective:** maximise the GP log marginal likelihood (from Week 9) with respect to both $w$ (NN weights) and $\theta$ (GP kernel hyperparameters):
-$$\log p(\mathbf{y} \mid \mathbf{X}, w, \theta) \propto -\mathbf{y}^\top (K_{w,\theta} + \sigma_n^2 I)^{-1}\mathbf{y} - \log|K_{w,\theta}+\sigma_n^2 I|$$
+- **Training objective (intuition):** all parameters — NN weights $w$ and GP hyperparameters $\theta$ — are trained jointly by maximising the GP marginal likelihood. The likelihood "tells" the NN which features of the input predict the target; they learn together in one pass of backpropagation. *No formula needed — the machinery is identical to the Week 9 GP fit, extended to also learn the feature map.*
 - **Scalability:** the base GP $O(N^3)$ cost remains. For $N > 500$ probe positions, use sparse GP approximations (inducing points). GPyTorch implements this with $O(NM^2)$ cost for $M \ll N$ inducing points.
 - **Uncertainty inheritance:** the GP head provides calibrated $\sigma^*$ even for high-dimensional image inputs — the UCB acquisition function is directly applicable. [@wilson2016deep]
 ::::
 
 :::: {.notes}
+- **For the curious (not examined):** the exact training objective is the GP log marginal likelihood $\log p(\mathbf{y} \mid \mathbf{X}, w, \theta) \propto -\mathbf{y}^\top (K_{w,\theta} + \sigma_n^2 I)^{-1}\mathbf{y} - \log|K_{w,\theta}+\sigma_n^2 I|$. This is the same formula from Week 9, but the kernel matrix $K_{w,\theta}$ now depends on the NN weights $w$. Backpropagation through the marginal likelihood computes $\partial \log p / \partial w$ and $\partial \log p / \partial \theta$ simultaneously — two sets of gradients, one training loop.
+- The intuition is sufficient for this course: the NN learns features that make the GP likelihood high. The formula gives the precise mathematical content for students who want to implement DKL.
 - The marginal likelihood objective is the same one from Week 9 (we don't derive it, but it appeared in the notes). The key new piece is that the kernel matrix $K_{w,\theta}$ now depends on the NN weights $w$. Backpropagation through the marginal likelihood computes $\partial \log p / \partial w$ and $\partial \log p / \partial \theta$ simultaneously — two sets of gradients, one training loop.
 - GPyTorch (from Caltech/CMU) is the practical library for DKL. It combines PyTorch (familiar to students from Week 5) with GP inference. DKL is built-in: `gpytorch.kernels.RBFKernel(active_dims=...)` wrapped around a `torch.nn.Sequential` feature extractor.
 - The inducing-point sparse GP: the $M$ inducing points are learnable parameters (not data points). After training, $M \approx 50$ inducing points can summarise $N = 10^4$ probe positions. The approximate posterior is still Gaussian — UCB and EI still apply without modification.
@@ -466,7 +468,7 @@ $$\log p(\mathbf{y} \mid \mathbf{X}, w, \theta) \propto -\mathbf{y}^\top (K_{w,\
 ## Physics-driven autonomous experiment design
 
 :::: {.incremental}
-- **The key insight from Roccapriore et al. [@ziatdinov2022physics]:** the scalariser function encodes the *physics* the experimenter cares about. "Find the region of maximum local electric field" is a physics goal encoded as `scalariser = CoM_magnitude`. The DKL + BO system then pursues that goal autonomously.
+- **The key insight from Roccapriore et al. [@roccapriore2022physics]:** the scalariser function encodes the *physics* the experimenter cares about. "Find the region of maximum local electric field" is a physics goal encoded as `scalariser = CoM_magnitude`. The DKL + BO system then pursues that goal autonomously.
 - **Structure–property learning:** the DKL model learns the statistical relationship between HAADF image structure and the target property (CoM, strain, plasmon energy). This relationship is itself a scientific finding — it reveals *which structural features predict the measured physical response*.
 - **Nanoplasmonic discovery:** the same DKL approach found bulk- and edge-plasmon-active regions in MnPS₃ autonomously — a measurement that would have taken days of manual scanning was accomplished in hours.
 - **The vision:** an operator defines the scientific objective; the instrument autonomously acquires, analyses, and reports the regions of highest interest — without human involvement in the loop.
@@ -564,12 +566,13 @@ $$\log p(\mathbf{y} \mid \mathbf{X}, w, \theta) \propto -\mathbf{y}^\top (K_{w,\
 
 :::: {.incremental}
 - **The learning objective:** maximise $J(\pi) = \mathbb{E}_\pi[\sum_t \gamma^t r_t]$ — expected cumulative discounted reward under policy $\pi$.
-- **Policy gradient theorem:** $\nabla_\pi J = \mathbb{E}_\pi\!\left[\sum_t \nabla_\pi \log\pi(a_t|s_t) \cdot G_t\right]$ where $G_t = \sum_{k \geq t} \gamma^{k-t} r_k$ is the return from step $t$.
-- **Intuition:** if a sequence of actions led to high return $G_t$, increase the probability of those actions. If it led to low return, decrease it. Gradient ascent on log-probabilities, weighted by outcomes.
-- **No derivation needed for this course:** the key conceptual points are (1) RL learns from rewards alone — no labels; (2) the policy is a differentiable function (e.g. a CNN); (3) backprop through the policy gives the gradient; (4) gradient ascent maximises expected reward. [@bishop2006pattern]
+- **Intuition:** if a sequence of actions led to high return, *increase* the probability of those actions. If it led to low return, *decrease* it. This is trial-and-error learning, formalised as gradient ascent on expected reward — no labels required.
+- **How it works (conceptual):** the policy is a differentiable function (e.g. a CNN). The gradient of the expected reward with respect to the policy parameters is estimated from observed episodes. Backprop through the policy updates its weights in the direction of higher reward.
+- **Not examined for this course:** the mathematical derivation (policy gradient theorem). The conceptual points — (1) RL learns from rewards, no labels; (2) gradient ascent on expected return; (3) the same backprop the students know from Week 5 — are all that is required. [@bishop2006pattern]
 ::::
 
 :::: {.notes}
+- **For the curious (not examined):** the policy gradient theorem is $\nabla_\pi J = \mathbb{E}_\pi\!\left[\sum_t \nabla_\pi \log\pi(a_t|s_t) \cdot G_t\right]$ where $G_t = \sum_{k \geq t} \gamma^{k-t} r_k$ is the return from step $t$. This is the REINFORCE estimator. It is unbiased but high-variance; modern algorithms (PPO, TRPO) add variance-reduction tricks. The formula is the theoretical backbone of RL (REINFORCE algorithm, PPO, A3C) but the students are not expected to derive or implement it.
 - The policy gradient theorem is the theoretical backbone of modern RL (REINFORCE algorithm, PPO, A3C). We present it for completeness but the students are not expected to derive or implement it. The key phrase: "if an action led to good outcomes, do it more; if it led to bad outcomes, do it less."
 - The analogy to supervised learning: in supervised learning, the loss function is MSE or cross-entropy — both have clean gradients. In RL, the "loss" is the negative expected return, and the gradient involves the policy log-probability weighted by the observed return. This is the REINFORCE gradient estimator. It is unbiased but high-variance — modern algorithms (PPO, TRPO) add variance-reduction tricks.
 - For autofocus RL specifically: the policy is a CNN. The action is the defocus correction. The reward is the sharpness of the next image. One RL "episode" = one autofocus correction cycle (start blurry, correct, end sharp). Training: run thousands of simulated episodes on synthetic blurry images; update the CNN policy after each episode.
@@ -631,7 +634,7 @@ $$\log p(\mathbf{y} \mid \mathbf{X}, w, \theta) \propto -\mathbf{y}^\top (K_{w,\
 - **The alignment problem:** the electron beam must travel through the optical axis of every lens for optimal image quality. Tilt, shift, and astigmatism cause the beam to deviate — producing elongated diffraction spots and asymmetric diffraction patterns.
 - **The diffraction symmetry reward:** a centrosymmetric crystal with a perfectly aligned beam produces a diffraction pattern with $m$-fold rotational symmetry. The reward is a symmetry score: high when the pattern is more symmetric.
 - **Action space:** beam tilt $(\Delta\theta_x, \Delta\theta_y)$ and shift $(\Delta x, \Delta y)$ in four-dimensional combined action space.
-- **RL advantage over manual:** manual alignment requires an experienced operator to interpret diffraction patterns and know which control to adjust. The RL policy learns the causal chain automatically from the reward signal — it can run while the operator is absent. [@ziatdinov2022physics]
+- **RL advantage over manual:** manual alignment requires an experienced operator to interpret diffraction patterns and know which control to adjust. The RL policy learns the causal chain automatically from the reward signal — it can run while the operator is absent. [@roccapriore2022physics]
 ::::
 
 :::: {.notes}
@@ -662,7 +665,7 @@ $$\log p(\mathbf{y} \mid \mathbf{X}, w, \theta) \propto -\mathbf{y}^\top (K_{w,\
 ## The autonomous-lab vision: limits and honest risks
 
 :::: {.incremental}
-- **The promise:** a self-driving TEM runs 24/7. The operator defines an objective ("find all Ni₃Al precipitates and measure their size distribution"). The instrument acquires, analyses, and reports without human intervention. [@ziatdinov2022physics]
+- **The promise:** a self-driving TEM runs 24/7. The operator defines an objective ("find all Ni₃Al precipitates and measure their size distribution"). The instrument acquires, analyses, and reports without human intervention. [@roccapriore2022physics]
 - **What works today:** autofocus (RL, production-deployed), beam stigmation correction (RL, deployed on some systems), single-parameter BO experiments (e.g., optimise annealing temperature, run in 1–2 day loops).
 - **Current limits:** (1) *reward hacking* — an agent maximising Laplacian sharpness can produce "sharp" images of noise or contamination; careful reward design is essential. (2) *Sim-to-real gap* — policies trained on simulated EM images fail on real specimens with unexpected contrast mechanisms. (3) *Multi-step long-horizon tasks* — finding a rare defect across a 1 mm² sample area requires hierarchical RL that is not yet production-ready.
 - **Ethical and epistemic risks:** autonomous decisions about where *not* to measure can introduce systematic bias. Always archive the full trajectory of where the autonomous agent chose to measure — and where it did not.
