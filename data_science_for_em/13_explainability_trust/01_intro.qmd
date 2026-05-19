@@ -255,16 +255,15 @@ format:
 - Transition: "The notebook computed saliency maps for both the clean and shortcut model. Here is what they show."
 ::::
 
-## Saliency maps: clean model vs shortcut model
+## Saliency maps: clean model
 
-![Left: EM image with lime-circle defect region. Centre: gradient saliency map. Right: overlay. Top row (clean model): saliency concentrated inside the defect (ratio 3.2×). Bottom row (shortcut model): saliency concentrated at the corner artifact (ratio 9.3×) — the model learned a spurious shortcut.](img/saliency_clean.png){width="80%"}
+![Left: EM image with lime-circle defect region. Centre: gradient saliency map. Right: overlay. The clean model's saliency concentrates inside the defect (inside = 0.627, outside = 0.195, ratio ≈ 3.2×) — the model attends to the physically meaningful region.](img/saliency_clean.png){width="80%"}
 
 :::: {.notes}
-- This is the centrepiece figure of the lecture. Walk through it carefully.
-- Top row: the clean model was trained on images where the defect IS the only distinguishing feature. Its saliency map peaks inside the lime-dashed circle (inside = 0.627, outside = 0.195, ratio 3.2×). The model is doing the right thing physically.
-- Bottom row: the shortcut model was trained on images where the corner artifact (NOT the defect) was the distinguishing feature. Its saliency map peaks at the top-left corner (corner = 0.500, defect region = 0.054, ratio 9.3×). The model has learned a spurious pattern — it will fail if deployed on images without the corner artifact.
-- The diagnostic power: both models achieve ~99% test accuracy on their own test distribution. Without saliency maps, you cannot tell them apart. This is the entire motivation for XAI in EM.
-- Calibration tie-in: the shortcut model is also likely to be poorly calibrated on out-of-distribution images (microscopes without the corner artifact). Confidence ≠ correctness once you leave the training distribution.
+- This figure shows three panels for the clean model only: the raw EM image (left), the gradient saliency heat map (centre), and the overlay (right).
+- The clean model was trained on images where the defect IS the only distinguishing feature. Its saliency map peaks inside the lime-dashed circle: inside saliency = 0.627, outside = 0.195, ratio 3.2× (notebook SEED=42, cell 6). The model is attending to the physically correct region.
+- The diagnostic power: the clean model achieves ~100% test accuracy AND attends to the right pixels. Contrast this with the shortcut model (next slide) which achieves ~99% accuracy but attends to a corner artifact — accuracy alone cannot distinguish them.
+- Calibration tie-in: a model that attends to the correct physical feature is also more likely to be well-calibrated on out-of-distribution images. Confidence ≠ correctness for a shortcut model once you leave the training distribution.
 ::::
 
 ## Grad-CAM: class activation maps for CNNs
@@ -305,7 +304,7 @@ format:
 
 ## The misleading-explanation case
 
-![Saliency at the corner artifact (red box) instead of the defect (lime circle) — the shortcut model's explanation looks spatially coherent but physically wrong. Accuracy 0.990; saliency corner/defect ratio 9.3.](img/saliency_shortcut.png){width="80%"}
+![Left: EM image with lime-circle defect and corner artifact (red box). Centre: gradient saliency map. Right: overlay. The shortcut model's saliency concentrates at the corner artifact, not the defect (corner = 0.500, defect region = 0.054, ratio ≈ 9.3×) — spatially coherent but physically wrong. Accuracy 0.990.](img/saliency_shortcut.png){width="80%"}
 
 :::: {.notes}
 - This is the honest counter-example the lecture promised. The shortcut model achieves 99% test accuracy AND produces a spatially coherent, visually plausible saliency map — it's just coherent about the WRONG feature.
@@ -352,19 +351,21 @@ format:
 ## Integrated Gradients: SHAP's pixel-level cousin
 
 :::: {.incremental}
-- **Integrated Gradients (IG)** [@sundararajan2017ig] — a pixel-level attribution for CNNs that satisfies the completeness axiom:
-  $$\mathrm{IG}_i(x) = (x_i - x_{0,i})\int_0^1 \frac{\partial f(x_0 + \alpha(x - x_0))}{\partial x_i}\,d\alpha$$
-  where $x_0$ is a baseline (e.g. black image), and $x$ is the input to explain.
-- **Completeness:** $\sum_i \mathrm{IG}_i(x) = f(x) - f(x_0)$ — the pixel attributions sum exactly to the model output minus the baseline. Same as SHAP completeness, but for pixels.
+- **Integrated Gradients (IG)** [@sundararajan2017ig] — a pixel-level attribution for CNNs that satisfies the completeness axiom.
+- **Plain-English idea:** average the model's sensitivity (gradient) along a straight interpolation path from a blank baseline image to the actual input. Each pixel's attribution is its average influence across that path. Attributions then sum exactly to the prediction minus the baseline — no signal is lost or double-counted.
+- **Completeness:** $\sum_i \mathrm{IG}_i(x) = f(x) - f(x_0)$ — same guarantee as SHAP, but at pixel level.
 - **EM use:** IG on a segmentation CNN answers "which pixels of the HAADF image most contributed to labelling this region as a grain boundary?" — a per-pixel attribution map with a mathematical guarantee.
 - **Difference from gradient saliency:** IG integrates along the path from baseline to input, capturing non-linear effects; raw gradient saliency only sees the local slope at the input.
 ::::
 
 :::: {.notes}
-- For this cohort: the formula is REFERENCE ONLY — not examined as a derivation. The exam deliverable is: "IG integrates the gradient along a path from baseline to input; satisfies completeness; more stable than raw gradient saliency." That is the exam-level answer.
+- For this cohort: the exam deliverable is: "IG integrates the gradient along a path from baseline to input; satisfies completeness; more stable than raw gradient saliency." That is the complete exam-level answer.
 - The baseline choice matters: a black image ($x_0 = 0$) attributes pixels relative to "nothing present." A blurred version of the input is a better baseline for EM because it keeps the low-frequency background structure. For defect detection, a Gaussian-blurred version of the background grain image is a natural baseline — IG then attributes which pixels stand out from the grain texture.
 - Completeness connect to SHAP: IG completeness and SHAP completeness are the same mathematical property, manifested at pixel vs feature level. This is why the two methods are often used together: SHAP for global feature importance, IG for local pixel attribution.
-- Do not derive the integral — just say "instead of using the gradient at one point, integrate the gradient along the path from a black image to the actual input; average over that path." The key intuition is that raw gradients can be noisy at any single point; integration smooths over the path.
+
+- **For the curious — not examined:** the full path-integral definition is:
+  $$\mathrm{IG}_i(x) = (x_i - x_{0,i})\int_0^1 \frac{\partial f(x_0 + \alpha(x - x_0))}{\partial x_i}\,d\alpha$$
+  where $x_0$ is the baseline image and $\alpha \in [0,1]$ parameterises the straight-line path from $x_0$ to $x$. The key insight is that instead of using the gradient at one point, we integrate the gradient along the path from baseline to input and average — this smooths over the local noisiness of raw gradients and ensures the completeness property holds exactly.
 - Transition: "Before leaving SHAP and IG, acknowledge their honest limits."
 ::::
 
@@ -671,7 +672,7 @@ format:
 - Transition: "Let me make the exam and miniproject requirements concrete."
 ::::
 
-<!-- ===== §11. Exam + miniproject (3 slides) ===== -->
+<!-- ===== §11. Exam + miniproject (2 slides) ===== -->
 
 ## Exam structure
 
