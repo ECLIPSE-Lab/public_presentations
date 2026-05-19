@@ -118,7 +118,16 @@
 
 ## Week 8 — Unsupervised learning & autoencoders
 
-- _(≤10 must-know statements — filled when this week's deck is authored)_
+1. **Unsupervised learning requires no labels:** the data itself is the only signal. The four families are clustering (discrete), dimensionality reduction (continuous), density estimation, and generative modelling. Autoencoders do dimensionality reduction; k-means/GMM do clustering; they are used in sequence (AE → cluster latent codes).
+2. **Lloyd's algorithm (k-means):** alternately (i) assign each point to its nearest centroid and (ii) update each centroid to the mean of its assigned points. Guaranteed to converge to a *local* minimum of the within-cluster sum of squared distances $J$. Use K-means++ initialisation and multiple random restarts.
+3. **K-means failure mode in EM:** raw high-dimensional spectra should not be clustered directly — Euclidean distance is dominated by the highest-intensity feature (zero-loss peak, characteristic X-ray line). Fix: cluster AE latent codes or PCA scores, not raw spectra.
+4. **GMM extends k-means with soft assignments:** each point $x_i$ carries a responsibility $\gamma_{ik} = P(\text{phase}\,k\mid x_i)$ instead of a binary label. GMM allows ellipsoidal clusters (full covariance $\Sigma_k$) and is fitted by alternating E- (compute responsibilities) and M-step (update $\mu_k, \Sigma_k, \pi_k$).
+5. **Linear autoencoder = PCA:** with linear activations and MSE loss, the optimal encoder/decoder satisfy $W_d W_e = U_k U_k^T$ — the PCA subspace. Adding nonlinear activations (ReLU) breaks this equivalence and allows the AE to follow *curved* data manifolds that PCA (flat subspace) cannot.
+6. **Reconstruction objective is self-supervised:** $\mathcal{L} = \frac{1}{N}\sum_i \|x_i - g_\theta(f_\phi(x_i))\|^2$. No external labels needed — inputs are both inputs and targets. The bottleneck forces the latent code $z$ to retain only information sufficient for reconstruction.
+7. **Denoising AE for low-dose EM:** train with corrupted input $\tilde x_i$ and clean target $x_i$. The latent code must capture *robust* features that survive noise; noise-specific features are forced out of the bottleneck. For Poisson-dominated EELS, use Poisson NLL loss or normalise spectra to unit variance before MSE.
+8. **Manifold hypothesis for EM spectra:** a 1024-channel EELS spectrum lies near a manifold of intrinsic dimension ≈ number of distinct phases (3–5 for most EM experiments). PCA finds the best flat hyperplane; the AE follows the curved manifold. The AE reconstruction error at $k$ latent dimensions should be compared honestly against PCA at the same $k$.
+9. **t-SNE and UMAP are visualisation tools only:** t-SNE minimises KL(P‖Q) between high-dim and low-dim neighbourhood distributions; UMAP uses fuzzy graph matching. Both preserve local structure; neither preserves inter-cluster distances or densities. Never read t-SNE cluster sizes or gaps quantitatively. Use UMAP as the 2026 default; t-SNE as a diagnostic.
+10. **Anomaly detection by reconstruction error:** train an AE on normal data only; compute per-sample reconstruction error at test time. Anomalies (beam damage, contamination, novel phases) lie outside the learned manifold and reconstruct poorly. Threshold at the 99th percentile of training-set reconstruction error. A secondary score — Mahalanobis distance in the latent space — catches subtle anomalies that the AE reconstructs plausibly but encodes far from the normal cluster.
 
 ---
 
