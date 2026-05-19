@@ -162,7 +162,7 @@ $$p(y^* \mid x^*, \mathcal{D}) = \int p(y^* \mid x^*, \theta)\, p(\theta \mid \m
 
 ## Aleatoric vs epistemic in EM: visual comparison
 
-![Left: aleatoric uncertainty — grain-to-grain scatter in grain size measurements at a fixed annealing temperature. More measurements reveal the *distribution* of grain sizes but do not eliminate the scatter (it is real). Right: epistemic uncertainty — a GP fitted to only 3 EELS measurements (diamonds) is uncertain everywhere except near the measured compositions; measuring more narrows the band. [@bishop2006pattern]](img/aleatoric_epistemic_em.png){width="82%"}
+![Left: aleatoric uncertainty — grain-to-grain scatter in grain size measurements at a fixed annealing temperature. More measurements reveal the *distribution* of grain sizes but do not eliminate the scatter (it is real). Right: epistemic uncertainty — a GP fitted to only 3 EELS measurements (filled circles) is uncertain everywhere except near the measured compositions; measuring more narrows the band. [@bishop2006pattern]](img/aleatoric_epistemic_em.png){width="82%"}
 
 :::: {.notes}
 - Walk through both panels. Left: no matter how many times you measure different grains at the same temperature, you get scatter. The scatter is the data — it describes the material's real variability. A smaller error bar here means "average of more grains," not "more precise instrument."
@@ -442,13 +442,14 @@ $$\boxed{\sigma^{*2}(x^*) = k(x^*, x^*) - \mathbf{k}_*^\top (\mathbf{K} + \sigma
 
 ## The key intuition: uncertainty balloons away from data
 
-![Left: GP fitted to 8 EM measurements clustered in [0.05, 0.85]. The 95% credible band widens rapidly beyond the data range (red shading) — the GP honestly admits it has no information there. The highest-uncertainty regions are the best candidates for the next measurement. Right: after adding one measurement at x=1.0, the local band collapses (50% reduction in σ* there) while regions further away remain uncertain.](img/gp_uncertainty_balloons.png){width="88%"}
+![**Illustration** (generic "grain size vs parameter" example — not the EELS notebook run). Left: GP fitted to 8 measurements with the training cluster in [0,0.7] (as shown on the y-axis). The 95% credible band widens rapidly beyond the data range (red shading) — the GP honestly admits it has no information there. The highest-uncertainty regions are the best candidates for the next measurement. Right: after adding one measurement at x=1.0, the local band collapses (~49% reduction in σ* there) while regions further away remain uncertain. (The EELS notebook uses a cluster in [0.05,0.85] with specific σ* values of 0.1966→0.1003 at x_far=1.15; see the Notebook Summary slide for those numbers.)](img/gp_uncertainty_balloons.png){width="88%"}
 
 :::: {.notes}
 - This figure is the emotional payoff of the entire GP block. Let it land.
+- Important framing note: this figure is a *generic illustration* of the balloon concept, with grain size as the y-axis label and training data clustered in [0,0.7] as shown. It is NOT a direct plot of the EELS notebook run (which uses a cluster in [0.05,0.85] and specific numeric values — see the Notebook Summary slide). The figure and caption are intentionally generic so the intuition transfers to any EM dataset; the EELS-specific numbers are discussed separately.
 - Left panel: "This is what we built everything for. The blue band is the honest error bar. It is narrow at the 8 black dots — the GP knows what happened there. In the red region it has never been told anything — and it says so by ballooning to the prior width."
 - Right panel: "We simulated what happens when a scientist runs one more experiment at x=1.0. The band at x=1.0 collapses. The band at x=1.15 is reduced but still substantial — one measurement helps but does not eliminate uncertainty. The band at x=0.5 (deep inside the training cluster) is essentially unchanged — far-away data does not help near-data regions much."
-- The 50% reduction number: from the notebook, σ* at x=1.15 goes from 0.1966 to 0.1003 after adding the point at x=1.0. This is a real, notebook-verified number.
+- The ~49% reduction quoted in the caption refers to the generic figure's proportional change; the notebook-verified numbers (σ* 0.1966→0.1003 at x_far=1.15 in the EELS run) are on the Notebook Summary slide.
 - Transition: "This is Week 10's active learning algorithm in its simplest form: always measure where σ* is largest. We will develop it fully next week."
 ::::
 
@@ -633,14 +634,14 @@ $$\boxed{\sigma^{*2}(x^*) = k(x^*, x^*) - \mathbf{k}_*^\top (\mathbf{K} + \sigma
 :::: {.incremental}
 - **Domain shift destroys calibration.** A GP or NN calibrated on Fe–O systems from one microscope may be badly calibrated on a different microscope (different aberrations, different detector gain, different specimen preparation). Always re-calibrate on data from the target instrument.
 - **The calibration set must match the test distribution.** For EM: the calibration set should use the same microscope, sample preparation protocol, and acquisition settings as the intended deployment. A "calibration set" from a different lab is not a valid calibration set.
-- **Small calibration sets give uncertain guarantees.** Split conformal with $n_\text{cal} = 50$ gives a coverage guarantee of ≥ 90% with uncertainty. With $n_\text{cal} = 200$ the coverage is tighter (closer to exactly 90%). Use the largest feasible calibration set.
+- **Small calibration sets give wider (more conservative) intervals.** Split conformal always guarantees coverage ≥ 1-α regardless of $n_\text{cal}$. With small $n_\text{cal}$ the intervals are slightly wider than necessary (conservative); with $n_\text{cal} = 200$ the excess width is negligible. Use the largest feasible calibration set to get tighter, less wasteful intervals.
 - **Calibrate on outcomes, not residuals.** For regression, check the reliability diagram using actual coverage fractions across the input domain, not just mean residuals.
 ::::
 
 :::: {.notes}
 - The domain shift point is the most practically important. Materials EM labs often train on one instrument and want to deploy on another. Without re-calibration, the uncertainty estimate is from the source instrument's distribution — it says nothing about the target.
 - The calibration-set matching requirement is a Weeks 4/7 callback: the GroupKFold / specimen-based split principle. The calibration set is, in effect, a held-out test set used for calibration. All the leakage rules from Week 4 apply: no specimen in both training and calibration.
-- Small n_cal: the conformal coverage guarantee is ≥ (1-α)(1 + 1/n_cal). With n_cal=50 and α=0.10, the guarantee is ≥ 0.90 × (1 + 1/50) ≈ 0.918 — the target may be missed by up to 1.8 percentage points due to the finite-sample correction.
+- Small n_cal: split conformal guarantees marginal coverage ≥ 1-α (= 0.90) for ANY n_cal, given exchangeability. The (1+1/n_cal) factor inflates the quantile level so the discrete empirical quantile overshoots rather than undershoots — small n_cal means a slightly wider (more conservative) band, never undercoverage. With n_cal=50 the band is about 2% wider than the asymptotic width; with n_cal=200 the excess is ≈0.5%. Prefer larger calibration sets to get tighter (less wasteful) intervals, not to fix a coverage deficit that does not exist.
 ::::
 
 <!-- ===== §12. GP for EM + forward link ===== -->
