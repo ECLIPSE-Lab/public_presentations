@@ -133,7 +133,16 @@
 
 ## Week 9 — Probability, uncertainty & Gaussian processes
 
-- _(≤10 must-know statements — filled when this week's deck is authored)_
+1. **Aleatoric vs epistemic uncertainty:** aleatoric = irreducible noise (shot noise, grain-to-grain scatter); epistemic = reducible ignorance from limited data. Diagnostic: "Would more data of the same kind reduce this?" Yes → epistemic. No → aleatoric. A GP's WhiteKernel σ_n² captures aleatoric; the posterior variance formula captures epistemic.
+2. **MSE ↔ Gaussian likelihood:** minimising MSE is equivalent to MLE under Gaussian noise. MSE gives a point estimate $\hat y$; it does not quantify uncertainty about the function. A probabilistic model returns a full predictive distribution $p(y^* \mid x^*, \mathcal{D})$.
+3. **GP definition:** a GP is a distribution over functions. Any finite collection of function values is jointly Gaussian: $f \sim \mathcal{GP}(m(\mathbf{x}), k(\mathbf{x},\mathbf{x}'))$. Specified by a mean function $m$ (usually 0) and a kernel $k$.
+4. **GP closed-form posterior (two formulas):** posterior mean $\mu^*(x^*) = \mathbf{k}_*^\top(\mathbf{K}+\sigma_n^2\mathbf{I})^{-1}\mathbf{y}$; posterior variance $\sigma^{*2}(x^*) = k(x^*,x^*) - \mathbf{k}_*^\top(\mathbf{K}+\sigma_n^2\mathbf{I})^{-1}\mathbf{k}_*$. Both exact — no approximation.
+5. **Uncertainty balloons away from data:** as $x^* \to$ far from training data, $\mathbf{k}_* \to \mathbf{0}$, so $\sigma^{*2} \to k(x^*,x^*) = \sigma_f^2$ (the prior variance). The GP reverts to maximum uncertainty in unexplored regions. In the EELS notebook (SEED=42): σ* far from data = 0.1966 vs σ* near data = 0.0145 (ratio 13.5×).
+6. **RBF kernel length-scale:** $k_\mathrm{RBF}(x,x') = \sigma_f^2 \exp(-(x-x')^2/2\ell^2)$. Short ℓ: wiggly mean, uncertainty inflates in every gap. Long ℓ: over-smoothed mean, falsely confident extrapolation. Optimal ℓ selected by maximising the log marginal likelihood.
+7. **GP cost and regime:** training is $O(N^3)$ (matrix inversion); exact GPs are practical for $N \lesssim 10^3$. This is the correct regime for expensive EM experiments (N = 5–500 measurements). Key limitation: scales poorly to high-dimensional inputs.
+8. **Split conformal prediction (model-agnostic):** fit any predictor on training data; compute calibration-set residuals $|y_i - \hat y_i|$; set $\hat q$ = $(1-\alpha)(1+1/n_\text{cal})$-quantile; output $[\hat y(x^*) \pm \hat q]$. Guarantee: $\Pr(y^* \in C(x^*)) \geq 1-\alpha$ for any exchangeable data, any predictor. Key assumption: exchangeability (no distribution shift).
+9. **MC-Dropout vs Deep Ensembles:** MC-Dropout keeps dropout active at inference, runs $T$ passes, uses their variance as epistemic uncertainty — zero extra training cost. Deep Ensembles train $M$ independent networks; their disagreement is epistemic — best empirical calibration. Rule: MC-Dropout if a trained network already exists; ensemble if calibration quality is critical.
+10. **Calibration:** a 95% credible band is calibrated if 95% of test observations fall inside it. Check with a reliability diagram (predicted probability vs observed frequency — should follow the diagonal). A GP is calibrated only if the kernel is correctly specified. Temperature scaling and conformal prediction are post-hoc fixes.
 
 ---
 
