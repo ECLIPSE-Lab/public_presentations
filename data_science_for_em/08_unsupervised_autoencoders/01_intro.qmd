@@ -53,7 +53,7 @@ format:
 ## Road map and self-study
 
 :::: {.incremental}
-- **Road map:** recap Week 7 + today's question (2) · unsupervised learning landscape — what and why (3) · k-means: Lloyd's algorithm, initialization, choosing K, failure modes, practical tips (5) · GMM as soft clustering (3) · manifold hypothesis and why compression works (3) · autoencoders: architecture, reconstruction, PyTorch, bottleneck choice (4) · linear AE ≈ PCA; nonlinear AE beyond PCA (3) · denoising autoencoders for low-dose EELS/EDS (4) · latent space: t-SNE/UMAP visualization and phase clustering (4) · anomaly/novelty detection by reconstruction error and latent outliers (3) · VAE conceptual preview — rVAE for STEM; full math Week 12 (3) · putting it together + forward link to Week 9 (3) — **40 content slides total** (within the 40–46 target).
+- **Road map:** recap Week 7 + today's question (2) · unsupervised learning landscape — what and why (3) · k-means: Lloyd's algorithm, initialization, choosing K, failure modes, practical tips (5) · GMM as soft clustering (3) · manifold hypothesis and why compression works (3) · autoencoders: architecture, reconstruction, PyTorch, bottleneck choice (4) · linear AE ≈ PCA; nonlinear AE beyond PCA (3) · denoising autoencoders for low-dose EELS/EDS (4) · latent space: t-SNE/UMAP visualization and phase clustering (4) · anomaly/novelty detection by reconstruction error and latent outliers (3) · VAE conceptual preview — rVAE for STEM; full math Week 12 (3) · putting it together + forward link to Week 9 (3) — **40 content slides total** (within the 40–48 target).
 - **Self-study:** `notebooks/week08_denoising_autoencoder.ipynb` — build synthetic noisy EELS-like spectra, train a small denoising autoencoder on CPU in under 2 minutes, compare AE vs PCA denoising, visualise latent-space phase clusters, and explore the effect of bottleneck dimension in the exercise.
 ::::
 
@@ -477,12 +477,12 @@ class SpectralAE(nn.Module):
 
 ## Denoising AE: results on synthetic EELS spectra
 
-![Denoising performance on synthetic low-dose EELS spectra near the Fe-L₂₃ edge (700–730 eV). Top-left: clean ground-truth spectrum (two Gaussian peaks). Top-right: noisy input at 50 electrons/channel (Poisson noise; SNR ≈ 7). Bottom-left: PCA denoising (rank-1 projection) — recovers the main peak but misses the weaker shoulder. Bottom-right: denoising AE — recovers both peaks with significantly lower reconstruction error. Green dashed line is the clean reference.](img/denoising_ae_spectra.png){width="82%"}
+![Denoising performance on synthetic low-dose EELS spectra near the Fe-L₂₃ edge (700–740 eV). Top-left: clean ground-truth spectrum (two Gaussian peaks: L₃ main edge ~707 eV and L₂ shoulder ~720 eV). Top-right: noisy input at 50 electrons/channel (Poisson noise). Bottom-left: PCA denoising (rank-4) — the MSE title shows the quantitative cost of linear approximation. Bottom-right: denoising AE (k=4) — achieves ≈81% lower MSE than PCA and ≈92% lower than the raw noisy input. Green dashed line is the clean reference in the bottom panels. PCA recovers the spectral shape but at ~5× higher reconstruction error; the AE captures the non-linear inter-phase variation and denoises with far less residual error.](img/denoising_ae_spectra.png){width="82%"}
 
 :::: {.notes}
-- Walk through the four panels. Emphasise the bottom-left vs bottom-right comparison: PCA misses the weaker shoulder because it cannot capture the relative peak-area ratio non-linearly; the AE recovers both.
+- Walk through the four panels. Emphasise the MSE titles: PCA MSE ≈ 0.0020, AE MSE ≈ 0.00038 — a ~5× advantage for the AE. Both methods recover the general spectral shape; the AE advantage is quantitative (lower residual), not a qualitative difference in peak presence.
 - Key numbers from the notebook (executed, SEED=42): noisy input MSE ≈ 0.0045; PCA MSE ≈ 0.0020; AE MSE ≈ 0.00038. AE is 81% better than PCA; AE is 12× better than the raw noisy input. These numbers are produced by the executed notebook and must be consistent.
-- The figure caption claims both peaks are recovered by the AE. This is exactly what the figure shows — the green dashed line is aligned with both the AE reconstruction and the clean truth.
+- The main point: PCA denoises reasonably but the non-linear AE achieves far lower reconstruction error — this is the quantitative advantage of manifold learning on the curved EELS spectral space.
 - Transition: "After denoising, the latent space organises spectra into meaningful clusters."
 ::::
 
@@ -521,7 +521,7 @@ class SpectralAE(nn.Module):
 
 ## The latent space: a learned coordinate system
 
-![AE latent space (z₁ vs z₂) for 240 synthetic iron-oxide EELS spectra (3 phases, 80 spectra each). The three phases (Fe₂O₃ red, FeO blue, Fe₃O₄ orange) cluster into well-separated islands without any labels — the only information the AE received was the raw spectra and the instruction to reconstruct them. Stars mark the cluster centroids found by k-means applied to the latent codes.](img/latent_space_phase_clustering.png){width="62%"}
+![AE latent space (z₁ vs z₂) for 400 synthetic iron-oxide EELS spectra (4 phases, 100 spectra each: Fe₂O₃ red, FeO blue, Fe₃O₄ orange, Surface/amorphous green). The four phases cluster into well-separated islands without any labels — the only information the AE received was the raw spectra and the instruction to reconstruct them. Stars mark the k-means cluster centroids applied to the 4-D latent codes (silhouette ≈ 0.73). Only z₁ and z₂ are shown; all four latent dimensions contribute to the clustering.](img/latent_space_phase_clustering.png){width="62%"}
 
 :::: {.notes}
 - This is the payoff slide. Walk through it slowly: "No labels were used. The AE was trained on raw spectra with a reconstruction loss. The latent codes organised themselves into three clusters that correspond exactly to the three iron-oxide phases."
@@ -576,7 +576,7 @@ class SpectralAE(nn.Module):
 
 ## Anomaly/novelty detection: reconstruction error as a score
 
-![Left: reconstruction error distribution for 500 normal iron-oxide spectra (blue) and 30 anomalous spectra from beam-damaged regions (red). The AE was trained on normal spectra only. Anomalies reconstruct poorly — they lie outside the manifold the AE learned. The 99th-percentile threshold (orange dashed line) flags anomalous spectra without any labelled defects in the training set. Right: reconstruction-error spatial map with high-error sites (red contour) corresponding to beam-damage hotspots.](img/anomaly_detection.png){width="85%"}
+![Left: reconstruction error distribution for 300 normal iron-oxide spectra (phases A, B, C; blue) and 100 anomalous spectra from Phase D (surface/amorphous; red). The AE was trained on normal spectra only. Anomalies reconstruct poorly — they lie outside the manifold the AE learned — with mean error ~25× higher than normal spectra. The 99th-percentile threshold ≈ 0.0013 (orange dashed line) flags all 100/100 anomalies correctly. Right: simulated reconstruction-error spatial map where the high-error region (bottom rows) marks anomalous Phase D pixels.](img/anomaly_detection.png){width="85%"}
 
 :::: {.notes}
 - This is a zero-label application. The AE is trained on "normal" spectra only; anomalies were never seen during training. At test time, the AE fails to reconstruct them well — high reconstruction error is the anomaly score.
@@ -683,8 +683,8 @@ class SpectralAE(nn.Module):
 - **Reconstruction error** (MSE, normalised spectra, SEED=42): noisy input ≈ 0.00449; PCA (rank-4) ≈ 0.00205; AE ≈ 0.00038. AE is 81% better than PCA; AE is 12× better than noisy input.
 - **Latent-space clustering:** k-means (K=4) on 4-D latent codes; AE silhouette ≈ 0.73 vs PCA silhouette ≈ 0.63 — AE phases cluster better without labels.
 - **Anomaly detection:** Phase D (not in training set) — mean reconstruction error 25× higher than normal phases; 100/100 correctly flagged at 99th-percentile threshold.
-- **Exercise:** sweep bottleneck dimension 1–8; observe AE reconstruction error decrease and silhouette score peaking near dim=4 (the true number of phases).
-- **Assert checks:** AE recon error < noisy input; AE < PCA recon error; AE silhouette > 0.5; AE silhouette > PCA silhouette — all pass on SEED=42, 300 epochs.
+- **Exercise:** sweep bottleneck dimension 1–8 at 300 epochs; AE beats PCA on MSE at every k; AE silhouette beats PCA silhouette at every k≥2; silhouette peaks near k=4–5 (close to the true number of phases).
+- **Assert checks:** AE recon error < noisy input; AE < PCA recon error at every k; AE silhouette at k=4 > 0.65; AE silhouette > PCA silhouette at every k≥2 — all pass on SEED=42, 300 epochs.
 ::::
 
 :::: {.notes}
