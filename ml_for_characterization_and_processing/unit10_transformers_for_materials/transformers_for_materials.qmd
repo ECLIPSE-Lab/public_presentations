@@ -27,14 +27,28 @@ format:
     footer: © Philipp Pelz - ML for Characterization and Processing
 ---
 
-# 01. Where we are
+## {background-color="#1a1a2e"}
 
-## Recap of Unit 9 — and why we now need attention
+### §A · Attention foundations for materials {style="text-align: center; margin-top: 15%;"}
+
+
+
+::: {.notes}
+**What this part delivers.** The mechanics — attention, ViT, Flash Attention, tokenisation, positional encodings — but always asked the materials way: *what is a token when the data is a diffraction pattern, a crystal, or an energy-loss spectrum?* The derivation is **not** here.
+
+**The one idea to leave with.** "A transformer mixes all positions in one layer; materials data is full of correlations that span the whole field of view. The only hard part is deciding what a token is and how to tell it where it sits."
+
+**Pacing.** Nine slides, ~15 minutes. The conceptual payoff (positional encodings for periodicity, tokenising micrographs/diffraction/spectra) is the part students will *not* find in MFML W10 — slow down there, speed past the SDPA refresher.
+
+**Cross-reference.** MFML W10 owns the full transformer derivation (gradient flow, pre-norm vs post-norm, the positional-encoding zoo). We reference it; we do not re-derive it.
+:::
+
+## 01. Where we are — recap of Unit 9, and why we now need attention
 
 ::: {.columns}
 ::: {.column width="55%"}
 ::: {.fragment}
-**Unit 9 (PCA / AE / MAE on spectra):**
+**Unit the Pascal-caveat slide (PCA / AE / MAE on spectra):**
 
 - **PCA** — linear, closed-form, interpretable; a strong baseline on EELS / XRD / Raman.
 - **Autoencoders** — non-linear, but each layer sees only a small local neighborhood.
@@ -58,12 +72,16 @@ Theory is in **MFML W10** (transformer derivation, complexity, optimisation). To
 :::
 
 ::: {.notes}
-Materials hook: recap that PCA / AE / MAE were the spectroscopy workhorses of Unit 9; the only one of them that already had global context was the MAE — because it had a transformer inside. We are now opening that black box. 1080Ti budget: everything in this deck must fit on 11 GB VRAM at fp16 — that is the constraint we keep returning to. Theory pointer: MFML W10 has the full derivation (positional encodings, layer-norm placement, optimiser quirks); ML-PC W10b is about *using* the result on lab data.
+**Materials hook.** Recap that PCA / AE / MAE were the spectroscopy workhorses of Unit 9; the only one of them that already had global context was the MAE — because it had a transformer inside. We are now opening that black box.
+
+**Cross-reference.** ML-PC u09 (MAE-on-spectra) is the direct predecessor; ML-PC u06 (DINOv2 transfer) and u07 (time-series, Mamba) are forward links we will hit later in this deck.
+
+**1080Ti budget.** Everything in this deck must fit on 11 GB VRAM at fp16 — that is the constraint we keep returning to.
+
+**Pre-empt the question.** "Didn't we already use a transformer in u09?" — yes, as a black box. Today we earn the right to choose its tokenisation and positional encoding for materials data.
 :::
 
-# 02. Why attention for materials
-
-## Long-range correlations exceed practical CNN receptive fields
+## 02. Why attention for materials — long-range correlations exceed CNN receptive fields
 
 ::: {.fragment}
 - A diffraction pattern, a STEM image, an EELS line scan, an LPBF layer stack — all contain **structure that spans the entire field of view**.
@@ -81,12 +99,43 @@ Materials hook: recap that PCA / AE / MAE were the spectroscopy workhorses of Un
 :::
 
 ::: {.notes}
-Materials hook: I want students to feel why the 3×3 conv hammer hits a ceiling on diffraction and on layered builds. Walk through the Bragg-pair example explicitly — pick a 256×256 CBED pattern, point at two discs 200 px apart, count the conv layers needed. 1080Ti budget: even a 14×14-patch ViT on 256×256 has L=256, well inside what a 1080Ti runs with SDPA at batch 32. MFML W10 reference: receptive-field calculation is done formally there.
+**Materials hook.** I want students to feel why the 3×3 conv hammer hits a ceiling on diffraction and on layered builds. Walk through the Bragg-pair example explicitly — pick a 256×256 CBED pattern, point at two discs 200 px apart, count the conv layers needed.
+
+**War story.** The receptive-field argument is *the* slide to come back to in §C when we justify why transformers beat CNNs for diffraction — it is not aesthetic, it is geometric (Friedel pairs are exactly antipodal).
+
+**1080Ti budget.** Even a 16×16-patch ViT on 256×256 has L=256, well inside what a 1080Ti runs with SDPA at batch 32.
+
+**Cross-reference.** MFML W10 derives the receptive-field bound formally.
 :::
 
-# 03. Refresher: scaled dot-product attention
+## 03. The inductive-bias triangle — CNN vs GNN vs transformer
 
-## The formula and the cost
+::: {.fragment}
+| Model | Built-in assumption | Pays off when | Materials home |
+|---|---|---|---|
+| **CNN** | Locality + translation equivariance | Signal is local, lots of structure, less data | Micrograph texture, single-disc tasks |
+| **GNN** | Relational, given graph structure | You *know* the graph (atoms↔bonds) | Crystal/molecule property (small data) |
+| **Transformer** | *Everything can attend to everything* (minimal bias) | Relationship is long-range/unknown **and** data/pretraining | Diffraction, multimodal, sequences |
+:::
+
+::: {.fragment}
+- A transformer has the **weakest** inductive bias — that is its power (learns the relation) *and* its curse (needs data to learn it).
+- Choosing a model is choosing how much physics to *hard-code* vs *learn*.
+:::
+
+::: {.callout-note .fragment}
+This triangle is the thread of the entire unit — every decision slide (§B (the §B synthesis slide), §C (the "why transformers beat CNNs for diffraction" slide), §E (the decision-guide slide)) is one corner of it.
+:::
+
+::: {.notes}
+**The conceptual spine.** Introduce the triangle early so every later decision slide is "which corner?". The deep point: weak inductive bias = flexibility traded for data hunger. CNNs hard-code locality, GNNs hard-code the bond graph, transformers hard-code almost nothing.
+
+**Materials hook.** Materials data is small, so hard-coded physics (CNN locality, GNN graph) is often the better deal — *unless* the relationship is genuinely long-range/unknown, which is the transformer's niche.
+
+**Cross-reference.** Forward to the §B synthesis slide (GNN vs crystal transformer), the §C "why transformers beat CNNs for diffraction" slide, and the §E data-efficiency / decision-guide slides (the honest comparison). MFML W10 for the formal capacity argument.
+:::
+
+## 04. Refresher: scaled dot-product attention — the formula and the cost
 
 ::: {.columns}
 ::: {.column width="55%"}
@@ -112,7 +161,7 @@ $$
 :::
 
 ::: {.fragment}
-- This is why **Flash Attention** matters (slide 5): same math, $\mathcal{O}(L)$ memory.
+- This is why **Flash Attention** (later) matters: same math, $\mathcal{O}(L)$ memory.
 :::
 :::
 :::
@@ -122,17 +171,59 @@ Reference: [@vaswani_2017_attention]. Derivation, gradient flow, why pre-norm be
 :::
 
 ::: {.notes}
-Materials hook: re-emphasise that $QK^\top$ is what couples every token to every other token — which is what we wanted for diffraction patterns. 1080Ti budget: a naive attention on L=4096 needs 16M entries times batch times heads — blows past 11 GB instantly. This number motivates slide 5. MFML W10: refer students there for the full per-head, per-layer FLOP and memory count and for the positional-encoding zoo.
+**Mechanism.** $QK^\top$ is what couples every token to every other token — which is exactly what we wanted for diffraction patterns.
+
+**1080Ti budget.** A naive attention on L=4096 needs 16M entries × batch × heads — blows past 11 GB instantly. This number motivates the Flash Attention slides.
+
+**Cross-reference.** MFML W10: refer students there for the full per-head, per-layer FLOP and memory count and for the positional-encoding zoo. Do **not** re-derive softmax gradients here.
 :::
 
-# 04. Vision Transformer (ViT) in five lines
+## 05. Positional encodings for materials — the materials-specific crux
 
-## Patchify, embed, encode, classify
+::: {.fragment}
+Attention is **permutation-equivariant**: without position information it is a deep set. For language you add 1-D sinusoids. **Materials axes are not a sentence:**
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+- **Micrograph / diffraction (2-D):** token at $(0,0)$ is the central beam, token at $(7,7)$ is a high-$k$ disc. Need **2-D** encodings (learned, 2-D sinusoidal, or 2-D RoPE).
+- **Crystal (3-D, periodic):** the lattice is *infinite and periodic*. A naive absolute position is meaningless — position must be **periodic-invariant** (fractional coordinates, lattice-aware relative encodings). §B is built on this.
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+- **Spectrum (1-D, physical axis):** the energy/2θ axis has *physical units*. The encoding should respect that an EELS edge at 532 eV is a fixed absolute location, not a free token order.
+- **Process sequence (1-D, causal):** LPBF layer index is causal and physically ordered — relative/causal encodings, not bidirectional absolute.
+:::
+:::
+:::
+
+::: {.callout-warning .fragment}
+Get the positional encoding wrong and the transformer silently learns a physics-free permutation-invariant map. This is the single most common materials-transformer bug — and it is invisible until you ablate.
+:::
+
+> **[FIGURE: four mini-panels — 2-D grid over a CBED pattern; periodic lattice with translation arrows; 1-D energy axis with an EELS edge marked; causal layer-index ladder for LPBF — each labelled with its required positional-encoding family]**
+
+::: {.notes}
+**Why this slide is new.** The old deck folded this into an anti-pattern bullet. It is not an anti-pattern — it is *the* materials-specific design decision and deserves a full slide. MFML W10 covers the encoding *zoo*; what it does **not** do is map each family onto a materials modality. That mapping is the value added here.
+
+**Mechanism.** Permutation-equivariance is a feature for sets, a bug for diffraction. The fix is not "add positions" generically — it is "add the *right* positional structure for this physical axis".
+
+**Materials hook.** The periodic-crystal case is the deepest: you literally cannot write down an absolute position for an infinite crystal. That impossibility is what motivates Matformer / Crystalformer / ComFormer in §B — flag it forward now.
+
+**Anti-pattern + diagnostic.** Diagnostic for "did I get positions right?": ablate the positional embedding and watch accuracy. On diffraction it should *collapse*. If it does not, your task was not using geometry and a transformer was the wrong tool.
+
+**Cross-reference.** ML-PC u09 MAE-on-spectra also has to token an energy axis — same issue, revisited in §C.
+:::
+
+## 06. Vision Transformer (ViT) in five lines
 
 ::: {.fragment}
 1. **Patchify** the image into $P\times P$ patches (e.g. 16×16). Each patch becomes one token. A 224×224 image gives $L = 196$.
 2. **Linear embed** each flattened patch into a $d$-dimensional vector.
-3. Prepend a learnable **`[CLS]` token**; add **learnable positional embeddings** (one per slot, including CLS).
+3. Prepend a learnable **`[CLS]` token**; add **positional embeddings** (one per slot, including CLS).
 4. Stack $N$ **transformer encoder blocks** (LayerNorm → MHA → MLP → residual).
 5. The final state of `[CLS]` is the image representation; classify with a linear head [@dosovitskiy_2021_vit].
 :::
@@ -143,16 +234,58 @@ Materials hook: re-emphasise that $QK^\top$ is what couples every token to every
 :::
 
 ::: {.callout-warning .fragment}
-ViT was originally trained on JFT-300M. **Pretraining matters**: on small materials datasets, a ViT trained from scratch will overfit catastrophically — pretrain (MAE / DINO) or use a pretrained backbone. See anti-patterns slide.
+ViT was originally trained on JFT-300M. **Pretraining matters**: on small materials datasets, a ViT trained from scratch will overfit catastrophically — pretrain (MAE / DINO) or use a pretrained backbone. See the data-efficiency slide in §E.
 :::
 
 ::: {.notes}
-Materials hook: the patch size is the lever. On a 256×256 4D-STEM CBED pattern, P=16 gives 256 tokens — comfortable on 1080Ti; P=8 gives 1024 tokens — tight; P=4 is naive-attention infeasible without SDPA / Flash. 1080Ti budget: a ViT-Tiny (d=192, 12 layers, 3 heads) at L=256 trains at batch 64 fp16 with SDPA — that is the workhorse setting I use. MFML W10: positional-embedding choices (learned vs sinusoidal vs 2-D RoPE) are covered there; for diffraction data 2-D positional info is non-trivial and matters.
+**Mechanism.** ViT is just "the 2017 encoder applied to image patches" — the only new ideas vs. NLP are patchify and 2-D positions (previous slide).
+
+**Materials hook.** The patch size is the lever — full slide next. ViT-Tiny (d=192, 12 layers, 3 heads) is the workhorse we use throughout this deck.
+
+**Cross-reference.** MFML W10 for the encoder-block internals; ML-PC u09 for MAE pretraining of exactly this encoder; §E for the honest "when NOT to use a ViT" slide.
+
+**Pre-empt the question.** "Why `[CLS]` and not global average pooling?" — both work; `[CLS]` is the original and what pretrained checkpoints expose. GAP is a fine drop-in and sometimes more robust on small data.
 :::
 
-# 05. Flash Attention
+## 07. Tokenisation choices for micrographs, diffraction, and spectra
 
-## The kernel that makes long sequences tractable
+::: {.fragment}
+**The token *is* the inductive bias.** What you choose to call one token decides what the model can and cannot mix in one layer.
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+- **Micrograph (HRTEM/SEM):** square patches. Smaller $P$ → more tokens → finer features but $L^2$ cost. $P{=}16$ on 256² → $L{=}256$.
+- **Diffraction (CBED/SAED):** patches **break disc geometry** if a Bragg disc straddles a patch boundary. Options: smaller patches, overlapping patches, or detect discs first and token *per disc*.
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+- **Spectrum (EELS/XAS/XRD):** token along the **energy / 2θ axis** — fixed-width windows, or peak-centred tokens. The axis is physical; do not shuffle it.
+- **4D-STEM:** two valid choices — token the *detector* (one sequence per scan position) or token the *scan grid* (one token per probe position). They answer different questions.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+There is no universal patch. Choosing tokens is a modelling decision with a physics consequence — make it explicitly, then ablate it.
+:::
+
+> **[FIGURE: same physical datum tokenised three ways — square patches over a micrograph; per-disc tokens over a CBED pattern; window tokens over an EELS edge]**
+
+::: {.notes}
+**Mechanism + materials hook.** This is the slide that distinguishes a materials ML course from a generic DL course. The patch grid is borrowed from natural images where it is arbitrary; on diffraction it is *not* arbitrary because disc geometry carries the lattice.
+
+**War story.** A common failure: 16×16 patches on a CBED pattern where discs are ~10 px — discs land on patch seams, the model never sees a whole disc, accuracy plateaus far below a disc-detector + transformer pipeline. Diagnostic: visualise patch boundaries over real discs before you train.
+
+**Cross-reference.** Forward to §C 4D-STEM ViT and "why transformers beat CNNs for diffraction"; ML-PC u09 for spectral tokenisation revisited with MAE.
+
+**Pacing.** Keep tight — the payoff lands in §C; here just plant the three options.
+:::
+
+## 08. Flash Attention — the kernel that makes long sequences tractable
 
 ::: {.columns}
 ::: {.column width="55%"}
@@ -187,94 +320,890 @@ y = F.scaled_dot_product_attention(
 )
 ```
 :::
+:::
+:::
+
+::: {.notes}
+**Mechanism.** The whole trick is IO-awareness: never write the $L\times L$ matrix to slow HBM; recompute it tile-by-tile in fast SRAM with an online-softmax accumulator.
+
+**1080Ti budget.** This is the single piece of plumbing that unlocks training a 4D-STEM ViT on a 1080Ti at all. Without SDPA, batch 8 on L=1024 OOMs; with SDPA, batch 32 fits. The Pascal caveat is the *next* slide — do not pre-empt it here.
+
+**Cross-reference.** MFML W10 derives the complexity; here we care only that the math is unchanged and the memory is now linear.
+:::
+
+## 09. The 1080Ti / Pascal caveat — what you actually get on lab hardware
+
+::: {.fragment}
+`F.scaled_dot_product_attention` is a **dispatcher**, not a single kernel:
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+::: {.fragment}
+- **Ampere+ (A100, RTX 30/40):** dispatches to **true Flash Attention** — the full 2–10× speedup and $\mathcal{O}(L)$ memory.
+- **Pascal (1080Ti, our lab budget):** dispatches to the **memory-efficient** kernel — *not* true Flash, but still $\mathcal{O}(L)$ memory and a real (smaller) speedup.
+:::
+:::
+
+::: {.column width="50%"}
+::: {.fragment}
+- **Either way:** always prefer SDPA to a hand-rolled `softmax(QK^T/√d)@V`.
+- The memory win (which lets you train at all on 11 GB) is available on Pascal; the headline 5× wall-clock number in the paper is an Ampere+ number — do not quote it for your 1080Ti results.
+:::
+:::
+:::
 
 ::: {.callout-note .fragment}
-On **Pascal (1080Ti)** SDPA dispatches to the **memory-efficient** kernel (not true Flash, but still $\mathcal{O}(L)$ memory and a real speedup). On **Ampere+** it dispatches to true Flash Attention. Either way: prefer SDPA to a hand-rolled `softmax(QK^T/√d)@V`.
-:::
-:::
+Set the lab expectation explicitly: on 1080Ti you get the **memory** benefit (enables training), a **modest** speed benefit, and **not** the paper's 5×. Re-measure on your hardware before quoting any number.
 :::
 
 ::: {.notes}
-Materials hook: this is the single piece of plumbing that unlocks training a 4D-STEM ViT on a 1080Ti at all. Without SDPA, batch 8 on L=1024 OOMs; with SDPA, batch 32 fits. 1080Ti budget: explicitly call out that we do **not** get true Flash Attention on Pascal — students on lab 1080Ti hardware still benefit from the memory-efficient kernel, just not the full 5× speedup the paper advertises (that is Ampere+). MFML W10 reference: complexity arguments are derived there; ML-PC W10b shows the wall-clock numbers.
+**War story.** Every cohort, someone benchmarks SDPA on a lab 1080Ti, sees ~1.6× not 5×, and concludes Flash Attention is "broken". It is not — Pascal predates the Flash kernel; you are getting the mem-efficient fallback. The memory win is the one that matters for *us* because it is the difference between training and OOM.
+
+**1080Ti budget.** This is the honest-engineering slide. The deliverable for lab work is: SDPA everywhere, expect the memory benefit, measure speed yourself.
+
+**Cross-reference.** Wall-clock numbers appear concretely in §E's bench-it table; MFML W10 for the asymptotics.
 :::
 
-# 06. Materials application 1 — ViT on 4D-STEM
-
-## Diffraction patches → token sequence → ViT encoder
+## 10. Scaling alternatives — MoE, Mamba, SSMs (names to recognise)
 
 ::: {.fragment}
-- **4D-STEM**: at each scan position $(x, y)$ the detector records a 2-D diffraction pattern $I(k_x, k_y)$. The dataset is a 4-D tensor.
-- Treat each diffraction pattern as a 2-D image; patchify; ViT-encode.
-- Output: per-scan-position embedding → downstream tasks (phase map, strain map, orientation map, defect detection).
-:::
-
-::: {.fragment}
-**Why ViT and not a 2-D CNN:**
-
-- Bragg discs are **geometrically paired** across the central beam — a non-local relationship.
-- The relevant features (disc positions, Friedel pairs, kinematic vs dynamic intensities) live at all spatial scales.
-- A ViT mixes all patches in one layer; a CNN needs many layers to do the same.
-:::
-
-::: {.callout-note .fragment}
-Practical recipe: ViT-Tiny ($d=192$, 12 layers), patch 16, image 256×256, **MAE-pretrained** on unlabelled 4D-STEM stacks, then fine-tuned for the labelled task. On 1080Ti: batch 32 fp16 with SDPA.
-:::
-
-::: {.notes}
-Materials hook: this is the slide that pays off the whole unit. Tie back to Unit 9 — MAE pretraining on 4D-STEM is exactly what the autoencoder family was preparing for. Mention concrete tasks: orientation mapping (currently template matching), strain mapping (currently disc fitting), phase identification (currently library search). Each of these has been shown to benefit from ViT embeddings. 1080Ti budget: a single 4D-STEM scan is ~64×64 positions × 256×256 detector = 256M values — does not fit in VRAM as one batch; train on randomly-sampled scan-position minibatches. MFML W10 reference: the per-token compute count derived there explains the patch-size trade-off.
-:::
-
-# 07. Materials application 2 — long-stack micrograph context
-
-## Cross-attention across LPBF layers
-
-::: {.fragment}
-- **Laser powder-bed fusion (LPBF)**: part is built layer by layer; microstructure at layer $\ell$ depends on the **thermal history** of layers $\ell, \ell-1, \ldots, \ell-k$.
-- A per-layer CNN sees only the current layer — it cannot learn that an overhang two layers below changed the local cooling rate.
-- Stack the last $k$ in-situ thermal/optical layer images as a **sequence**; cross-attention lets layer $\ell$ attend to layers $\ell - 1, \ldots, \ell - k$.
+- **Mixture of Experts (MoE)** — replace the MLP block with $E$ parallel MLPs and a router that sends each token to the top-$k$ experts. Sparse compute: $E$× parameters, only $k$× FLOPs. Useful for a *large* model on a small inference budget.
+- **Mamba / structured state-space models (SSMs)** — recurrent formulation with $\mathcal{O}(L)$ compute and constant memory; competitive with transformers on long sequences [@gu_2023_mamba]. **Cross-reference the ML-PC u07 time-series deck**, where the Mamba/SSM slide lives.
 :::
 
 ::: {.fragment}
-**Architecture sketch:**
-
-- Per-layer ViT encoder produces a token sequence $T_\ell \in \mathbb{R}^{L \times d}$.
-- A cross-attention block over the layer axis: $Q$ from $T_\ell$, $K, V$ from $\{T_{\ell-1}, \ldots, T_{\ell-k}\}$.
-- Output predicts local microstructure / defect probability for layer $\ell$.
-:::
-
-::: {.callout-warning .fragment}
-Naive concatenation along the token axis blows $L$ by $k\times$ → $L^2$ blows by $k^2$. Use **cross-attention with separate $K, V$** (not self-attention on the concatenated stack) to keep cost linear in $k$.
-:::
-
-::: {.notes}
-Materials hook: this is the killer application of attention for the processing side of the course. Thermal history is *the* hidden variable in LPBF; we have layer-resolved in-situ data; we just need a model with the right inductive bias. 1080Ti budget: a ViT-Tiny per layer at L=256 plus a cross-attention head over k=5 layers fits comfortably; k=20 starts to be tight. MFML W10 reference: cross-attention is the original encoder–decoder construct from the 2017 paper — point students at that derivation rather than re-deriving here.
-:::
-
-# 08. Scaling alternatives (mention only)
-
-## Beyond dense attention
-
-::: {.fragment}
-- **Mixture of Experts (MoE)** — replace the MLP block with $E$ parallel MLPs and a router that sends each token to the top-$k$ experts. Sparse compute: $E$× parameters, only $k$× FLOPs. Useful when we want a *large* model on a small inference budget.
-- **Mamba / structured state-space models (SSMs)** — recurrent formulation with $\mathcal{O}(L)$ compute and constant memory; competitive with transformers on long sequences [@gu_2023_mamba]. Cross-reference the **Week 7 time-series deck** (sequence models).
-:::
-
-::: {.fragment}
-- For our 1080Ti / lab-scale budget, neither is *needed* on the typical materials sequence lengths ($L \lesssim 4096$ with SDPA).
+- For our 1080Ti / lab-scale budget, neither is *needed* at typical materials sequence lengths ($L \lesssim 4096$ with SDPA).
 - They become relevant for **whole-build LPBF sequences** ($L \sim 10^5$ layers × patches) or **multi-spectrum joint models**.
 :::
 
 ::: {.callout-note .fragment}
-Pick the right tool. A vanilla ViT + SDPA solves 90 % of materials tasks at our scale. MoE / Mamba are for the long-tail.
+Pick the right tool. A vanilla ViT + SDPA solves 90 % of materials tasks at our scale. MoE / Mamba are for the long tail.
 :::
 
 ::: {.notes}
-Materials hook: I deliberately keep this short. Students should know the names so they recognise them in papers; they should *not* leave thinking they need a 70B-parameter MoE to do strain mapping. Week 7 time-series deck: SSMs were introduced as a sequence-model alternative there; this slide is just a pointer.
+**Pacing.** Deliberately short — students should know the names so they recognise them in papers; they should *not* leave thinking they need a 70B MoE to do strain mapping.
+
+**Cross-reference.** ML-PC u07 (time-series) introduced SSMs as a sequence-model alternative; this is a pointer, not a re-teach. The whole-build LPBF sequence reappears in §D process monitoring.
 :::
 
-# 09. Practical recipe
+## {background-color="#1a1a2e"}
 
-## `nn.MultiheadAttention` vs `F.scaled_dot_product_attention`
+### §B · Transformers for crystal structure & property prediction {style="text-align: center; margin-top: 15%;"}
+
+
+
+::: {.notes}
+**What this part delivers.** The first real case-study block: three papers that solved *the periodicity problem* in different ways. Students should leave able to say which of Matformer / Crystalformer / ComFormer they would reach for and why, and when a plain GNN still wins.
+
+**The one idea to leave with.** "A crystal is infinite and periodic; a transformer that ignores that is wrong by construction. The interesting engineering is how each paper makes attention periodic-invariant."
+
+**Pacing.** Eight slides, ~14 minutes. Spend the time on the three papers' *mechanisms and headline numbers*; keep the synthesis/anti-pattern slides brisk.
+
+**Cross-reference.** ML-PC u04 (microstructure / graph representations) owns graph reps; we reference it for the GNN baseline.
+:::
+
+## 11. The periodicity problem — naive attention breaks on infinite crystals
+
+::: {.fragment}
+- A crystal is defined by a **unit cell + lattice vectors**, repeated infinitely. The "input" has no finite token set and no absolute coordinate origin.
+- A finite molecular transformer (token = atom, absolute/relative 3-D position) **does not transfer**: which periodic image of an atom do you tokenise? All of them?
+- Property prediction must be **invariant** to: choice of unit cell, lattice translations, and (for many properties) rotations/reflections.
+:::
+
+::: {.callout-warning .fragment}
+Tokenise "the atoms in one unit cell" with absolute positions and you have silently broken translational invariance — the model can read off the (arbitrary) cell origin. This is the crystal analogue of the §A positional-encoding bug.
+:::
+
+> **[FIGURE: a 2-D crystal with its unit cell highlighted; the same atom shown in several periodic images; arrow to "which image is the token?"]**
+
+::: {.notes}
+**Mechanism + materials hook.** This is the conceptual hinge of §B. Make the impossibility concrete: there is no finite list of atoms and no canonical origin, so the entire finite-transformer playbook needs reworking.
+
+**Pre-empt the question.** "Can't I just take a big supercell and use a normal transformer?" — you can, but you have re-introduced an arbitrary boundary and lost exact periodic invariance; the three papers exist precisely to avoid that hack.
+
+**Cross-reference.** §A positional-encoding slide flagged this forward; ML-PC u04 graph reps for the GNN framing that the next slides build on.
+:::
+
+## 12. Matformer — periodic-invariant graph transformer [@yan2022matformer]
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **Idea:** build a crystal graph whose *edges encode periodic geometry*, then run a graph transformer whose attention is invariant to unit-cell choice and lattice translation (NeurIPS 2022).
+- Edges carry periodic distance / image information so the message passing is periodic-invariant **by construction**, not by data augmentation.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**What it bought:**
+
+- Outperformed strong GNN baselines (**CGCNN, MEGNet, SchNet**) on **Materials Project** and **JARVIS** property regression (formation energy, band gap, bulk/shear moduli).
+- Periodic invariance is *exact*, so it generalises across cell representations of the same crystal.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+Take-away: encode periodicity in the **graph edges**, not in absolute coordinates. This is the cheapest correct fix to the periodicity problem.
+:::
+
+::: {.notes}
+**What the paper actually did.** Data: Materials Project + JARVIS-DFT property targets (formation energy, band gap, moduli). Task: scalar property regression from crystal structure. Baseline beaten: CGCNN/MEGNet/SchNet-class GNNs. What the transformer bought: a self-attention readout over a periodic-invariant graph that improved MAE on the standard MP/JARVIS splits while remaining invariant to cell choice — the GNN baselines were invariant too, but Matformer's attention readout improved accuracy.
+
+**Materials hook.** Formation energy / band gap from structure is *the* high-throughput screening task — this is the bread-and-butter use of crystal transformers.
+
+**Cross-reference.** ML-PC u04 owns crystal-graph construction; MFML W10 for the attention mechanism. Do not re-derive message passing.
+
+**Flag for verification.** arXiv:2209.11807 — confirm the exact baseline table before quoting specific MAE numbers in class.
+:::
+
+## 13. Crystalformer — infinitely-connected attention [@taniai2024crystalformer]
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **Idea (ICLR 2024):** attention not over a finite graph but over **all periodic images** — an *infinitely-connected* attention.
+- The attention sum over the infinite lattice is reorganised as a **convergent infinite series**, analogous to a **neural interatomic-potential / lattice (Ewald-like) summation**.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**What it bought:**
+
+- A physically-motivated formulation: attention weights decay with periodic distance like a real interatomic interaction.
+- Competitive / state-of-the-art property prediction on **JARVIS / Materials Project** with a comparatively *simple* architecture.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+The trick to remember: an infinite sum over periodic images that **converges** — attention as a lattice summation, not a finite token set.
+:::
+
+::: {.notes}
+**Mechanism.** This is the most beautiful idea in §B: instead of truncating the crystal to a graph, embrace the infinity and sum the attention contributions over all periodic images as a convergent series — structurally an Ewald/lattice-sum. Attention thereby *becomes* a learned interatomic-potential-like interaction.
+
+**What the paper did.** JARVIS-DFT / Materials Project regression; competitive-to-SOTA with fewer moving parts than message-passing alternatives. State the number only after checking the paper.
+
+**Pre-empt the question.** "Does the infinite sum actually converge?" — yes, by the distance-decay of the attention kernel; that decay is the physical content.
+
+**Cross-reference.** MFML W10 for softmax-attention; the "neural interatomic potential" framing connects to ML-PC u04/u12 (PINNs) energy-model discussions — a forward pointer.
+
+**Flag for verification.** arXiv:2403.11686 — verify ICLR 2024 venue and the exact benchmark deltas.
+:::
+
+## 14. ComFormer — SE(3)-complete graph transformer [@yan2024comformer]
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **Idea (ICLR 2024):** make the crystal representation **complete** — provably injective up to the right symmetry group (SE(3) / E(3) plus periodicity) — so that distinct crystals never collapse to the same representation.
+- Adds rotation/reflection-aware geometric features on top of the periodic-invariant graph.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**The trade-off it surfaces:**
+
+- **Completeness vs efficiency:** a strictly complete, symmetry-aware representation costs more than Matformer's simpler edges.
+- Reported state-of-the-art accuracy on standard MP / JARVIS property tasks, at higher representational cost.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+Completeness is not free. ComFormer is the "buy maximum correctness, pay compute" point on the crystal-transformer Pareto front.
+:::
+
+::: {.notes}
+**Mechanism.** "Complete" means the structure→representation map is injective up to physical symmetry — no two physically-distinct crystals get the same embedding. Matformer is invariant but not provably complete; ComFormer closes that gap with explicit SE(3)-aware geometric encodings.
+
+**What it bought.** Best-in-class accuracy on the MP/JARVIS regression suites, at a representational/compute premium — this is the slide that frames the next (synthesis) slide's decision.
+
+**Cross-reference.** MFML W10 (equivariance is *not* derived there — equivariant nets are out of scope for both courses; mention as a property, do not derive). ML-PC u04 for representation completeness in the graph context.
+
+**Flag for verification.** arXiv:2403.11857, ICLR 2024 — confirm before quoting numbers.
+:::
+
+## 15. Synthesis — crystal transformer vs GNN: when each wins
+
+::: {.fragment}
+| Situation | Reach for |
+|---|---|
+| Standard MP/JARVIS property regression, lots of data | Crystal transformer (Matformer / Crystalformer / ComFormer) |
+| Small dataset, few thousand structures | Plain GNN (CGCNN/MEGNet) — fewer params, less data-hungry |
+| Need provable non-collapse of distinct crystals | ComFormer (completeness) |
+| Need a physics-motivated long-range interaction | Crystalformer (lattice-sum attention) |
+| Cheapest correct periodic fix | Matformer (periodic graph edges) |
+:::
+
+::: {.callout-warning .fragment}
+A crystal transformer is **not automatically better** than a well-tuned CGCNN on a small dataset. The transformer's advantage shows up with scale and with genuinely long-range property dependence.
+:::
+
+::: {.notes}
+**Materials hook.** The honest engineering message: on a 2k-structure in-house dataset, a tuned CGCNN often matches or beats a crystal transformer and trains in a fraction of the time. Transformers win at scale and when the property is genuinely long-range (e.g. dielectric/elastic responses sensitive to extended structure).
+
+**Cross-reference.** ML-PC u04 (graph reps) for the GNN baselines; mirrors the §C "why transformers beat CNNs for diffraction" decision logic — same receptive-field reasoning, different modality.
+
+**Pacing.** This is a synthesis beat — let students copy the table, then move.
+:::
+
+## 16. Anti-patterns for crystal transformers
+
+::: {.fragment}
+- **Absolute Cartesian coordinates as tokens.** Breaks translational invariance; the model reads the arbitrary cell origin. Use periodic/fractional or graph-edge encodings.
+- **Truncating the crystal to a small supercell and calling it a sequence.** Re-introduces an arbitrary boundary; you lost exact periodicity.
+- **Reporting MP/JARVIS numbers on a non-standard split.** The benchmark deltas are small; a leaky or non-standard split makes any comparison meaningless.
+- **Claiming a transformer win without a tuned GNN baseline.** The fair baseline is a *tuned* CGCNN/MEGNet, not a default one.
+:::
+
+::: {.callout-warning .fragment}
+Diagnostic: re-express the same crystal in a different (equally valid) unit cell. A correct model gives an **identical** prediction. If it does not, your periodic invariance is broken.
+:::
+
+::: {.notes}
+**Anti-pattern + diagnostic.** The unit-cell re-expression test is the single best one-line check for crystal-transformer correctness — bug it into the exercise mentality. Each bullet is a real reviewer complaint on materials-ML papers.
+
+**Cross-reference.** Generalises the §A positional-encoding ablation and previews §C/§D anti-pattern slides — same discipline, different data.
+:::
+
+## 17. The crystal-transformer benchmark landscape
+
+::: {.fragment}
+- **Materials Project / JARVIS-DFT:** the standard property-regression suites (formation energy, band gap, bulk/shear modulus). Hundreds of thousands of DFT-relaxed structures.
+- **Matbench / Matbench Discovery:** curated, leakage-controlled splits; the place where claimed deltas survive or die.
+:::
+
+::: {.fragment}
+- The honest picture: crystal transformers (Matformer / Crystalformer / ComFormer) sit at or near the top of these leaderboards, but **margins over strong GNNs are often small** and split-dependent.
+- A new SOTA on formation energy can be a fraction of a meV/atom — meaningful only with a controlled split and error bars.
+:::
+
+::: {.callout-warning .fragment}
+Read leaderboard claims with the §B (the crystal anti-patterns slide) discipline: same split, tuned baseline, error bars. "Beats CGCNN" is empty without "on the Matbench split, with this MAE ± this".
+:::
+
+::: {.notes}
+**Materials hook.** Students must know *where* the §B numbers come from and how thin the margins are. The teaching point: the field's progress is real but incremental; the architectural *ideas* (periodic invariance, lattice-sum attention, completeness) matter more than the leaderboard decimal.
+
+**Anti-pattern + diagnostic.** A SOTA claim without the benchmark name + split + error bar is not interpretable. Matbench Discovery exists precisely because earlier comparisons leaked.
+
+**Cross-reference.** The §B synthesis slide (anti-patterns), the §B synthesis slide (when GNN still wins), ML-PC u04 (the datasets/graph reps), ML-PC u11 (error bars — UQ).
+:::
+
+## 18. What to remember from §B
+
+::: {.fragment}
+- The **periodicity problem** is the whole story: a crystal is infinite and periodic; absolute-coordinate transformers are wrong by construction.
+- **Matformer** — periodicity in graph edges (cheapest correct fix).
+- **Crystalformer** — attention as a convergent lattice sum (physics-motivated, long-range).
+- **ComFormer** — SE(3)-complete (maximum correctness, more compute).
+- **GNN is still the small-data default.** Transformers win with scale and long-range property dependence.
+:::
+
+::: {.notes}
+**Pacing.** Pure recap — 60 seconds. The four-line paper summary is the exam-relevant content of §B.
+
+**Forward link.** §C now changes modality from crystals to *signals and images* — but the §A discipline (what is a token, where does it sit) carries straight over.
+:::
+
+## {background-color="#1a1a2e"}
+
+### §C · Transformers for characterization signals & imaging {style="text-align: center; margin-top: 15%;"}
+
+
+
+::: {.notes}
+**What this part delivers.** The heart of the unit: real papers using transformers on microscopy, diffraction, and spectra. Every slide names data, task, baseline, and what the transformer bought.
+
+**The one idea to leave with.** "On diffraction the long-range structure is *geometric* (antipodal Bragg/Friedel pairs) — that is exactly the regime where a transformer's one-layer global mixing beats a CNN's stacked local kernels."
+
+**Pacing.** Fourteen slides, ~22 minutes — the longest part. Budget time; the 4D-STEM ViT, μSAM, EM foundation model, and DiffractGPT slides are the keepers.
+
+**Cross-reference.** ML-PC u06 (DINOv2 transfer), u09 (MAE/SSL on spectra) are the direct predecessors of the SSL slides here.
+:::
+
+## 19. 4D-STEM ViT for rapid microstructure inference [@dstem_transformer2024]
+
+::: {.fragment}
+- **4D-STEM:** at each scan position $(x,y)$ the detector records a 2-D diffraction pattern $I(k_x,k_y)$ — a 4-D tensor, GB-to-TB scale.
+- **Case study (preprint):** a transformer ingests the diffraction patterns and infers **microstructure** (phase / orientation / strain-type labels) per scan position, far faster than iterative template matching or disc fitting.
+:::
+
+::: {.fragment}
+**What it bought over the CNN/classical baseline:**
+
+- One-layer global mixing of antipodal discs → orientation/phase inference without an explicit template library.
+- *Rapid* inference: amortised forward pass replaces per-pattern optimisation across millions of patterns.
+:::
+
+::: {.callout-warning .fragment}
+Marked as a **preprint** — treat the specific numbers as unverified. The architectural argument (global disc coupling) is sound regardless.
+:::
+
+::: {.notes}
+**What the paper did (preprint).** Data: 4D-STEM scans; task: per-scan-position microstructure inference (phase/orientation). Baseline: template matching / disc-fitting pipelines that optimise per pattern. What the transformer bought: amortised inference (one forward pass vs. per-pattern optimisation across millions of patterns) plus library-free orientation/phase via global disc coupling.
+
+**Materials hook.** This upgrades the *old generic* "ViT on 4D-STEM" slide into a real, citable case study. Orientation mapping today is template matching; strain mapping is disc fitting; this replaces both with a learned amortised map.
+
+**Anti-pattern + diagnostic.** A single 4D-STEM scan (e.g. 256×256 positions × 256×256 detector) does not fit in 11 GB — train on randomly-sampled scan-position minibatches. Diagnostic for overfitting: hold out *whole scans*, not random positions (positions within a scan are correlated).
+
+**Flag for verification.** **arXiv:2602.12420 — preprint id and authorship UNVERIFIED; professor should confirm. The 2602 prefix would imply a 2026-02 submission; please double-check.**
+
+**Cross-reference.** ML-PC u09 MAE-pretraining is the natural pretext for this encoder; §E exercise benches a tiny version of exactly this.
+:::
+
+## 20. 4D-STEM ViT — the concrete pipeline & MAE pretext
+
+::: {.fragment}
+**Pipeline (diagram in words):** 4D-STEM scan → sample scan positions → per-position diffraction pattern (256×256) → patchify ($P{=}16$, $L{=}256$) → 2-D positional embedding (§A) → ViT-Tiny encoder → per-position head (phase / orientation / strain-type).
+:::
+
+::: {.fragment}
+**MAE pretext (the materials answer to data hunger):**
+
+- Mask 75 % of diffraction patches; reconstruct; **no labels** — the unlabelled 4D-STEM stack *is* the pretraining corpus (ML-PC u09).
+- Then freeze/lightly-finetune on the 50–500 labelled scan positions you can afford.
+:::
+
+::: {.callout-note .fragment}
+Practical recipe: ViT-Tiny ($d{=}192$, 12 layers), patch 16, 256×256, **MAE-pretrained on unlabelled 4D-STEM**, finetuned on labels. 1080Ti: batch 32 fp16 with SDPA.
+:::
+
+::: {.notes}
+**Mechanism + materials hook.** This is the "how would I actually build it" slide that pays off the 4D-STEM ViT case-study slide and the §A tokenisation/positional content. The MAE pretext is the bridge to ML-PC u09 (callback to the §A recap slide: the u09 MAE encoder *was* exactly this).
+
+**1080Ti budget.** A single scan does not fit in VRAM; sample scan-position minibatches. Batch 32 fp16 with SDPA on ViT-Tiny is the calibrated workhorse setting.
+
+**Cross-reference.** ML-PC u09 (MAE), §A slides 04/06, §E the pretrain→finetune recipe slide recipe and the exercise slide exercise instantiate this at toy scale.
+:::
+
+## 21. Segment Anything for Microscopy / μSAM [@archit2024usam]
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **μSAM (Nature Methods 2024):** adapt Meta's **Segment Anything** (a promptable ViT segmentation foundation model) to **electron & light microscopy**.
+- Promptable: click/box prompts produce instance masks; supports interactive annotation and automatic mask generation.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**Zero-shot vs fine-tune (EM):**
+
+- **Zero-shot** SAM is mediocre on EM (domain gap from natural images).
+- **Fine-tuned** μSAM on microscopy data is strong and dramatically cuts manual annotation time for cells, organelles, particles, grains.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+The lab value is **annotation acceleration**: promptable ViT segmentation turns hours of manual masking into minutes of clicking.
+:::
+
+::: {.notes}
+**What the paper did.** Data: diverse EM + LM datasets. Task: instance/semantic segmentation, interactive and automatic. Baseline: vanilla SAM zero-shot (weak on EM) and task-specific U-Nets. What μSAM bought: a microscopy-fine-tuned promptable ViT that generalises across modalities and slashes annotation labour — the practical bottleneck in materials microscopy.
+
+**Materials hook.** Tie to ML-PC u06: this is transfer learning of a ViT segmentation foundation model into the materials domain — the domain-gap story from u06, made concrete.
+
+**Anti-pattern + diagnostic.** Do not report *zero-shot* SAM numbers as the method's performance — the paper's point is that fine-tuning is required for EM. Diagnostic: always show zero-shot vs fine-tuned side by side.
+
+**Cross-reference.** ML-PC u06 (transfer / DINOv2); next slide (EM foundation model) is the self-supervised cousin.
+
+**Flag for verification.** doi:10.1038/s41592-024-02580-4 — confirm Nature Methods 2024.
+:::
+
+## 22. Self-supervised ViT foundation models for EM [@em_ssl2024]
+
+::: {.fragment}
+- **Idea:** DINOv2-style **self-supervised** pretraining of a ViT on **millions of unlabelled micrographs** → a general-purpose EM feature extractor ("foundation model for advanced image analysis", arXiv:2402.18286).
+- No labels needed for pretraining; downstream tasks (classification, segmentation, retrieval) use a light head on frozen or lightly-tuned features.
+:::
+
+::: {.fragment}
+**What it bought:**
+
+- Strong few-label downstream performance — the materials-lab regime (50–500 labels) is exactly where this pays off.
+- A reusable backbone across instruments / specimens, mitigating the per-lab data scarcity problem.
+:::
+
+::: {.callout-note .fragment}
+This is the materials answer to "ViTs are data-hungry": **pretrain self-supervised on the unlabelled mountain you already have**.
+:::
+
+::: {.notes}
+**Mechanism.** DINOv2-style self-distillation: a student ViT matches a teacher's representation under augmentations, no labels. The micrograph archive every EM lab already has becomes the pretraining corpus.
+
+**Materials hook + cross-reference.** This is the direct bridge between ML-PC u06 (DINOv2) and u09 (SSL on spectra) — same recipe, microscopy modality. It is also the answer to the §E "data-efficiency reality" slide.
+
+**What the paper did.** Pretrain on millions of unlabelled EM images; evaluate few-label downstream. The headline is sample-efficiency on downstream tasks, not a single accuracy number — frame it that way.
+
+**Flag for verification.** arXiv:2402.18286 — confirm title/authors before quoting specifics.
+:::
+
+## 23. DiffractGPT — XRD pattern → structure as sequence generation [@diffractgpt2024]
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **DiffractGPT (J. Phys. Chem. Lett. 2024):** a **generative pretrained transformer** that maps an **X-ray diffraction pattern → atomic structure**, framed as **sequence generation** (pattern in, structure tokens out).
+- Inverts the usual forward problem: instead of predicting a pattern from a structure, it *generates* the structure that explains the pattern.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**What it bought:**
+
+- Amortised structure solution: a forward generation pass instead of iterative search / Rietveld refinement seeding.
+- A genuinely *generative* use of transformers in characterization — the §C counterpart to discriminative ViTs.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+Pattern → structure is an **inverse problem**; DiffractGPT treats structure determination as conditional sequence generation.
+:::
+
+::: {.notes}
+**Mechanism.** Autoregressive decoder conditioned on the diffraction pattern, emitting a tokenised structure (composition / lattice / sites). This is the generative-transformer slide of the unit — contrast with the discriminative ViTs around it.
+
+**What the paper did.** Data: XRD patterns paired with known structures; task: conditional structure generation; baseline: classical search / refinement seeding. What it bought: amortised candidate generation that can seed or replace iterative solution.
+
+**Cross-reference.** ML-PC u08 (inverse problems) — pattern→structure is an inverse problem; this is its transformer instantiation. Pre-empt: "is the generated structure physically valid?" — generation gives candidates; physical validation/refinement still follows.
+
+**Flag for verification.** doi:10.1021/acs.jpclett.4c03137 — confirm J. Phys. Chem. Lett. 2024 and Choudhary authorship.
+:::
+
+## 24. ViT / multimodal transformers for XRD phase ID [@vit_xrd2024]
+
+::: {.fragment}
+- **Vision Transformers for XRD analysis (HAL preprint, 2024):** treat the 1-D (or 2-D) diffraction pattern as a ViT input for **phase identification / classification**.
+- **Multimodal variant:** fuse the pattern with **elemental priors** (known chemistry) as extra tokens — chemistry constrains the phase search.
+:::
+
+::: {.fragment}
+**What it bought over a 1-D CNN:**
+
+- Global peak-relationship modelling: phase ID depends on the *set* of peak positions and their ratios — a long-range relationship across the 2θ axis.
+- Easy multimodal fusion: elemental composition enters as additional tokens, not a bolted-on branch.
+:::
+
+::: {.callout-note .fragment}
+Phase ID is a *relational* task across the whole pattern — exactly the receptive-field argument from the receptive-field slide, on a 1-D axis.
+:::
+
+::: {.notes}
+**Mechanism + materials hook.** Phase identification is not local: it is the joint pattern of peak positions/intensities. A transformer mixes all peaks in one layer; multimodal tokenisation lets elemental priors (which dramatically prune the phase space) enter as tokens.
+
+**What the paper did.** Pattern (± elemental prior) → phase label; baseline 1-D CNN. The transformer's gain is relational modelling + clean multimodal fusion.
+
+**Cross-reference.** Mirrors the receptive-field slide's receptive-field argument on the 2θ axis; ML-PC u09 for spectral modelling; the §C synthesis slide ties diffraction reasoning together.
+
+**Flag for verification.** **HAL hal-04696156 — preprint; title/authors UNVERIFIED, professor should confirm.**
+:::
+
+## 25. Transformers for spectra — EELS / XAS (token the energy axis)
+
+::: {.fragment}
+- **Spectral transformer:** token the **energy-loss / absorption axis** (fixed-width windows or peak-centred tokens), encode with absolute physical-axis positions (§A), classify or regress.
+- Tasks: edge identification, oxidation-state / coordination regression, fine-structure (ELNES/XANES) interpretation.
+:::
+
+::: {.fragment}
+**Why a transformer over a 1-D CNN:**
+
+- Fine-structure correlations span **hundreds of channels** — pre/post-edge relationships are long-range on the energy axis.
+- Self-attention couples the edge onset and the EXAFS oscillations in one layer.
+:::
+
+::: {.callout-warning .fragment}
+The energy axis is **physical**: 532 eV is the O-K edge whether or not it is token #17. Do not shuffle tokens; use absolute-axis positional encoding.
+:::
+
+::: {.notes}
+**Mechanism + materials hook.** Pre-edge, white-line, EXAFS oscillations are long-range relationships on a *physical* axis — the §A energy-axis positional-encoding case, applied.
+
+**Cross-reference.** Direct callback to **ML-PC u09 MAE-on-spectra**: same modality, MAE is the pretext, this is the supervised head. State explicitly that the u09 MAE encoder *is* a spectral transformer — we have now opened that box (callback to the §A recap slide).
+
+**Pacing.** Conceptual slide (no single headline paper) — keep moving; the citable spectral work is in u09.
+:::
+
+## 26. Multimodal & cross-modal transformers for characterization
+
+::: {.fragment}
+- Real materials problems rarely give you *one* modality. Attention is a natural **fusion** mechanism: concatenate token sequences from different modalities and let cross-attention align them.
+- **Examples:** image + diffraction (HRTEM + FFT/CBED), spectrum + composition prior (the XRD phase-ID slide XRD + elements), micrograph + process metadata (AM frame + machine parameters).
+:::
+
+::: {.fragment}
+**Why attention beats a late-fusion concat:**
+
+- Tokens from each modality keep their own positional structure (§A); cross-attention learns *which* tokens of modality B explain modality A.
+- Missing-modality robustness: a transformer trained with modality dropout degrades gracefully when one stream is absent at deployment.
+:::
+
+::: {.callout-warning .fragment}
+Multimodal fusion multiplies $L$ — apply the the volumetric cross-attention slide lesson: cross-attention with separate $K,V$ per modality, not one giant self-attention over the concatenation.
+:::
+
+> **[FIGURE: two token streams (micrograph patches; spectrum windows) feeding a cross-attention block, with a fused [CLS] readout]**
+
+::: {.notes}
+**Mechanism + materials hook.** This generalises the the XRD phase-ID slide multimodal XRD example into the unit's fusion principle: attention is the cheapest correct way to combine heterogeneous materials signals because each modality retains its own positional encoding.
+
+**War story.** Late-fusion (train two CNNs, average logits) throws away cross-modal alignment; the gain of attention fusion is precisely learning *which* spectral channel explains *which* image region. Modality-dropout training is the practical robustness trick.
+
+**Cross-reference.** The μSAM slide (XRD + elemental priors), the volumetric cross-attention slide (cost control), §A (per-modality positional structure), ML-PC u06 (multimodal transfer).
+:::
+
+## 27. Volumetric & serial-section cross-attention (tomography / stacks)
+
+::: {.fragment}
+- **Setting:** serial-section EM, FIB-SEM stacks, electron tomography — the signal at slice $z$ depends on slices $z\pm k$ (continuity of structure through the volume).
+- **Architecture:** per-slice ViT encoder → **cross-attention over the slice axis** ($Q$ from slice $z$; $K,V$ from neighbours $z-k..z+k$).
+:::
+
+::: {.fragment}
+**Why cross-attention, not concatenation:**
+
+- Concatenating slices along the token axis multiplies $L$ by the stack depth → $L^2$ blows up by depth².
+- Cross-attention with separate $K,V$ keeps cost **linear** in stack depth.
+:::
+
+::: {.callout-warning .fragment}
+This is the reframed "long-stack" slide: the same trick that handles LPBF layer history (§D) handles tomography slice continuity. One mechanism, two materials problems.
+:::
+
+::: {.notes}
+**Mechanism.** Cross-attention over the depth axis is the original 2017 encoder–decoder construct (MFML W10 — reference, do not re-derive). The cost argument is the load-bearing content: separate $K,V$ keeps it linear in depth where concatenation is quadratic.
+
+**Materials hook.** Reframes the old generic "LPBF long-stack" slide for *tomography*, making it characterization-side; §D reuses the identical mechanism for processing-side layer history. Calling out the shared mechanism is the pedagogical point.
+
+**Cross-reference.** Forward to §D AM monitoring; MFML W10 for cross-attention derivation.
+:::
+
+## 28. Why transformers beat CNNs for diffraction — the synthesis slide
+
+::: {.fragment}
+- A 2-D diffraction pattern's information is **geometrically long-range by construction**:
+  - **Friedel pairs** $I(\mathbf{k}) \leftrightarrow I(-\mathbf{k})$ are exactly *antipodal* across the central beam.
+  - Lattice vectors are read from disc *pairs* on opposite sides of the pattern.
+- A CNN needs $\sim L/2$ stacked 3×3 layers to couple antipodal discs; a transformer couples them **in layer 1**.
+:::
+
+::: {.fragment}
+- This is **not** an aesthetic preference — it is the receptive-field argument of the receptive-field slide, instantiated on the specific geometry of diffraction.
+- It is also why the §B crystal case is analogous: long-range periodic structure ↔ long-range reciprocal-space structure.
+:::
+
+::: {.callout-note .fragment}
+Use a transformer on diffraction **when the task depends on antipodal/long-range disc relationships** (orientation, strain, phase). For a purely local task (single-disc intensity), a CNN is fine and cheaper.
+:::
+
+::: {.notes}
+**The keystone slide of §C.** Friedel symmetry makes "long-range" *exact and geometric*, not heuristic — antipodal pixels are physically coupled. This is the rigorous version of the receptive-field slide's hand-wave.
+
+**Anti-pattern.** Do not reach for a transformer on a *local* diffraction task (e.g. integrate one disc) — a CNN is cheaper and just as good. The transformer earns its cost only when the relationship is genuinely long-range.
+
+**Cross-reference.** The receptive-field slide (receptive field), §B (analogous long-range periodic structure), next slide (microscopy anti-patterns).
+:::
+
+## 29. Microscopy-transformer anti-patterns
+
+::: {.fragment}
+- **Data hunger.** ViT from scratch on 500 micrographs → catastrophic overfit; a ResNet18 beats it. Fix: SSL/MAE pretraining (the EM foundation-model slide) or a pretrained backbone.
+- **Positional embeddings on diffraction.** Forgetting (or shuffling) them deletes the disc geometry — the §A bug, EM edition. Diagnostic: ablate; accuracy must crash.
+- **Dose / SNR mismatch.** Train on high-dose, deploy on low-dose (beam-sensitive specimens) → silent failure. Fix: dose-augment, or include low-dose data.
+- **Patch boundaries through discs.** (the tokenisation slide) — discs straddling patch seams cap accuracy.
+:::
+
+::: {.callout-warning .fragment}
+The dose anti-pattern is the sneaky one: the model is *confident and wrong* on the low-dose beam-sensitive sample you actually care about. Always validate at deployment dose.
+:::
+
+::: {.notes}
+**Anti-pattern + diagnostic, all materials-specific.** Each is a real lab failure: (1) from-scratch ViT on a small SEM set; (2) shuffled tokens as "augmentation"; (3) high-dose-trained model deployed on a dose-limited MOF/biological/battery sample; (4) the the tokenisation slide patch-seam trap.
+
+**War story.** Dose mismatch: a strain-mapping ViT trained on robust inorganic data, deployed on a dose-sensitive battery cathode at 1/10 the dose — confidently wrong, no error flag. UQ (ML-PC u11) is the safety net.
+
+**Cross-reference.** §A positional encodings, the tokenisation slide tokenisation, ML-PC u11 (UQ) as the deployment-safety follow-up.
+:::
+
+## 30. Attention maps as a diagnostic — what did the model look at?
+
+::: {.fragment}
+- Unlike a CNN, a transformer exposes **attention weights**: for a prediction you can ask *which patches/discs/channels the `[CLS]` token attended to*.
+- **Attention rollout** composes the per-layer attention into a single saliency map over the input.
+:::
+
+::: {.fragment}
+**Why this matters in a materials lab:**
+
+- A correct orientation-mapping ViT should attend to the **Bragg discs**, not the vacuum or the beam stop. If it attends to detector artefacts, you have a data leak, not a model.
+- It is a *physics sanity check*, not a full explanation — attention ≠ causal attribution (a known caveat).
+:::
+
+::: {.callout-warning .fragment}
+Use attention maps to *catch shortcuts* (the model classifying phase from a detector hot-pixel), not to claim mechanistic understanding. This is exactly when to keep `nn.MultiheadAttention` (the practical-recipe (SDPA) slide) — you need the weights.
+:::
+
+> **[FIGURE: a CBED pattern with an attention-rollout heatmap overlaid — high weight on Bragg discs, low on vacuum; alongside a failure case attending to a detector seam]**
+
+::: {.notes}
+**Mechanism + war story.** Attention rollout is the practical interpretability tool for materials ViTs. The canonical save: a "great accuracy" orientation model that was actually reading a detector defect correlated with sample tilt — the attention map made the shortcut obvious; held-out accuracy on a clean detector then collapsed.
+
+**Anti-pattern + diagnostic.** Caveat the students: attention is *not* a faithful explanation (well-documented). Use it as a shortcut-detector, not a proof.
+
+**Cross-reference.** The §C recap slide (`nn.MultiheadAttention` is the right tool when you need weights), the microscopy anti-patterns slide (data-leak anti-patterns), ML-PC u11 (UQ as the complementary safety net).
+:::
+
+## 31. Transformers for atomic-resolution image restoration & atom finding
+
+::: {.fragment}
+- **Setting:** low-dose / beam-sensitive HRTEM/STEM — noisy, drift-distorted images where atoms must still be localised.
+- **Transformer use:** denoising/restoration and atom-column detection with attention over the whole field (atom columns are a *periodic, long-range* arrangement — the §C receptive-field argument on real-space images).
+:::
+
+::: {.fragment}
+**Why attention over a denoising CNN:**
+
+- Lattice periodicity is a global prior: a transformer can enforce "atoms lie on a consistent lattice" across the whole image in one layer; a CNN only locally.
+- Pairs naturally with SSL pretraining (the EM foundation-model slide) — unlabelled noisy stacks are abundant.
+:::
+
+::: {.callout-note .fragment}
+Real-space periodicity is long-range too — the diffraction argument (the "why transformers beat CNNs for diffraction" slide) has a direct-space twin.
+:::
+
+::: {.notes}
+**Mechanism + materials hook.** Closes the loop with the "why transformers beat CNNs for diffraction" slide: periodicity is long-range whether you are in reciprocal space (diffraction) or real space (atomic-resolution images). The global lattice prior is exactly what a transformer's one-layer mixing supplies and a denoising CNN cannot.
+
+**Anti-pattern + diagnostic.** Dose mismatch (the microscopy anti-patterns slide) bites hardest here — a restoration model trained at high dose hallucinates atoms at low dose. Diagnostic: validate at deployment dose and check atom counts against an independent measurement.
+
+**Cross-reference.** The XRD phase-ID slide (reciprocal-space twin), the EM foundation-model slide (SSL pretraining), the microscopy anti-patterns slide (dose anti-pattern), ML-PC u09 (denoising/AE lineage).
+:::
+
+## 32. What to remember from §C
+
+::: {.fragment}
+- **Diffraction is geometrically long-range** (Friedel/antipodal) — the cleanest case for transformers over CNNs.
+- Real case studies: **4D-STEM ViT** (rapid microstructure inference), **μSAM** (promptable segmentation, annotation speed-up), **EM foundation models** (SSL beats data hunger), **DiffractGPT** (generative structure solution), **ViT XRD phase ID** (relational + multimodal).
+- Spectra and tomography reuse the **same** tokenisation/cross-attention discipline.
+- The recurring anti-pattern is **data hunger** — pretraining is the materials answer.
+:::
+
+::: {.notes}
+**Pacing.** Recap, ~60 s. The five named case studies are the exam-relevant content of §C.
+
+**Forward link.** §D changes from characterization to *processing* — same transformer mechanics, now on AM monitoring and the materials literature.
+:::
+
+## {background-color="#1a1a2e"}
+
+### §D · Transformers for processing & materials knowledge {style="text-align: center; margin-top: 15%;"}
+
+
+
+::: {.notes}
+**What this part delivers.** The processing side: AM print-quality recognition, in-situ monitoring, mining the literature with a domain language model, and transformers as autonomous-experiment controllers.
+
+**The one idea to leave with.** "Processing data is sequential and history-dependent (layer-by-layer); the literature is text. Transformers handle both — but deployment drift and label scarcity bite harder here than anywhere."
+
+**Pacing.** Seven slides, ~11 minutes. The MatSciBERT slide is the conceptual pivot (knowledge, not pixels) — give it room.
+
+**Cross-reference.** ML-PC u07 (time-series, Mamba) owns sequential process modelling; we reference it. The cancelled W7 supplementary material on melt-pool sequences is folded in here.
+:::
+
+## 33. ViT for AM print-quality recognition [@fff_vit2025]
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **Fused-filament fabrication (FFF/FDM), npj Advanced Manufacturing 2025:** a **transformer-based** model classifies **print quality** from in-situ images of the deposited material.
+- Detects under-/over-extrusion, stringing, layer defects — the things that decide whether a print is scrap.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**What it bought over a CNN:**
+
+- Global context over the printed region — defects are spatially extended and relational.
+- Reported strong classification accuracy for print-quality states, suitable for closed-loop intervention.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+This is the polymer-AM counterpart to the metal-AM monitoring on the next slide — same idea, accessible (desktop-printer) data.
+:::
+
+::: {.notes}
+**What the paper did.** Data: in-situ FFF print images; task: print-quality classification (defect states); baseline: CNN classifiers. What the transformer bought: global/relational context over extended defects and accuracy adequate for closed-loop quality control.
+
+**Materials hook.** FFF is the *accessible* AM case — students can reproduce this on a desktop printer; metal LPBF (next slide) is the high-stakes industrial cousin.
+
+**Flag for verification.** doi:10.1038/s44334-025-00025-0, npj Advanced Manufacturing 2025 — confirm title/authors.
+
+**Cross-reference.** ML-PC u07 (time-series) for the sequential-monitoring framing of the next slide.
+:::
+
+## 34. In-situ AM process monitoring — the umbrella [@ng2024mlam]
+
+::: {.fragment}
+- **Ng et al., Advanced Materials 2024** — a broad review of ML across AM materials & processes; situates attention/transformers among in-situ monitoring methods (optical, thermal, acoustic).
+- The review's framing: AM is a **multi-sensor, sequential, history-dependent** process — exactly the inductive bias attention supplies.
+:::
+
+::: {.fragment}
+**Where transformers fit in the AM pipeline:**
+
+- *Perception* — per-frame defect / spatter / plume classification (the FFF print-quality slide polymer; metal LPBF analogous).
+- *Sequence* — layer-to-layer thermal-history modelling (next slide).
+- *Multimodal* — fuse optical + thermal + acoustic streams (slide "multimodal", §C).
+:::
+
+::: {.callout-note .fragment}
+The umbrella message: AM monitoring is not one task. Use the §C/§D toolkit per sub-task; the review is the map.
+:::
+
+::: {.notes}
+**What the paper is.** A review, not a single method — use it as the umbrella citation that legitimises the whole §D framing. Its value in lecture: it shows the field has converged on "AM is sequential + multi-sensor", which is the argument for attention here.
+
+**Materials hook.** Metal LPBF is the high-stakes cousin of the polymer FFF the FFF print-quality slide — same perception idea, certification-grade consequences.
+
+**Cross-reference.** The volumetric cross-attention slide (FFF perception), next slide (melt-pool sequence), §C multimodal slide, ML-PC u07 (sequence models).
+
+**Flag for verification.** doi:10.1002/adma.202310006, Advanced Materials 2024 — confirm authors/title.
+:::
+
+## 35. Melt-pool sequence modelling — the layer-history case
+
+::: {.fragment}
+- **The physics:** melt-pool morphology / angle at layer $\ell$ depends on the **thermal history** of layers $\ell-1, \ell-2, \ldots, \ell-k$ — an overhang two layers below changes local cooling and thus porosity.
+- **The model:** per-layer (or per-frame) encoder → **cross-attention over the layer/time axis** (reuse the volumetric cross-attention slide's mechanism on the processing side).
+:::
+
+::: {.fragment}
+**What attention buys over a per-layer CNN:**
+
+- A per-layer CNN is *memoryless* — it cannot represent "this defect was caused by an overhang 3 layers ago".
+- Layer-axis attention makes the hidden thermal-history variable *visible* to the model; predicts porosity / lack-of-fusion before it is buried.
+:::
+
+::: {.callout-warning .fragment}
+Whole-build sequences are *long* ($L\sim10^5$). This is the genuine long-tail where **Mamba/SSM** (the scaling-alternatives (Mamba/SSM) slide, ML-PC u07) competes with attention — do not force dense attention over an entire build.
+:::
+
+::: {.notes}
+**Mechanism + materials hook.** This is the dedicated case slide promised by the outline (it absorbs the cancelled W7 supplementary on melt-pool-angle sequences). The killer argument: the per-layer CNN is *memoryless* and thermal history is *the* hidden variable in LPBF — attention is the inductive bias that exposes it.
+
+**Anti-pattern + diagnostic.** Truncating a 5000-layer build to a 32-layer window discards long-range thermal history. Diagnostic: if porosity correlates with features >k layers back, your window is too short — switch to SSM.
+
+**Cross-reference.** The DiffractGPT slide (cross-attention cost), the scaling-alternatives (Mamba/SSM) slide + ML-PC u07 (long-build → Mamba/SSM), ML-PC u11 (a porosity call without a confidence band is not a deliverable).
+:::
+
+## 36. MatSciBERT — mining the materials literature into knowledge [@gupta2022matscibert]
+
+::: {.columns}
+::: {.column width="55%"}
+::: {.fragment}
+- **MatSciBERT (npj Computational Materials 2022):** a **BERT** language model **domain-pretrained on the materials-science literature**.
+- Tasks: **named-entity recognition** (materials, properties, processes), **relation extraction**, abstract classification — turning prose into structured, queryable knowledge.
+:::
+:::
+
+::: {.column width="45%"}
+::: {.fragment}
+**What it bought over generic BERT:**
+
+- Materials-domain pretraining → substantially better NER/RE on materials text than off-the-shelf BERT/SciBERT.
+- Enables literature-scale knowledge extraction (process→property records) that feeds databases and screening.
+:::
+:::
+:::
+
+::: {.callout-note .fragment}
+The transformer here processes **knowledge, not pixels** — the materials *literature* is itself a dataset, and a domain LM mines it.
+:::
+
+::: {.notes}
+**Mechanism + materials hook.** Pivot slide: transformers are not only for signals/images — the corpus of materials papers is data, and a domain-pretrained encoder (continued pretraining on materials text) extracts structured process/property knowledge at literature scale.
+
+**What the paper did.** Continued BERT pretraining on a large materials-science corpus; evaluated on materials NER / relation extraction / classification; beat generic BERT/SciBERT. The headline is domain-pretraining gain on extraction tasks.
+
+**Cross-reference.** Sets up the next slide (LLM agents as autonomous-experiment controllers) and ML-PC u10 automation / u13 reflection. Pre-empt: "isn't this just NLP?" — yes, but the *pretraining corpus* is what makes it materials ML.
+
+**Flag for verification.** doi:10.1038/s41524-022-00784-w, npj Comput. Mater. 8:102 (2022) — solid; confirm volume/page.
+:::
+
+## 37. LLM / transformer agents as controllers in autonomous experimentation
+
+::: {.fragment}
+- **The 2024–2026 trend:** LLM/transformer **agents** plan, propose, and control experiments in self-driving labs — read literature (the MatSciBERT slide), choose the next synthesis, call instruments, interpret results, iterate.
+- The transformer is no longer a perception module; it is the **decision/orchestration layer**.
+:::
+
+::: {.fragment}
+**Conceptual placement (not a recipe):**
+
+- Perception (ViT on micrographs/diffraction) + knowledge (MatSciBERT-style) + planning (LLM agent) = a closed materials-discovery loop.
+- Honest caveat: reliability, hallucination, and tool-use safety are *open* problems — this is a frontier, not a solved deployment.
+:::
+
+::: {.callout-warning .fragment}
+Conceptual slide. Agentic autonomous labs are promising and **not yet robust** — present as direction of travel, with the open-problem caveat explicit.
+:::
+
+::: {.notes}
+**Materials hook.** This is the integrative vision of the unit: §C perception + §D knowledge + agentic planning = self-driving lab. Keep it conceptual — no architecture, no numbers — and be honest that this is a frontier.
+
+**Cross-reference.** ML-PC u10 (automation), u13 (reflection / outlook) own the autonomous-experimentation discussion; this is a transformer-centric pointer into it. ML-PC u11 (UQ) is the missing safety ingredient (an agent acting on uncalibrated confidence is dangerous).
+
+**Pacing.** ~2 minutes, forward-looking; do not overclaim.
+:::
+
+## 38. Processing anti-patterns
+
+::: {.fragment}
+- **Deployment drift.** Train on machine A / powder lot 1 / season; deploy on machine B / lot 2. The melt-pool statistics moved; the model did not. Monitor input distribution; retrain on drift.
+- **Label scarcity.** Defect labels in AM are *expensive* (CT-scan ground truth). A from-scratch transformer starves. Fix: pretrain on unlabelled in-situ video; few-label finetune.
+- **Sequence length denial.** Truncating a whole build to 32 layers loses long-range thermal history. If you need the full build, use SSM/Mamba (the scaling-alternatives (Mamba/SSM) slide).
+- **No uncertainty on a quality call.** A scrap/keep decision without a confidence band is not a deliverable.
+:::
+
+::: {.callout-warning .fragment}
+Diagnostic for drift: track a held-out *current-production* validation stream, not just the original test set. A model that was accurate last quarter can be silently wrong this quarter.
+:::
+
+::: {.notes}
+**Anti-pattern + diagnostic.** Processing is where drift bites hardest — powder lots, machine recalibration, seasonal humidity all move the input distribution. The diagnostic (a live current-production validation stream) is the deployable safeguard.
+
+**Cross-reference.** ML-PC u11 (UQ) for the confidence-band requirement; ML-PC u07 for sequence-length handling; the microscopy anti-patterns slide for the characterization-side analogue (dose drift).
+:::
+
+## {background-color="#1a1a2e"}
+
+### §E · Practice, decision guide & wrap {style="text-align: center; margin-top: 15%;"}
+
+
+
+::: {.notes}
+**What this part delivers.** From papers back to the keyboard: the practical recipe, the honest "when NOT to use a transformer" slide, a per-modality decision guide, the exercise, and the wrap.
+
+**The one idea to leave with.** "Default to `F.scaled_dot_product_attention`; default to *pretrain→finetune*; and know the modalities where a CNN or GNN is still the right answer."
+
+**Pacing.** Ten slides, ~16 minutes. The decision-guide table and the data-efficiency slide are the keepers; the recipe slides are copy-paste reference.
+:::
+
+## 39. Practical recipe — `nn.MultiheadAttention` vs `F.scaled_dot_product_attention`
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -294,7 +1223,7 @@ y, attn_w = mha(q, k, v)
 
 - Returns attention weights for free.
 - **Materialises** the $L\times L$ matrix on older PyTorch.
-- Use only when you actually need the weights (e.g. for an attention-rollout visualisation).
+- Use only when you actually need the weights (e.g. attention-rollout visualisation).
 :::
 
 ::: {.column width="50%"}
@@ -315,8 +1244,20 @@ y = F.scaled_dot_product_attention(
 :::
 :::
 
+::: {.callout-note .fragment}
+`nn.MultiheadAttention` is **not deprecated** — it is the wrong *default*. Use it only when you need the weights.
+:::
+
+::: {.notes}
+**Materials hook.** This is the slide students copy-paste. The one nuance: keep `nn.MultiheadAttention` in your toolbox specifically for attention-rollout visualisations (interpreting which Bragg discs the model attended to) — there the weights are the deliverable.
+
+**Cross-reference.** The Flash-Attention slide (Pascal caveat) for what "2–10×" really means on a 1080Ti; the bench-it slide for the bench numbers.
+:::
+
+## 40. Bench it — wall-clock & memory on a 1080Ti
+
 ::: {.fragment}
-**Wall-clock comparison — ViT-Tiny forward + backward, batch 16, fp16, 1080Ti (indicative):**
+**ViT-Tiny forward + backward, batch 16, fp16, 1080Ti (indicative):**
 
 | seq_len $L$ | naive MHA | SDPA (mem-eff) | speedup |
 |---:|---:|---:|---:|
@@ -326,56 +1267,92 @@ y = F.scaled_dot_product_attention(
 :::
 
 ::: {.callout-note .fragment}
-Numbers are 1080Ti / fp16 / ViT-Tiny; trends hold, absolute values depend on driver and PyTorch version. Re-measure on your hardware before quoting.
+Numbers are 1080Ti / fp16 / ViT-Tiny; trends hold, absolute values depend on driver and PyTorch version. **Re-measure on your hardware before quoting.**
 :::
 
 ::: {.notes}
-Materials hook: this is the slide students will copy-paste from. Stress: `nn.MultiheadAttention` is *not deprecated*, it is just the wrong default — use it only when you need the attention weights. 1080Ti budget: the table is the punchline — at L=1024 naive MHA OOMs at batch 16, SDPA runs comfortably. Re-measure: 1080Ti drivers and PyTorch versions matter; have students run the bench themselves on lab hardware. MFML W10 reference: complexity is derived there; this slide is the empirical confirmation.
+**1080Ti budget.** The punchline is the $L{=}1024$ row: naive MHA OOMs at batch 16, SDPA runs. That is "infinite speedup in practice" — the difference between training and not.
+
+**War story.** Students who quote the "1.6×" as if it were universal get burned in a different PyTorch version. The slide says re-measure; mean it — make them run the §E exercise bench on lab hardware.
+
+**Cross-reference.** The Flash-Attention slide (why it is 1.6× not 5× on Pascal); MFML W10 (the asymptotics this confirms empirically).
 :::
 
-# 10. Anti-patterns
-
-## What to *not* do
+## 41. Data-efficiency reality — when NOT to use a transformer (the honest slide)
 
 ::: {.fragment}
-**(a) Naive MHA on long sequences.**
-
-- Materialising the $L\times L$ matrix at $L > 512$ on a 1080Ti will OOM at any non-trivial batch.
-- Fix: `F.scaled_dot_product_attention` everywhere. No reason not to in 2026.
-:::
-
-::: {.fragment}
-**(b) ViT on a small dataset, trained from scratch.**
-
-- ViTs have weak inductive bias compared to CNNs. With ~$10^3$ labelled micrographs and no pretraining, they overfit hard and a ResNet18 will beat them.
-- Fix: pretrain with **MAE** (Unit 9) on unlabelled data, *then* fine-tune. Or start from a publicly-pretrained backbone.
+- ViTs have **weak inductive bias** vs CNNs. With ~$10^3$ labels and **no pretraining**, a ResNet18 beats a from-scratch ViT — every time.
+- A **tuned GNN** beats a crystal transformer on a few-thousand-structure dataset (the §B synthesis slide).
+- For a **local** task (single Bragg disc, one peak), a CNN/1-D CNN is cheaper and just as accurate (the "why transformers beat CNNs for diffraction" slide).
 :::
 
 ::: {.fragment}
-**(c) Forgetting positional embeddings on materials data.**
-
-- A diffraction pattern is **not permutation-invariant**: token at $(0, 0)$ is the central beam, token at $(7, 7)$ is a high-$k$ Bragg disc. Their positions encode physics.
-- Fix: always add (learned or 2-D sinusoidal / RoPE) positional embeddings. Verify by ablating — accuracy should crash without them.
+**Use a transformer when:** the relationship is genuinely long-range/relational **and** you have either lots of labels **or** a pretraining corpus (labelled or unlabelled).
 :::
 
 ::: {.callout-warning .fragment}
-A ViT without positional embeddings is a deep set. On diffraction data, a deep set is wrong by construction.
+"We used a transformer" is not a result. The result is *the transformer beat a tuned CNN/GNN baseline on a fair split* — and on small materials data that often does **not** happen without pretraining.
 :::
 
 ::: {.notes}
-Materials hook: each anti-pattern maps to a real lab mistake I have seen. (a) someone runs the textbook MHA on 2048-token EELS edges; OOM. (b) someone retrains a ViT-Base from scratch on 800 labelled SEM images; underperforms a ResNet18. (c) someone permutes tokens for data augmentation; deletes the physics. 1080Ti budget: (a) is partly a budget anti-pattern — at A100 scale you might get away with it, but the wasted memory still costs throughput. MFML W10 reference: deep-set vs positional-aware distinction is formalised there.
+**The honest slide of the unit.** Every prior part argued *for* transformers; this one draws the boundary. The recurring lab failure is the from-scratch ViT on 500 images that loses to ResNet18 — name it explicitly.
+
+**Cross-reference.** The §B synthesis slide (GNN vs crystal transformer), the §C "why transformers beat CNNs for diffraction" slide (local vs long-range), the EM foundation-model and pretrain→finetune recipe slides (pretraining is the escape hatch), ML-PC u06 (transfer) and u09 (SSL pretraining).
+
+**Pre-empt the question.** "So when *should* I use one?" — the green box: long-range/relational AND (data OR pretraining). That is the decision rule.
 :::
 
-# 11. Exercise preview
-
-## Tiny ViT on 4D-STEM patches — bench it
+## 42. The pretrain → finetune recipe for materials
 
 ::: {.fragment}
-**Task.** Build a ViT-Tiny that ingests 4D-STEM diffraction patches ($128 \times 128$, patch 16) and predicts a per-scan-position label (e.g. crystalline / amorphous, or one of $K$ orientations).
+1. **Collect the unlabelled mountain** you already have (4D-STEM stacks, micrograph archives, in-situ AM video, spectra).
+2. **Self-supervised pretrain** a ViT — MAE (ML-PC u09) or DINOv2-style (the EM foundation-model slide) — on it. No labels needed.
+3. **Freeze or lightly finetune** the backbone; train a small head on your 50–500 labels.
+4. **Validate honestly** — group split (by scan/build/specimen), fair tuned baseline, calibrated uncertainty (ML-PC u11).
+:::
+
+::: {.callout-note .fragment}
+This four-step recipe is the materials answer to "transformers are data-hungry". The unlabelled data is free; the labels are the bottleneck — so pretrain on the former, spend the latter sparingly.
+:::
+
+::: {.notes}
+**Mechanism + materials hook.** This operationalises slides 19/34. The key materials twist is step 4's *group split*: random splitting leaks (positions within a scan, layers within a build are correlated) and silently inflates accuracy.
+
+**Cross-reference.** ML-PC u09 (MAE), the EM foundation-model slide (EM foundation model), ML-PC u06 (transfer), ML-PC u11 (calibration). This is the recipe the §E exercise instantiates.
+:::
+
+## 43. Decision guide — transformer vs CNN vs GNN by modality
+
+::: {.fragment}
+| Modality | Default | Use a transformer when | Note |
+|---|---|---|---|
+| **Micrograph (SEM/TEM)** | CNN (small data) | Long-range/relational task + pretraining available | μSAM / SSL backbone |
+| **Diffraction (4D-STEM/XRD)** | **Transformer** | Antipodal/relational (orientation, strain, phase ID) | CNN for single-disc local tasks |
+| **Spectrum (EELS/XAS/XRD-1D)** | 1-D CNN (small) | Long-range fine-structure + pretraining | token the energy axis |
+| **Crystal graph** | GNN (small data) | Large data / long-range property | Matformer / Crystalformer / ComFormer |
+| **Process time-series** | SSM/Mamba or RNN | Moderate $L$, cross-layer history | full build → SSM (the scaling-alternatives (Mamba/SSM) slide) |
+:::
+
+::: {.callout-note .fragment}
+There is no universal winner. The right model is a function of **modality × data size × range of the relevant relationship**.
+:::
+
+::: {.notes}
+**The keystone reference slide of §E.** This table is what students should pin above their desk. It encodes the entire unit's judgement: diffraction is the one modality where a transformer is the *default*; everywhere else it is conditional on data/pretraining and on the relationship being long-range.
+
+**Cross-reference.** Rows map to: the "why transformers beat CNNs for diffraction" slide (diffraction), §B (crystal), the spectral-transformer slide (spectra), §D/u07 (process time-series). Use it as the recap scaffold.
+
+**Pacing.** Let students photograph it. ~2 minutes.
+:::
+
+## 44. Exercise preview — tiny ViT on 4D-STEM patches, bench it
+
+::: {.fragment}
+**Task.** A ViT-Tiny ingesting 4D-STEM diffraction patches ($128\times128$, patch 16) predicting a per-scan-position label (crystalline/amorphous, or one of $K$ orientations).
 :::
 
 ::: {.fragment}
-**Baseline.** A small ResNet (ResNet8 or ResNet18) on the same input and label.
+**Baseline.** A small ResNet (ResNet8/18) on the same input and label.
 :::
 
 ::: {.fragment}
@@ -383,44 +1360,108 @@ Materials hook: each anti-pattern maps to a real lab mistake I have seen. (a) so
 
 - ViT-Tiny with `nn.MultiheadAttention`.
 - ViT-Tiny with `F.scaled_dot_product_attention`.
-- ViT-Tiny **without** positional embeddings (sanity-check anti-pattern (c)).
+- ViT-Tiny **without** positional embeddings (sanity-check the §A bug).
 - ResNet baseline.
 :::
 
 ::: {.fragment}
-**Report:**
-
-- Validation accuracy.
-- Wall-clock per epoch on 1080Ti.
-- Peak VRAM (`torch.cuda.max_memory_allocated`).
-- One-paragraph discussion: when does ViT beat ResNet on your data?
+**Report:** validation accuracy · wall-clock/epoch on 1080Ti · peak VRAM (`torch.cuda.max_memory_allocated`) · one paragraph: when does ViT beat ResNet on *your* data?
 :::
 
 ::: {.callout-note .fragment}
-If you do not have 4D-STEM data, the exercise notebook ships with a small synthetic CBED generator — enough to make the architectural comparison meaningful.
+No 4D-STEM data? The notebook ships a small synthetic CBED generator — enough to make the architectural comparison meaningful.
 :::
 
 ::: {.notes}
-Materials hook: this is a real lab exercise — students who do this *once* will reach for ViT + SDPA reflexively after. 1080Ti budget: the whole exercise must finish in <1 h wall-clock on a 1080Ti; ViT-Tiny + L=64 is calibrated for that. MFML W10 reference: students who want to understand *why* SDPA helps should read the complexity section of MFML W10 alongside doing the bench.
+**Materials hook.** Students who do this once reach for ViT+SDPA reflexively after. The "no positional embeddings" variant is the most instructive — accuracy should *collapse* (the §A / the microscopy anti-patterns slide diagnostic, run for real).
+
+**1080Ti budget.** Calibrated to finish in <1 h on a 1080Ti (ViT-Tiny, $L{=}64$). It instantiates the the pretrain→finetune recipe slide recipe at toy scale and produces the the bench-it slide numbers on the student's own hardware.
+
+**Cross-reference.** §A positional encodings, the bench-it slide bench, the pretrain→finetune recipe slide recipe; MFML W10 for *why* SDPA helps.
 :::
 
-# 12. Recap & References
-
-## Recap — what to take away
+## 45. Reporting checklist for a materials-transformer paper
 
 ::: {.fragment}
-1. **Attention exists to handle long-range correlations** — and materials data (diffraction, EELS, LPBF layer stacks) is full of them.
-2. **ViT is the default vision transformer**: patchify, embed, `[CLS]`, positional emb., $N$ encoder blocks. Needs pretraining on small datasets.
-3. **Flash Attention / SDPA is non-negotiable** — same math, $\mathcal{O}(L)$ memory, 2–10× speedup. Use `F.scaled_dot_product_attention`.
-4. **Use the right tool**: vanilla ViT covers most materials tasks at lab scale; MoE / Mamba are for the long tail. Theory in **MFML W10**; today was *using* it.
+Before you claim a transformer result on materials data, the slide-by-slide checklist of this unit:
 :::
 
-## References
+::: {.fragment}
+- ☐ **Tokenisation stated** (what is one token?) and **positional encoding justified** for the physical axis (§A).
+- ☐ **Group split** (by scan / build / specimen), not random — no leakage (§C (the 4D-STEM ViT case-study slide), §E (the pretrain→finetune recipe slide)).
+- ☐ **Tuned baseline** of the right family (CNN for images, *tuned* GNN for crystals), not a default (§B (the crystal anti-patterns slide), §E (the data-efficiency slide)).
+- ☐ **Pretraining disclosed** (from scratch? MAE? public backbone?) — it changes everything (§C (the EM foundation-model slide)).
+- ☐ **Standard benchmark + error bars** (Matbench split / held-out scans) (§B).
+- ☐ **Calibrated uncertainty** on any decision output (ML-PC u11).
+- ☐ **Deployment conditions matched** (dose / drift / lot) (§C (the microscopy anti-patterns slide), §D (the processing anti-patterns slide)).
+:::
+
+::: {.callout-note .fragment}
+If a slide in this unit had an anti-pattern, it is a line on this checklist. This is the single most useful slide to keep.
+:::
+
+::: {.notes}
+**The synthesis-into-practice slide.** Every anti-pattern slide collapses into one checklist — this is the "what to actually do differently on Monday" artefact. Tell students this is the slide to screenshot for their own papers and to apply when reviewing others'.
+
+**Cross-reference.** Each box maps to a specific slide (annotated inline). Ties §A–§D discipline to ML-PC u11 (UQ) and u06/u09 (pretraining).
+
+**Pacing.** ~2 minutes; let them photograph it. This precedes the limitations slide deliberately — checklist (do this) then open problems (we still cannot do this).
+:::
+
+## 46. Limitations & open problems
+
+::: {.fragment}
+- **Data hunger** is real; SSL pretraining mitigates but does not eliminate it.
+- **Positional encodings for 3-D periodic & physical axes** are still an active research area (§A, §B) — no settled best practice.
+- **Generative structure solution** (DiffractGPT) produces candidates, not validated structures — physical refinement still required.
+- **Agentic autonomous labs** are unreliable today (the autonomous-lab agents slide) — safety, hallucination, tool-use are open.
+- **Deployment drift & calibration** (ML-PC u11) are unsolved in the field, not in the model.
+:::
+
+::: {.callout-warning .fragment}
+The honest summary: transformers expanded *what is learnable* on materials data, but did not remove the materials constraints — small labels, domain shift, the need for calibrated uncertainty.
+:::
+
+::: {.notes}
+**Pacing.** ~2 minutes; intellectual honesty slide. Each bullet points back at a specific slide so students can trace the open problem to its origin.
+
+**Cross-reference.** §A/§B (positional encodings), the DiffractGPT slide (generative structure solution), the autonomous-lab agents slide, ML-PC u11 (UQ/drift).
+:::
+
+## 47. Recap — what to take away
+
+::: {.fragment}
+1. **Attention exists for long-range correlations** — and materials data (diffraction, crystals, EELS, AM layer stacks) is full of them.
+2. **The materials-specific crux is tokenisation + positional encoding** — what is a token, and how does it know where it physically sits (§A).
+3. **Crystals:** the periodicity problem; Matformer / Crystalformer / ComFormer solve it three ways (§B).
+4. **Characterization:** real case studies — 4D-STEM ViT, μSAM, EM foundation models, DiffractGPT, XRD ViT (§C).
+5. **Processing & knowledge:** AM monitoring, MatSciBERT, agentic labs (§D).
+6. **Practice:** SDPA by default, pretrain→finetune, and the per-modality decision guide. Theory in **MFML W10**; today was *using* it.
+:::
+
+::: {.notes}
+**Pacing.** The six-line spine of the whole unit — the exam scaffold. Read it as a story: why → how (tokens) → crystals → signals → processing → practice.
+
+**Forward link.** Next unit (ML-PC u11) supplies the missing safety layer — calibrated uncertainty — for every model in this deck.
+:::
+
+## 48. References & further reading
 
 - **Vaswani et al. (2017)** — Attention Is All You Need; the original transformer [@vaswani_2017_attention].
 - **Dosovitskiy et al. (2021)** — An Image Is Worth 16×16 Words; ViT [@dosovitskiy_2021_vit].
 - **Dao et al. (2022)** — FlashAttention: IO-aware exact attention [@dao_2022_flashattention].
 - **Gu & Dao (2023)** — Mamba; linear-time selective state spaces [@gu_2023_mamba].
+- **Yan et al. (2022)** — Matformer; periodic graph transformers for crystals [@yan2022matformer].
+- **Taniai et al. (2024)** — Crystalformer; infinitely-connected attention [@taniai2024crystalformer].
+- **Yan et al. (2024)** — ComFormer; complete & efficient crystal graph transformers [@yan2024comformer].
+- **Archit et al. (2024)** — Segment Anything for Microscopy / μSAM [@archit2024usam].
+- **Self-supervised EM foundation model (2024)** — SSL towards an EM foundation model [@em_ssl2024].
+- **Transformer 4D-STEM microstructure inference (2024, preprint)** — [@dstem_transformer2024].
+- **DiffractGPT (2024)** — XRD → structure via generative pretrained transformer [@diffractgpt2024].
+- **ViT for XRD (2024, preprint)** — Vision transformers for XRD analysis [@vit_xrd2024].
+- **Gupta et al. (2022)** — MatSciBERT; materials-domain language model [@gupta2022matscibert].
+- **FFF print-quality transformer (2025)** — npj Advanced Manufacturing [@fff_vit2025].
+- **Ng et al. (2024)** — ML in AM materials & processes; review [@ng2024mlam].
 - **MFML W10** — full mathematical treatment of transformers (derivation, complexity, optimiser quirks, positional encodings).
 
 ::: {#refs}
