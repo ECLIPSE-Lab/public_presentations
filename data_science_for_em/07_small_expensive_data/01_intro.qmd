@@ -55,7 +55,7 @@ format:
 ## Road map and self-study
 
 :::: {.incremental}
-- **Road map:** recap Week 6 + today's question (2) · the small/expensive-data reality in materials (5) · data augmentation (6) · physically-invalid augmentations (3) · transfer learning: why features transfer; ImageNet→EM; domain gap; decision matrix (7) · the recipe: freeze→head→fine-tune; differential LR; gradual unfreezing; catastrophic forgetting (4) · synthetic data and digital twins: Voronoi; limits (4) · the sim-to-real gap and domain adaptation (3) · cross-material transfer (1) · active learning (2) · putting it together (3) · forward link to Week 8 (1).
+- **Road map:** recap Week 6 + today's question (2) · the small/expensive-data reality in materials (5) · data augmentation: core idea; physical invariances; geometric; intensity; invalid augmentations; on-the-fly; laser-weld scenario; Albumentations code (8) · transfer learning: why features transfer; ImageNet→EM; domain gap; backbone and head; decision matrix; recipe freeze→head→fine-tune; catastrophic forgetting; gradual unfreezing (7) · synthetic data and digital twins: free labels; Voronoi pipeline; why it transfers (3) · the sim-to-real gap; domain adaptation; Voronoi limits; failure scenario (4) · active learning (2) · cross-material transfer (1) · putting it together: complete workflow; published evidence; validation; checklist; quantitative summary; Voronoi→SEM pipeline (6) · forward link to Week 8 (1).
 - **Self-study:** `notebooks/week07_transfer_finetune.ipynb` — pretrain a tiny CNN on abundant synthetic "task A" (Voronoi-like), then compare (i) from-scratch on few task-B labels vs (ii) transfer (freeze backbone, train head); plot loss and accuracy curves; vary label count and observe the transfer gap shrink. All CPU-fast on tiny data. Slide numbers in this deck match the notebook section headers.
 ::::
 
@@ -69,7 +69,7 @@ format:
 
 ## The labelled-data gap: a three-order-of-magnitude problem
 
-![Labelled image counts across domains. ImageNet: 14 million images, crowdsourced labels in seconds. Medical imaging: tens of thousands, expert radiologists. Materials science / EM: 50–500 images, PhD microscopists spending hours per image. Three orders of magnitude separate us from where standard deep learning was designed to work.](img/labeled_data_gap.png){width="70%"}
+![Labelled image counts across domains. ImageNet: 14 million images, crowdsourced labels in seconds. Medical imaging: tens of thousands, expert radiologists. Materials science / EM: 50–500 images, PhD microscopists spending hours per image [@holm2020overview; @sandfeld_materials_data_science]. Three orders of magnitude separate us from where standard deep learning was designed to work.](img/labeled_data_gap.png){width="70%"}
 
 :::: {.notes}
 - Walk through the three bars. The key number: materials science sits three orders of magnitude below where ResNet-50 (25 million parameters) was designed to operate.
@@ -160,7 +160,7 @@ format:
 
 ## Augmentation: encoding physical invariances
 
-![Six views of the same synthetic grain microstructure. Top row: original, 90° rotation (valid for equiaxed grains), horizontal flip (valid — no polarity). Bottom row: brightness jitter (valid — structural label), Poisson noise (simulates low dose), vertical flip (invalid — breaks a surface gradient if present). Each valid transform is a claim that the physics has a symmetry.](img/augmentation_examples.png){width="85%"}
+![Six augmented views of the SAME synthetic grain microstructure. All six panels show the same Voronoi grain layout (same polygonal grains, same topology) transformed in different ways. Top row: original, 90° rotation (valid for equiaxed grains), horizontal flip (valid — no polarity). Bottom row: brightness jitter (valid — structural label), Poisson noise (simulates low dose), vertical flip (invalid — breaks a surface gradient if present). Each valid transform is a claim that the physics has a symmetry.](img/augmentation_examples.png){width="85%"}
 
 :::: {.notes}
 - The key concept for this slide: augmentation is not just multiplying data — it encodes a claim that the physics has a particular invariance. A rotation augmentation says "a grain boundary looks the same at any angle." That is true for equiaxed grains; it is false for directionally solidified columnar grains, where orientation is a physical signal.
@@ -223,7 +223,7 @@ format:
 
 ## On-the-fly augmentation and label consistency
 
-![Label consistency: when a grain-boundary image is rotated 45°, the segmentation mask must be rotated by exactly the same 45°. The correct approach (centre row) applies one sampled transform to image and mask jointly. The wrong approach (bottom row) applies independent random transforms to image and mask, producing misaligned ground truth.](img/label_consistency.png){width="80%"}
+![Label consistency: when a grain-boundary image is rotated 45°, the segmentation mask must be rotated by exactly the same 45°. Top row (left to right): original image, original mask, rotated image (45°). Bottom row: correct — rotated mask (same 45°, joint transform); wrong — un-rotated mask paired with the rotated image, producing misaligned ground truth.](img/label_consistency.png){width="80%"}
 
 :::: {.incremental}
 - **On-the-fly** (preferred): sample a new random transform per batch — the network never sees exactly the same pixels twice. Near-infinite effective dataset from 50 images.
@@ -290,7 +290,7 @@ format:
 
 ## Why ImageNet features transfer to EM images
 
-![Transferability as a function of CNN depth (Yosinski et al. 2014 principle). Layer 1 (edges, gradients): ~95% transferable — universal low-level image features. Layer 2 (textures, corners): ~80% — mostly domain-general. Layer 3 (object parts): ~45% — becoming domain-specific. Layer 4+ (full objects / task-specific): ~10% — ImageNet-dog features are not EM features.](img/feature_transfer_depth.png){width="70%"}
+![Transferability as a function of CNN depth [@yosinski2014transferable]. Layer 1 (edges, gradients): ~95% transferable — universal low-level image features. Layer 2 (textures, corners): ~80% — mostly domain-general. Layer 3 (object parts): ~45% — becoming domain-specific. Layer 4+ (full objects / task-specific): ~10% — ImageNet-dog features are not EM features.](img/feature_transfer_depth.png){width="70%"}
 
 :::: {.notes}
 - This is the theoretical anchor for all of transfer learning. The depth-wise picture is Yosinski et al. 2014. State it as a principle rather than a specific citation: "transferability decreases monotonically with depth."
@@ -319,7 +319,7 @@ format:
 ## The backbone and the head
 
 :::: {.incremental}
-- **Backbone** (the pretrained feature extractor): maps image → high-dimensional feature vector (e.g. ResNet-50's 2048-D penultimate representation). Contains the transferable, general-purpose visual knowledge.
+- **Backbone** (the pretrained feature extractor): maps image → high-dimensional feature vector (e.g. ResNet-50's [@he2016resnet] 2048-D penultimate representation). Contains the transferable, general-purpose visual knowledge.
 - **Head** (the task-specific output layer): maps feature vector → your answer (e.g. "grain" or "boundary" probabilities, or a scalar grain size). Randomly initialised for your task — the pretrained 1000-class ImageNet head is discarded.
 - **Replacing the head is non-negotiable:** the pretrained head outputs 1000 ImageNet class logits. Your task has 2 phases (or 3, or a scalar). Dimensions mismatch and semantics are wrong — replace entirely.
 - **Feature extraction:** freeze the entire backbone (no gradient updates), train only the new head. Safe, fast, correct when labels are very scarce (<100).
@@ -415,7 +415,7 @@ format:
 :::: {.incremental}
 - **The standard approach:** acquire image → expert annotates label. Expensive, slow, limited.
 - **The synthetic flip:** choose label (the ground-truth structure) → render the image from it. The label is *perfect by construction* — no annotator disagreement, no boundary ambiguity, no label noise.
-- **Materials advantage:** we know the physics. Voronoi tessellations model grain topology. Phase-field simulations model microstructure evolution. Multislice simulations render realistic TEM images of known atomic structures.
+- **Materials advantage:** we know the physics. Voronoi tessellations model grain topology. Phase-field simulations model microstructure evolution. Multislice simulations render realistic TEM images of known atomic structures [@rakowski2024construction].
 - **Quantitative example:** generating 10 000 Voronoi grain images takes minutes. Manually labelling 10 000 real SEM grain images takes months of expert time.
 - **Caution:** synthetic data fails on exactly the feature the generator omits. If Voronoi cannot make twins, a twin-detection model trained on it cannot learn twins — not a tuning problem but an epistemic one.
 ::::
@@ -534,7 +534,7 @@ format:
 
 ## Active learning: label the most informative samples
 
-![Left: random labelling strategy — 10 labels scattered uniformly across feature space. Right: active learning — labels concentrated near the decision boundary, where uncertainty is highest. With the same 10 labels, the active strategy correctly identifies the decision boundary; random labelling leaves a large uncertain region.](img/active_learning_teaser.png){width="80%"}
+![Left: random labelling strategy — 50 labels scattered uniformly across feature space. Right: active learning — labels concentrated near the decision boundary, where uncertainty is highest. With the same 50 labels, the active strategy correctly identifies the decision boundary; random labelling leaves a large uncertain region.](img/active_learning_teaser.png){width="80%"}
 
 :::: {.notes}
 - Active learning is the right tool when labels (not images) are the bottleneck. Materials science perfectly fits this condition: unlabelled SEM images can be acquired by the thousand in an automated session; what is scarce is expert annotation time.
@@ -595,9 +595,9 @@ format:
 ## Transfer learning in EM: published evidence
 
 :::: {.incremental}
-- **ImageNet → Au nanoparticle TEM segmentation:** a U-Net with an ImageNet-pretrained ResNet encoder was fine-tuned on a small set of labelled TEM frames of Au nanoparticles on amorphous carbon. The pretrained encoder correctly identified "structured lattice fringe region vs featureless speckle" because that is a generic edge/texture discrimination task — exactly what ImageNet Layer 1–2 features are good at.
-- **Voronoi → real SEM grain boundary detection:** a U-Net trained only on Voronoi synthetic images with no real SEM data in training correctly segments grain boundaries on real polycrystalline SEM images, because grain-boundary topology (dark thin strip between two regions) is the task-relevant invariant captured by Voronoi.
-- **Key lesson from both examples:** what transfers is not "knowledge about the specific objects." What transfers is the *visual vocabulary* — edge detectors, contrast-change detectors, texture detectors — which is universal across image domains and across synthetic-to-real transfer.
+- **ImageNet → Au nanoparticle TEM segmentation** [@rakowski2024construction]: a U-Net with an ImageNet-pretrained ResNet encoder was fine-tuned on a small set of labelled TEM frames of Au nanoparticles on amorphous carbon. The pretrained encoder correctly identified "structured lattice fringe region vs featureless speckle" because that is a generic edge/texture discrimination task — exactly what ImageNet Layer 1–2 features are good at.
+- **Voronoi → real SEM grain boundary detection** [@holm2020overview; @decost2017microstructure]: a U-Net [@ronneberger2015unet] trained only on Voronoi synthetic images with no real SEM data in training correctly segments grain boundaries on real polycrystalline SEM images, because grain-boundary topology (dark thin strip between two regions) is the task-relevant invariant captured by Voronoi.
+- **Key lesson from both examples:** what transfers is not "knowledge about the specific objects." What transfers is the *visual vocabulary* — edge detectors, contrast-change detectors, texture detectors — which is universal across image domains and across synthetic-to-real transfer [@goodfellow2016deep].
 - **The common pattern:** both succeeded because the task reduced to a generic visual discrimination (structured vs unstructured; boundary vs interior) rather than a domain-specific one (specific crystal structure, specific defect type).
 ::::
 
