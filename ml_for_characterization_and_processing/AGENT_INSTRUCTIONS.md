@@ -55,12 +55,13 @@ format:
 
 ## Curriculum Mapping
 
-Post-realignment (2026-05-19): W7 Tue lecture cancelled (Pfingstdienstag) →
-time-series becomes Week 7 self-study + in-class Thu exercise. W8 Thu exercise
-cancelled (Fronleichnam) → inverse problems is the Week 8 lecture with a
-self-study exercise. The Generalization/robustness unit was **deleted**
-(duplicate content); Weeks 9–13 shifted up by one; Week 14 is now a
-buffer/review/mini-project slot with no unit deck. Folder index == week number.
+Post-realignment (2026-05-19) and **Week-7 cancellation (2026-05-24)**: Week 7
+(Pfingstmontag/Pfingstdienstag, 25–26.05.2026) is **fully cancelled** — no lecture
+and no exercise. Time-series moved to Week 8 (in-class lecture; the Thu 04.06
+exercise is self-study — Fronleichnam), and every later unit cascaded one week,
+**consuming the former Week-14 buffer**. The Generalization/robustness unit remains
+**deleted** (duplicate content). **Folder index no longer equals week number**: for
+units 7–13, `unitNN` is delivered in week `NN+1`.
 
 - unit01_intro -> Week 1: What makes materials data special?
 - unit02_physics_of_data -> Week 2: Physics of data formation
@@ -68,14 +69,14 @@ buffer/review/mini-project slot with no unit deck. Folder index == week number.
 - unit04_microstructure_representations -> Week 4: From classical microstructure metrics to learned representations
 - unit05_unsupervised_learning -> Week 5: Unsupervised methods for materials — clustering & autoencoders
 - unit06_transfer_learning -> Week 6: Data scarcity & transfer learning
-- unit07_time_series -> Week 7 (self-study lecture + in-class exercise): Time-series and process monitoring
-- unit08_inverse_problems -> Week 8 (lecture + self-study exercise): Inverse problems and process maps
-- unit09_characterization_signals -> Week 9: ML for characterization signals
-- unit10_transformers_for_materials -> Week 10: Transformers for materials characterization (ViT, Flash Attention, Mamba) — promoted from the former Week 9 companion deck unit09b
-- unit11_uncertainty_gp -> Week 11: Uncertainty-aware regression & Gaussian Processes
-- unit12_pinns -> Week 12: Physics-informed and constrained ML
-- unit13_reflection -> Week 13: Integration, limits, and reflection
-- (no unit) -> Week 14: Buffer / review / mini-project work
+- (no unit) -> Week 7: CANCELLED — Pfingsten public holiday (no lecture, no exercise)
+- unit07_time_series -> Week 8 (in-class lecture + self-study Thu exercise — Fronleichnam): Time-series and process monitoring
+- unit08_inverse_problems -> Week 9: Inverse problems and process maps
+- unit09_characterization_signals -> Week 10: ML for characterization signals
+- unit10_transformers_for_materials -> Week 11: Transformers for materials characterization (ViT, Flash Attention, Mamba) — promoted from the former Week 9 companion deck unit09b
+- unit11_uncertainty_gp -> Week 12: Uncertainty-aware regression & Gaussian Processes
+- unit12_pinns -> Week 13: Physics-informed and constrained ML
+- unit13_reflection -> Week 14: Integration, limits, and reflection
 - Deleted 2026-05-19: unit07_generalization_robustness (backup: /tmp/unit07_generalization_robustness_backup_2026-05-19.tar.gz). See REALIGNMENT_2026-05-19.md.
 - Archived 2026-05-19: unit10_automation (RL/automation lecture, skipped this course) moved to `_archive/unit10_automation/` — Quarto-excluded, kept in git history. See REALIGNMENT_2026-05-19_b.md.
 
