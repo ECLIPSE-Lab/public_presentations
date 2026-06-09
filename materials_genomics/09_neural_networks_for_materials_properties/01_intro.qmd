@@ -175,15 +175,7 @@ By the end of 90 minutes, you can:
 - **Global state (optional):** crystal system, density, temperature.
 :::
 ::: {.column width="45%"}
-```{mermaid}
-graph TD
-    A((Atom i)) -- "$r_{ij}$" --> B((Atom j))
-    B -- "$r_{jk}$" --> C((Atom k))
-    A -- "$r_{ik}$" --> C
-    style A fill:#f9f,stroke:#333
-    style B fill:#bbf,stroke:#333
-    style C fill:#fbb,stroke:#333
-```
+![](images/diagram_0.png){height="650px" fig-align="center"}
 :::
 :::
 
@@ -326,6 +318,37 @@ graph TD
 :::
 
 ::: {.notes}
+Intuition: thermometer vs compass
+Use a concrete analogy before the math.
+
+Invariance (thermometer)
+Rotate the crystal. Total energy does not change.
+If you predict $E$, the network should give the same number regardless of orientation.
+
+Equivariance (compass needle)
+Rotate the crystal. Each force vector rotates by the same rotation.
+If atom $i$ felt a force pointing east before rotation, after a 90° rotation it should point north — not stay "east" in lab coordinates.
+
+So:
+
+Scalar property → build an invariant model (distances, angles, scalars only).
+Vector/tensor property → build an equivariant model (internal features that know about direction).
+
+What are you predicting?
+│
+├─ Scalar only (E, band gap, ...)
+│   └─ Invariant GNN is fine
+│       Simple, fast, works well at 10⁵–10⁷ structures
+│
+└─ Forces / stress / dipole matter
+    │
+    ├─ Lots of data (10⁶–10⁷+ structures, foundation MLIP)
+    │   └─ Invariant + autograd often enough (M3GNet, OMat24-style)
+    │
+    └─ Small/medium data (10³–10⁵ DFT structures, catalysts, alloys)
+        └─ Go equivariant (NequIP / MACE / Allegro)
+            ~10×–100× better data efficiency for forces
+
 **Why this distinction is load-bearing today.** SchNet, CGCNN, MEGNet, ALIGNN are *invariant* architectures. Their forces come from autograd through the energy: $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$. This is correct but data-hungry. NequIP, Allegro, MACE are *equivariant*: forces come out of the network as native vector outputs, with one to two orders of magnitude better data efficiency.
 
 **The autograd shortcut and its cost.** "I'll just take the gradient of my SchNet energy through PyTorch autograd to get forces." Yes — and you will need 10–100× more training structures to reach the same force MAE that NequIP gets natively. In small-data MLIP regimes (catalyst datasets, alloy DFT datasets) this is the difference between a usable model and an unusable one.
@@ -351,13 +374,18 @@ graph TD
 - Rotations $R \in SO(3)$ (no reflections).
 - SE(3) = translations $\rtimes$ SO(3).
 :::
-::: {.column width="50%"}
+::: {.column width="50%" .fragment}
 **Why this matters for materials**
 
 - Most properties are invariant under SE(3): rotation alone leaves them unchanged.
 - **Chiral** materials (some spirals, twisted heterostructures) are *not* invariant under reflection — those need SE(3), not full E(3).
 - Modern equivariant networks (§F) are precisely E(3)- or SE(3)-equivariant, with the choice driven by the physics.
 :::
+:::
+
+::: {.fragment}
+> E(3) is not the whole story for crystals.
+A good atomic ML model respects E(3)/SE(3) plus permutation plus periodicity. Papers say "E(3)-equivariant" because rotation/translation are the hard part architecturally; permutation and PBC are handled separately (slides 11+).
 :::
 
 ::: {.notes}
@@ -398,7 +426,7 @@ graph TD
 - **Sum** is appropriate for *extensive* properties: total energy, total magnetisation. Doubling the cell doubles the readout.
 - **Mean** is appropriate for *intensive* properties: band gap, average density of states. Doubling the cell leaves the readout unchanged.
 - Choosing the wrong pooling silently breaks transferability across cell sizes — a recurring failure mode.
-
+ 
 **The PBC bug, war-storied.** A common error in early CGCNN training notebooks: cutoff radius set, but neighbour search performed only on the primitive cell. Atoms near the cell boundary lose half their neighbours; predictions degrade on those atoms; the user blames the network. Always sanity-check by doubling the cell and verifying that predictions are stable.
 
 **One-sentence summary.** "Permutation invariance comes from sum/mean/max aggregation; PBC comes from the graph builder."
@@ -426,6 +454,12 @@ graph TD
 :::
 :::
 
+::: {.fragment}
+![](images/schnet_paper/fig2_architecture.png){width="32%" fig-align="center"}
+
+*SchNet architecture [@schutt2017schnet]: atom embedding $\to$ interaction blocks (cfconv) $\to$ atom-wise MLP $\to$ sum readout $\hat{E}$.*
+:::
+
 ::: {.notes}
 **Why SchNet matters historically.** SchNet (and its predecessor DTNN) is the first widely-adopted neural network designed *natively* for atomic systems. Before SchNet: hand-crafted descriptors (SOAP, ACSF, Coulomb matrix) + MLP. After SchNet: end-to-end learning from atomic positions and atomic numbers. The architecture is now the conceptual ancestor of CGCNN, MEGNet, ALIGNN, and all subsequent work.
 
@@ -443,17 +477,30 @@ graph TD
 - A 2D CNN kernel has slots at fixed offsets: $(\Delta x, \Delta y) \in \{-1, 0, +1\}^2$.
 - For atoms, no such fixed-offset structure exists. Two oxygens at 2.3 Å and 2.7 Å are different physical neighbours.
 - Quantising $r_{ij}$ to bins is lossy and breaks differentiability.
+- **Left:** discrete filter on a grid $\to$ jagged, discontinuous $\hat{E}(R)$.
 :::
 ::: {.column width="50%"}
-**The continuous-filter answer**
+![](images/schnet_paper/fig1_discrete_vs_continuous.png){width="100%" fig-align="center"}
 
+*Figure from [@schutt2017schnet]: discrete vs continuous filter; continuous $\to$ smooth energy surface.*
+
+::: {.fragment}
+**The continuous-filter answer**
+ 
 $$ W(r) = \text{MLP}\!\left(\text{RBF}(r)\right) \in \mathbb{R}^F $$
 
 - $\text{RBF}(r)$ is a vector of Gaussian basis functions in $r$.
 - $\text{MLP}$ is a small fully-connected network mapping the RBF expansion to $F$ filter channels.
 - $W(r)$ is differentiable in $r$ — gradients flow back to atomic positions for force prediction.
 :::
+
 :::
+
+
+
+:::
+
+
 
 ::: {.notes}
 **RBF expansion, intuition.** A Gaussian basis $\{\exp(-\beta(r - \mu_k)^2)\}_{k=1}^K$ with centres $\mu_k$ spaced from 0 to $r_{\rm cut}$ acts as a smooth one-hot encoding of the distance. The MLP that follows can then learn arbitrary smooth functions of $r$.
@@ -487,8 +534,16 @@ $$ \mathbf{x}_i^{(t+1)} = \mathbf{x}_i^{(t)} + \sum_{j \in N(i)} \mathbf{x}_j^{(
 - After $T$ interactions, atom-wise MLP gives per-atom contributions $E_i$.
 - Total energy $E = \sum_i E_i$ — extensive by construction.
 - Forces $\mathbf{F}_i = -\partial E / \partial \mathbf{r}_i$ via autograd.
+
+::: {.fragment}
+![](images/schnet_paper/fig3_learned_filters.png){width="88%" fig-align="center"}
+
+*Learned radial filters $W(r)$ in three SchNet interaction blocks [@schutt2017schnet] — rotationally symmetric by construction.*
 :::
 :::
+:::
+
+
 
 ::: {.notes}
 **Read the equation aloud.** "Atom $i$'s new state is its old state plus a sum over neighbours $j$, where each neighbour's contribution is a *gated* version of $j$'s state — gated element-wise by the continuous filter evaluated at $r_{ij}$."
@@ -525,6 +580,10 @@ So the entire network is invariant to the three required symmetries by construct
 - This level was previously reachable only via *manually* constructed feature pipelines.
 - SchNet hit it *end-to-end from atomic numbers and positions*. That is the headline.
 :::
+:::
+
+::: {.fragment}
+> QM9 is the MNIST-like benchmark of early molecular machine learning: small, standardized, widely used, and focused on predicting quantum-mechanical properties from molecular structure.
 :::
 
 ::: {.notes}
@@ -911,16 +970,7 @@ This is the road map of the rest of the lecture.
 - Each round updates all three components.
 :::
 ::: {.column width="45%"}
-```{mermaid}
-graph LR
-    V[Atom features<br>V] -->|message| E[Bond features<br>E]
-    E -->|message| V
-    V -->|aggregate| U[Global state<br>u]
-    E -->|aggregate| U
-    U -->|broadcast| V
-    U -->|broadcast| E
-    style U fill:#fbb,stroke:#333
-```
+![](images/diagram_1.png){width="100%" fig-align="center"}
 :::
 :::
 
@@ -980,19 +1030,7 @@ graph LR
 - Alternate convolutions on $G$ and $L(G)$ to couple atom and angle channels.
 :::
 ::: {.column width="45%"}
-```{mermaid}
-graph TD
-    A((Atom i)) --- B((Atom j))
-    B --- C((Atom k))
-    A --- C
-    Bij[Bond i-j]
-    Bjk[Bond j-k]
-    Bik[Bond i-k]
-    Bij -- "angle (i,j,k)" --- Bjk
-    style Bij fill:#fbb,stroke:#333
-    style Bjk fill:#fbb,stroke:#333
-    style Bik fill:#fbb,stroke:#333
-```
+![](images/diagram_2.png){width="100%" fig-align="center"}
 :::
 :::
 
