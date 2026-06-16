@@ -193,9 +193,6 @@
     transform: translateY(0);
   }
   </style>
-  <script src="../../site_libs/quarto-diagram/mermaid.min.js"></script>
-  <script src="../../site_libs/quarto-diagram/mermaid-init.js"></script>
-  <link href="../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 <meta property="og:title" content="Machine Learning in Materials Processing &amp; Characterization Unit 9: ML for Characterization Signals – ECLIPSE Presentations">
 <meta property="og:image" content="https://pelzlab.science/img/eclipse_header.png">
 <meta property="og:site_name" content="ECLIPSE Presentations">
@@ -293,7 +290,7 @@
 <li>Build a defensible <strong>spectral preprocessing pipeline</strong> (background → calibrate/align → normalize).</li>
 <li>Apply <strong>MCR-ALS</strong> and reason about <strong>rotational ambiguity</strong>.</li>
 <li>Turn a latent/peak into a <strong>quantified concentration with an error bar</strong> (Cliff-Lorimer / ζ-factor).</li>
-<li>Deploy SSL/MAE-pretrained spectral encoders and operando novelty detection.</li>
+<li>Deploy <strong>EM-native deep denoisers</strong> (conv-DAE, UDVD) and SSL-pretrained encoders for low-dose EELS/EDS, and run operando novelty detection.</li>
 </ol>
 </div>
 </div></div>
@@ -584,27 +581,8 @@
 </section>
 <section id="the-pipeline-garbage-in-dominates-everything" class="slide level2">
 <h2>06. The Pipeline — Garbage In Dominates Everything</h2>
-<div class="cell" data-reveal="true" data-fig-width="18" data-layout-align="default">
-<div class="cell-output-display">
-<div>
-<p></p><figure class=""><p></p>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    A["Raw spectra&lt;br&gt;(N × D)"] --&gt; B["Background /&lt;br&gt;baseline subtraction"]
-    B --&gt; C["Energy / 2θ&lt;br&gt;calibration &amp; alignment"]
-    C --&gt; D["Normalization"]
-    D --&gt; E["(optional)&lt;br&gt;reduction / decomposition"]
-    E --&gt; F["Downstream:&lt;br&gt;quant · phase ID · anomaly"]
-    style A fill:#2d5016,stroke:#4a8c2a,color:#fff
-    style D fill:#1a3a5c,stroke:#2a6a9c,color:#fff
-    style F fill:#5c1a1a,stroke:#9c2a2a,color:#fff
-</pre>
-</div>
-<p></p></figure><p></p>
-</div>
-</div>
-</div>
-<div class="fragment">
+
+<img data-src="images/diagram_0.png" class="quarto-figure quarto-figure-center r-stretch" style="width:100.0%"><div class="fragment">
 <ul>
 <li>Every box is a <strong>physics-informed choice</strong>, not a default. Order matters (slide 04).</li>
 </ul>
@@ -667,7 +645,7 @@
 <p><strong>Physical (model-based)</strong></p>
 <div class="fragment">
 <ul>
-<li><strong>EELS</strong>: power-law <span class="math inline">\(A E^{-r}\)</span> fitted in a pre-edge window; or plasmon/Drude model.</li>
+<li><strong>EELS</strong>: power-law <span class="math inline">\(A E^{-r}\)</span> in a pre-edge window, or a <strong>linear combination of power laws</strong> + <strong>local background averaging</strong> that pool spatial redundancy <span class="citation" data-cites="cueva2012eels">(<a href="#/references" role="doc-biblioref" onclick="">Cueva et al. 2012</a>)</span>.</li>
 <li><strong>EDX</strong>: bremsstrahlung continuum (Kramers + detector response + absorption).</li>
 <li><strong>XPS</strong>: Shirley / Tougaard inelastic background.</li>
 </ul>
@@ -699,6 +677,62 @@
 <p><strong>Pre-empt the question.</strong> “Model-free or physical?” — Physical when you trust the physics and want auditable, transferable parameters (EELS power-law for quant); model-free when no clean parametric form (Raman fluorescence). Hybrid is common.</p>
 <p><strong>Cross-reference.</strong> Systematic-vs-random ties back to slide 03 (Poisson): random → average down; background bias → identical in every spectrum, cannot. Forward to slide 14 (ambiguity) and 16 (uncertainty budget).</p>
 <p><strong>Pacing.</strong> ~5 minutes — one of the highest-value slides. Exam-weight: the systematic-vs-random distinction.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="a.-eels-background-in-the-stem-lcpl-local-background-averaging" class="slide level2">
+<h2>07a. EELS Background in the STEM — LCPL &amp; Local Background Averaging</h2>
+<div class="columns">
+<div class="column" style="width:46%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/cueva_powerlaw_background.png" style="width:100.0%"></p>
+<figcaption>Core-loss edges (La-M ≈ 830 eV, Al-K ≈ 1560 eV) riding on a steep power-law background — the edge can be a few % of the local intensity <span class="citation" data-cites="cueva2012eels">(<a href="#/references" role="doc-biblioref" onclick="">Cueva et al. 2012</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:54%;">
+<div class="fragment">
+<p><strong>The STEM-specific problem.</strong> At atomic resolution and low dose, the power-law fit is <em>itself</em> dominated by Poisson noise — a noisy background becomes a <strong>systematic</strong> error in every extracted edge (slide 03).</p>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Linear combination of power laws (LCPL).</strong> One global <span class="math inline">\(E^{-r}\)</span> is too rigid; a small basis of power laws captures curvature a single law misses.</li>
+<li><strong>Local background averaging (LBA).</strong> Borrow background counts from spectrally-similar neighbours — the spectrum image is <em>redundant</em>, so averaging the <strong>background</strong> (not the signal) cuts its error without blurring the edge.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p>Exploiting dataset redundancy improves background estimation and chemical sensitivity — the basis of the <strong>Cornell Spectrum Imager</strong> <span class="citation" data-cites="cueva2012eels">(<a href="#/references" role="doc-biblioref" onclick="">Cueva et al. 2012</a>)</span>. Better background craft, not a bigger model, is what lowers detection limits.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Why this slide exists.</strong> Slide 07 gave the general background toolbox; this is the EELS-in-the-STEM instantiation, and the first slide to put a <em>real microscopy algorithm paper</em> on the board. Cueva, Hovden, Mundy, Xin &amp; Muller (2012) is the reference behind the Cornell Spectrum Imager that a large fraction of the field actually uses.</p>
+<p><strong>Mechanism.</strong> A single power law <span class="math inline">\(A E^{-r}\)</span> assumes the pre-edge continuum is scale-free; real plasmon tails curve, so the extrapolated background under the edge is biased. LCPL fits a few power laws (different <span class="math inline">\(r\)</span>) and lets their linear combination bend. LBA uses the fact that adjacent pixels are nearly the same spectrum: you can estimate each pixel’s background from a spatial neighbourhood, raising the effective dose <em>on the background only</em>, where you do not care about spatial resolution.</p>
+<p><strong>Quantitative anchor.</strong> Cueva et al.&nbsp;show the edge of interest can be a few percent of the local intensity; a 2–3% background error then dominates the extracted signal — the same systematic-vs-random point as slide 07, now with the published EELS evidence.</p>
+<p><strong>War story / diagnostic.</strong> A core-loss map “shows” a composition gradient that is actually the background slope drifting across the scan. Symptom: the gradient tracks specimen thickness, not chemistry; fitting LCPL per region or LBA removes it. Same disease as the derivative-shaped PCA loading on slide 08.</p>
+<p><strong>Pre-empt the question.</strong> “Why not just denoise then fit one power law?” — Denoising (PCA/AE) can itself bias the background (slides 20/20b); LBA is a <em>physics-redundancy</em> estimator with no learned prior, so it is the safer first move and is auditable.</p>
+<p><strong>Cross-reference.</strong> Poisson/systematic: 03, 07. Redundancy → denoising tension: 12, 20. The Cornell tool also motivates the PCA-artifact caution Cueva raises (slide 20b).</p>
+<p><strong>Pacing.</strong> ~3 minutes. The figure makes the “edge on a steep background” viscerally clear — point at how little of the signal is the edge.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
           position:absolute!important;
@@ -984,7 +1018,8 @@
 </div>
 <div class="fragment">
 <ul>
-<li><strong>Better</strong>: exploit spatial correlation — factored <strong>2-D spatial + 1-D spectral</strong> convolutions, or a 3-D conv-AE. (The conv-AE <em>architecture</em> is <strong>MFML u05</strong> / <strong>ML-PC u05</strong> — referenced, not re-derived.)</li>
+<li><strong>Better</strong>: exploit spatial correlation — factored <strong>2-D spatial + 1-D spectral</strong> convolutions, or a 3-D conv-AE.<br>
+</li>
 </ul>
 </div>
 <div class="fragment">
@@ -1036,19 +1071,6 @@
 </section>
 <section id="reference-recap-spectral-decomposition-one-slide" class="slide level2">
 <h2>13. Reference Recap — Spectral Decomposition (one slide)</h2>
-<div class="callout callout-important callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Important</strong></p>
-</div>
-<div class="callout-content">
-<p><strong>Derived elsewhere — results only here.</strong> PCA/SVD: <strong>MFML u02</strong>, <strong>ML-PC u02</strong>. NMF: <strong>MFML u02</strong>, <strong>ML-PC u05 s28</strong>. Autoencoders: <strong>MFML u05</strong>, <strong>ML-PC u05</strong>. We do <strong>not</strong> re-derive any of them.</p>
-</div>
-</div>
-</div>
 <table class="caption-top">
 <colgroup>
 <col style="width: 33%">
@@ -1085,6 +1107,14 @@
 <li>The <strong>only</strong> thing this unit adds: the <em>spectral reading</em> — non-negativity is physical because <strong>photon counts and concentrations cannot be negative</strong>; orthogonality is a math convenience with <strong>no physical mandate</strong>.</li>
 </ul>
 </div>
+<div class="fragment">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/potapov_pca_factorization.png" style="width:44.0%"></p>
+<figcaption>A spectrum image factorizes as <span class="math inline">\(\mathbf{D}=\mathbf{T}\,\mathbf{p}^{\top}\)</span> (pixels × energy channels → scores × component loadings, ranked by variance) <span class="citation" data-cites="potapov2019pca">(<a href="#/references" role="doc-biblioref" onclick="">Potapov and Lubk 2019</a>)</span>. EM-native instantiations: PCA of EELS SI <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span>; MCR of EDS SI <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span>.</figcaption>
+</figure>
+</div>
+</div>
 <aside class="notes">
 <p><strong>Purpose.</strong> One slide, on purpose: the explicit “we are not re-teaching factorization” slide. Spend time on the <em>interpretation column</em>, the only domain content.</p>
 <p><strong>Teaching point.</strong> Why NMF is “the natural choice for spectra” in one breath: a spectrum is non-negative counts; a mixture of phases is a non-negative combination of non-negative pure spectra; PCA’s orthogonality forces negative lobes with no physical referent (you cannot have −3 counts at 700 eV). NMF’s constraint <em>is</em> the physics — one sentence, not a section.</p>
@@ -1104,12 +1134,123 @@
           display:block!important;
       }</style></aside>
 </section>
+<section id="a.-pca-of-eels-spectrum-images-composition-bosman-et-al.-2006" class="slide level2">
+<h2>13a. PCA of EELS Spectrum Images — Composition (Bosman et al.&nbsp;2006)</h2>
+<div class="columns">
+<div class="column" style="width:44%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/bosman_ti_reference_spectra.png" style="width:100.0%"></p>
+<figcaption>Low-loss EELS: reference Ti-oxide spectra (TiO → TiO₂ anatase) above, and the PCA-resolved Area A/B/C spectra of a single spectrum image below; Ca-M and Ti-M edges track phase and oxidation state <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:56%;">
+<div class="fragment">
+<p><strong>The seminal EM result.</strong> PCA of an EEL spectrum image extracts <em>chemically relevant</em> components — score maps localize phases, loadings are interpretable spectra <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span>.</p>
+</div>
+<div class="fragment">
+<ul>
+<li>Only a handful of phases → a few components carry the chemistry; the rest is noise (low intrinsic dimensionality, slide 03).</li>
+<li>Matching resolved area spectra to <strong>reference oxides</strong> assigns Ti valence (TiO, Ti₂O₃, Ti₄O₇, Ti₅O₉, TiO₂).</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>This is slide 13’s PCA row <strong>in the STEM</strong>: the method is MFML u02; the <em>reading of the loadings as chemistry</em> is the materials content.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> Put the founding EELS-multivariate-statistics paper on the board (Bosman, Watanabe, Alexander &amp; Keast 2006). It is the concrete answer to “what does slide 13’s PCA row look like on real EELS?”</p>
+<p><strong>Mechanism.</strong> Stack the spectrum image as pixels × energy channels, mean-centre, SVD. The leading right-singular vectors (loadings) are the recurring spectral shapes; the scores map where each occurs. Because a real specimen has few phases, the chemistry lives in the first few components and everything above is noise — that is <em>why</em> truncation denoises (and why it can erase the rare, slide 20).</p>
+<p><strong>Materials hook.</strong> The Magnéli-phase Ti oxides (TiO, Ti₂O₃, Ti₄O₇, Ti₅O₉, TiO₂) form a valence ladder; the low-loss and Ti-M edges shift systematically, so the PCA loadings map directly onto an oxidation-state assignment when compared against the reference library shown.</p>
+<p><strong>War story / diagnostic.</strong> A component that is high-frequency hash with no spatial coherence is detector/noise structure, not a phase (slide 03). Always view the <em>score map</em> and the <em>loading spectrum</em> together before believing a component.</p>
+<p><strong>Pre-empt the question.</strong> “Is PCA the final answer for phases?” — No: PCA components are orthogonal, so they mix and go negative (slide 13). For <em>physical</em> end-members you move to NMF/MCR (slide 14/14a). PCA is the fast, denoising first look.</p>
+<p><strong>Cross-reference.</strong> Method: MFML u02 / ML-PC u02. Non-negativity for physical phases: 13, 14. Weighting/denoising caveats: 13b, 20a, 20b.</p>
+<p><strong>Pacing.</strong> ~3 minutes. Let the reference-ladder figure carry the “loadings = chemistry” point.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="b.-weighted-pca-recovers-elnes-bonding-bosman-et-al.-2006" class="slide level2">
+<h2>13b. Weighted PCA Recovers ELNES Bonding (Bosman et al.&nbsp;2006)</h2>
+<div class="columns">
+<div class="column" style="width:46%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/bosman_elnes_denoised.png" style="width:100.0%"></p>
+<figcaption>A noisy core-loss edge (top) and its PCA reconstruction (bottom): the π* (~285 eV) and σ* (~292 eV) near-edge features survive — bonding, not just composition <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:54%;">
+<div class="fragment">
+<p><strong>Composition <em>and</em> bonding.</strong> With <strong>weighted / two-way-scaled PCA</strong>, the same decomposition recovers near-edge fine structure (ELNES) — bonding and orientation, not only which elements are present <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span>.</p>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Why weight.</strong> Plain PCA weights channels by variance — under Poisson noise that means by <em>intensity</em>, so the background dominates. Scaling by the noise (variance-stabilizing) lets PCA see the weak edge.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p>Get the weighting wrong and PCA “denoises” the bonding signal away. Weighting is not a detail — it decides whether the chemistry survives (slide 20a).</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> The second half of Bosman 2006’s claim, and the bridge to the “do PCA denoising right” pair (20a/20b). ELNES is the subtle-but-decisive signal (slide 04); showing it survives a <em>correctly weighted</em> PCA — and dies under a naive one — is the teaching point.</p>
+<p><strong>Mechanism.</strong> Poisson noise has variance = mean, so high-count channels carry more <em>absolute</em> variance and dominate an unweighted SVD even though they are scientifically dull (background, big plasmon). Two-way scaling (Keenan–Kotula weighting) divides each entry by an estimate of its noise standard deviation, equalizing the statistical weight so the decomposition optimizes for <em>signal</em>, not for counts.</p>
+<p><strong>Materials hook.</strong> The π<em>/σ</em> split at the C-K / B-K edge encodes sp²-vs-sp³ bonding and, with a tilt series, orientation. That is electronic-structure information from a 1-D spectrum — the reason EELS is more than an elemental tool.</p>
+<p><strong>War story.</strong> Unweighted PCA on a low-dose core-loss map returns gorgeous “phase” components that are really the plasmon background beating against noise; the ELNES the experiment was <em>for</em> lands in component 11, below the noise floor, and gets truncated. Symptom: denoised map looks clean, valence/bonding contrast is gone.</p>
+<p><strong>Pre-empt the question.</strong> “Isn’t weighting just a preprocessing knob?” — It changes which subspace is ‘top-K’, i.e.&nbsp;what survives truncation. It is the difference between measuring bonding and measuring the background. Carried forward quantitatively on slide 20a (Potapov optimal truncation).</p>
+<p><strong>Cross-reference.</strong> Poisson: 03. Normalization changes the noise model: 09. Optimal weighting/truncation: 20a. PCA bias if done naively: 20b.</p>
+<p><strong>Pacing.</strong> ~3 minutes.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
 <section id="mcr-als-rotational-ambiguity" class="slide level2">
 <h2>14. MCR-ALS &amp; Rotational Ambiguity</h2>
 <div class="columns">
 <div class="column" style="width:52%;">
 <div class="fragment">
-<p><strong>MCR-ALS</strong> — Multivariate Curve Resolution by Alternating Least Squares <span class="citation" data-cites="dejuan2014mcr">(<a href="#/references" role="doc-biblioref" onclick="">Juan et al. 2014</a>)</span>: solve <span class="math inline">\(\mathbf{X}=\mathbf{C}\mathbf{S}^\top+\mathbf{E}\)</span> by alternating non-negative least squares for concentrations <span class="math inline">\(\mathbf{C}\)</span> and spectra <span class="math inline">\(\mathbf{S}\)</span>.</p>
+<p><strong>MCR-ALS</strong> — Multivariate Curve Resolution by Alternating Least Squares <span class="citation" data-cites="dejuan2014mcr">(<a href="#/references" role="doc-biblioref" onclick="">Juan et al. 2014</a>)</span>: solve <span class="math inline">\(\mathbf{X}=\mathbf{C}\mathbf{S}^\top+\mathbf{E}\)</span> by alternating non-negative least squares for concentrations <span class="math inline">\(\mathbf{C}\)</span> and spectra <span class="math inline">\(\mathbf{S}\)</span>. In the STEM it unmixes raw EDS/EELS spectrum images into pure-component spectra + abundance maps <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span> (slide 14a).</p>
 </div>
 <div class="fragment">
 <p><strong>Rotational ambiguity.</strong> For any invertible <span class="math inline">\(\mathbf{T}\)</span>: <span class="math display">\[\mathbf{X} = (\mathbf{C}\mathbf{T})(\mathbf{T}^{-1}\mathbf{S}^\top)\]</span> fits <strong>equally well</strong>. Non-negativity alone leaves a <em>feasible band</em> of solutions, not a unique answer.</p>
@@ -1151,6 +1292,118 @@
 <p><strong>Pre-empt the question.</strong> “Just NMF with extra steps?” — NMF <em>is</em> a special case (non-negativity only). MCR-ALS adds the <em>other</em> physical constraints (closure, unimodality, selectivity, known spectra) that make the solution unique. The constraints are the science.</p>
 <p><strong>Cross-reference.</strong> Non-negativity result: slide 13 / MFML u02. Identifiability parallel: slide 10. Uncertainty on resolved profiles: forward to slide 16.</p>
 <p><strong>Pacing.</strong> ~5 minutes. Exam-weight: state rotational ambiguity and name two constraints that resolve it.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="a.-mcr-in-the-stem-unmixing-eds-spectrum-images-kotula-keenan-2006" class="slide level2">
+<h2>14a. MCR in the STEM — Unmixing EDS Spectrum Images (Kotula &amp; Keenan 2006)</h2>
+<div class="columns">
+<div class="column" style="width:40%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/kotula_mcr_eds.png" style="width:100.0%"></p>
+<figcaption>MCR of a STEM-EDS spectral image of a microelectronics interface: pure-component X-ray spectra (O, Si, Ti, Pt/Ga, Al) and their abundance maps, extracted directly from the raw datacube <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:60%;">
+<div class="fragment">
+<p><strong>The EDS instantiation of slide 14.</strong> MCR applied to a raw STEM-EDS spectrum image returns a <em>high-contrast</em> set of component spectra + maps — no element-by-element windowing <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span>.</p>
+</div>
+<div class="fragment">
+<ul>
+<li>Each component is a <strong>non-negative</strong> spectrum (a phase) with a <strong>non-negative</strong> abundance map — the constraints <em>are</em> the physics (slide 13).</li>
+<li>Resolves overlapping lines (e.g.&nbsp;the Ga/Pt FIB artifact) into their own component instead of contaminating the chemistry.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p>Sandia’s MSA-for-EM line of work is <em>why</em> MCR/PCA are the production default in EDS labs — decades before deep learning. Reach for a network only when these break (slide 24).</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> The canonical EDS multivariate-statistics paper (Kotula &amp; Keenan 2006, Sandia). Pairs with slide 13’s NMF/MCR row and slide 14’s MCR-ALS theory: here is the published STEM-EDS result the theory describes.</p>
+<p><strong>Mechanism.</strong> MCR factorizes the unfolded datacube <span class="math inline">\(\mathbf{X}\approx\mathbf{C}\mathbf{S}^\top\)</span> under non-negativity (and often a noise weighting); each column of <span class="math inline">\(\mathbf{S}\)</span> is a physical X-ray spectrum, each column of <span class="math inline">\(\mathbf{C}\)</span> its spatial abundance. Unlike per-window elemental mapping, it separates <em>overlapping</em> lines and bremsstrahlung into distinct components.</p>
+<p><strong>Materials hook.</strong> Interfacial analysis in microelectronics (the paper’s case): thin diffusion barriers and silicide layers a few nm wide are resolved as their own components, with the FIB-implanted Ga and the Pt protective cap cleanly separated — exactly the overlaps that defeat naive Kα windowing.</p>
+<p><strong>War story / diagnostic.</strong> Treat a Ga or Cu component as a “phase” and you will report a contaminant as chemistry; MCR isolating it into its own map is the <em>feature</em>, not a bug — read every component, including the boring ones. Rotational ambiguity (slide 14) still applies: rerun from different initializations and check the spectra are stable.</p>
+<p><strong>Pre-empt the question.</strong> “Deep unmixing instead?” — Verified EDS deep-unmixing method papers are still thin; MCR/optimal-PCA remain the audited workhorses (slides 20a, 24). Use a learned non-linear decoder only when absorption/multiple-scattering break linearity (slide 17).</p>
+<p><strong>Cross-reference.</strong> Theory: 14. Non-negativity: 13. Optimal PCA denoising for EDS: 20a. Throughput case: 24.</p>
+<p><strong>Pacing.</strong> ~3 minutes.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="b.-unmixing-as-geometry-endmembers-the-mixing-simplex-dobigeon-brun-2012" class="slide level2">
+<h2>14b. Unmixing as Geometry — Endmembers &amp; the Mixing Simplex (Dobigeon &amp; Brun 2012)</h2>
+<div class="columns">
+<div class="column" style="width:46%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/dobigeon_simplex.png" style="width:100.0%"></p>
+<figcaption>Linear mixing places every pixel inside a simplex whose vertices <span class="math inline">\(\mathbf{m}_1,\mathbf{m}_2,\mathbf{m}_3\)</span> are the pure end-member spectra; unmixing = finding the vertices + each pixel’s barycentric abundances <span class="citation" data-cites="dobigeon2012unmixing">(<a href="#/references" role="doc-biblioref" onclick="">Dobigeon and Brun 2012</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:54%;">
+<div class="fragment">
+<p><strong>A geometric view of slide 14.</strong> Under linear mixing each spectrum is a convex combination of end-members → the data fill a <strong>simplex</strong>; its vertices are the pure phases.</p>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Closure</strong> (abundances sum to 1) is the simplex constraint; <strong>non-negativity</strong> keeps pixels inside it.</li>
+<li>This is the same geometry as the <strong>Gibbs triangle</strong> the autoencoder rediscovers on slide 21 — and the linear model slide 17 stress-tests.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>The endmember/abundance picture borrowed from <strong>hyperspectral remote sensing</strong> — spectroscopy’s cousin discipline. Same math, different photons.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> Give MCR/unmixing a single picture students remember: the simplex. It unifies slide 14 (rotational ambiguity = which simplex), slide 17 (when linear mixing breaks), and slide 21 (the Gibbs-triangle latent).</p>
+<p><strong>Mechanism.</strong> With <span class="math inline">\(\mathbf{x}=\sum_k a_k \mathbf{m}_k\)</span>, <span class="math inline">\(a_k\ge0\)</span>, <span class="math inline">\(\sum a_k=1\)</span>, the reachable spectra are the convex hull of the end-members — a simplex with <span class="math inline">\(K\)</span> vertices. Estimating the vertices is geometric end-member extraction; the abundances are barycentric coordinates. Rotational ambiguity (slide 14) is exactly the freedom to choose a <em>larger</em> enclosing simplex — constraints shrink it.</p>
+<p><strong>Why Bayesian linear unmixing.</strong> Dobigeon &amp; Brun (2012) note PCA/ICA do poorly when material abundances are statistically <em>dependent</em> (common in real maps); a Bayesian model with the simplex priors estimates end-members and abundances jointly with uncertainty — see slide 17a for the EELS result.</p>
+<p><strong>Materials hook.</strong> A diffusion couple or a core–shell nanoparticle: interior pixels are pure (vertices), interface pixels are genuine mixtures (interior points). The simplex makes “this pixel is 30% phase A” a coordinate, not a hand-wave.</p>
+<p><strong>Pre-empt the question.</strong> “Is the simplex always right?” — Only if mixing is linear. Multiple scattering / absorption curve the data off the flat simplex (slide 17) — then you correct the physics or use a non-linear decoder.</p>
+<p><strong>Cross-reference.</strong> Ambiguity: 14. Linear-mixing breakdown: 17. Bayesian unmixing result: 17a. Gibbs-triangle latent: 21.</p>
+<p><strong>Pacing.</strong> ~3 minutes. Draw the triangle; mark a vertex (pure) and an interior point (interface mixture).</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
           position:absolute!important;
@@ -1271,7 +1524,7 @@
 <h2>17. Non-Linear Unmixing — When Linear Mixing Fails</h2>
 <div class="fragment">
 <ul>
-<li>The comfortable model: a boundary pixel is <span class="math inline">\(\mathbf{x} = \alpha\,\mathbf{e}_A + (1-\alpha)\,\mathbf{e}_B + \boldsymbol{\eta}\)</span> — <em>linear</em> mixing; estimate <span class="math inline">\(\alpha\)</span> from a latent coordinate. Often fine.</li>
+<li>The comfortable model: a boundary pixel is <span class="math inline">\(\mathbf{x} = \alpha\,\mathbf{e}_A + (1-\alpha)\,\mathbf{e}_B + \boldsymbol{\eta}\)</span> — <em>linear</em> mixing; estimate <span class="math inline">\(\alpha\)</span> from a latent coordinate or Bayesian linear unmixing <span class="citation" data-cites="dobigeon2012unmixing">(<a href="#/references" role="doc-biblioref" onclick="">Dobigeon and Brun 2012</a>)</span> (slide 17a). Often fine.</li>
 </ul>
 </div>
 <div class="fragment">
@@ -1322,85 +1575,25 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-</section></section>
-<section>
-<section id="representation-learning-for-spectra-applied" class="title-slide slide level1 section center">
-<h1>§4 · Representation learning for spectra, applied</h1>
-
 </section>
-<section id="mae-pretraining-on-unlabelled-spectra" class="slide level2">
-<h2>18. MAE Pretraining on Unlabelled Spectra</h2>
+<section id="a.-bayesian-linear-unmixing-of-eels-spectrum-images-dobigeon-brun-2012" class="slide level2">
+<h2>17a. Bayesian Linear Unmixing of EELS Spectrum-Images (Dobigeon &amp; Brun 2012)</h2>
 <div class="columns">
-<div class="column" style="width:50%;">
+<div class="column" style="width:46%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/dobigeon_endmember_maps.png" style="width:100.0%"></p>
+<figcaption>Bayesian linear unmixing of an EELS spectrum image of nanoparticles: end-member abundance maps recovered jointly with their spectra and uncertainty <span class="citation" data-cites="dobigeon2012unmixing">(<a href="#/references" role="doc-biblioref" onclick="">Dobigeon and Brun 2012</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:54%;">
 <div class="fragment">
-<p><strong>The masking trick.</strong> Masked Autoencoder <span class="citation" data-cites="he_2022_mae">(<a href="#/references" role="doc-biblioref" onclick="">He et al. 2022</a>)</span> on 1-D spectra:</p>
-<ul>
-<li>Split each spectrum into ~64 patches.</li>
-<li><strong>Mask 75%</strong>; encode only the visible 25% with a small transformer.</li>
-<li>Lightweight decoder + mask tokens predicts the masked bins.</li>
-<li>Loss = MSE on <strong>masked bins only</strong> → forced to model spectral structure, not copy.</li>
-</ul>
-</div>
-<div class="fragment">
-<p><strong>Pretrain on the lab’s entire unlabelled archive</strong> (EELS+Raman+XRD pooled); fine-tune a tiny head on the ~100 labelled spectra.</p>
-</div>
-</div><div class="column" style="width:50%;">
-<div class="fragment">
-<p><strong>Why this is the natural materials move.</strong> <span class="math inline">\(10^4\)</span>–<span class="math inline">\(10^5\)</span> unlabelled spectra rot on the file server; <span class="math inline">\(10^2\)</span> labelled (labelling = the expensive expert step). MAE converts the unlabelled bulk into a feature extractor.</p>
-</div>
-<div class="fragment">
-<div class="callout callout-note callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Note</strong></p>
-</div>
-<div class="callout-content">
-<p><strong>Rule of thumb.</strong> Need <span class="math inline">\(\gtrsim 10\times\)</span> more unlabelled than labelled spectra before MAE pays off. 200 k pretrain + 100 fine-tune typically beats a from-scratch CNN by <strong>5–15 points</strong> small-data.</p>
-</div>
-</div>
-</div>
-</div>
-<div class="fragment">
-<p><strong>Method derived in MFML u09</strong> (SSL family). Here: the <strong>spectra-specific deployment</strong>.</p>
-</div>
-</div></div>
-<aside class="notes">
-<p><strong>Why mask 75%.</strong> Empirical, confirmed for 1-D spectra: at 50% the network interpolates from immediate neighbours (trivial smoothing); at 75% only a quarter is visible, so it must learn <em>what a spectrum of this class looks like</em> — peak positions, edge shapes, baseline — to inpaint. 90% underfits. Sweet spot 75%.</p>
-<p><strong>Connection to the vanilla AE (ML-PC u05).</strong> Same MSE, same encoder-decoder. The <em>only</em> change is input-side masking + loss on hidden bins. That single change is why it generalises: full-input reconstruction rewards copying through the bottleneck; masked-bin reconstruction rewards modelling structure.</p>
-<p><strong>Materials hook.</strong> Every spectroscopy lab has years of archived, never-labelled data — labelling is the expensive expert step. MAE finally gives a reason to pay the storage cost: the archive becomes the pretraining corpus for <em>every future</em> supervised task.</p>
-<p><strong>Anti-pattern.</strong> Running MAE on a labelled-but-scarce set with no unlabelled bulk (100 spectra, nothing else). The whole value is leveraging unlabelled data; with 100 total a GP classifier or augmented CNN wins. The rule-of-thumb callout is exam-weight.</p>
-<p><strong>Compute anchor.</strong> 4-layer, 128-dim transformer, 64 patches ≈ 1M params; 200 k spectra trains overnight on a single 1080Ti; fine-tuning the head on 100 labelled spectra takes minutes.</p>
-<p><strong>Cross-reference.</strong> SSL family derived MFML u09 (masking / contrastive / JEPA). Today = the MAE branch on spectra. Forward link: the frozen encoder is exactly the feature extractor an active-learning / self-driving-microscope loop would reuse (an outlook beyond this term’s units).</p>
-<p><strong>Pacing.</strong> ~4 minutes. Kept-and-tightened; old long notes condensed but the teaching beats preserved.</p>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="self-supervised-foundation-models-for-spectra" class="slide level2">
-<h2>19. Self-Supervised &amp; Foundation Models for Spectra</h2>
-<div class="fragment">
-<ul>
-<li>MAE (slide 18) is <strong>reconstruction-based</strong> SSL. Two other families transfer to spectra:
-<ul>
-<li><strong>DINOv2-style</strong> <span class="citation" data-cites="oquab_2024_dinov2">(<a href="#/references" role="doc-biblioref" onclick=""><span class="nocase">Oquab et al.</span> 2024</a>)</span> — self-distillation / invariance to augmentations (shift, broaden, rescale, add Poisson noise).</li>
-<li><strong>I-JEPA-style</strong> — predict <em>latent</em> representations of masked regions, not bins: less low-level, more semantic.</li>
-</ul></li>
-</ul>
+<p><strong>When PCA/ICA struggle.</strong> If end-member abundances are statistically <em>dependent</em> — the usual case in real maps — PCA/ICA unmix poorly. A <strong>Bayesian</strong> model with the simplex priors (slide 14b) estimates end-members + abundances <em>and</em> their uncertainty <span class="citation" data-cites="dobigeon2012unmixing">(<a href="#/references" role="doc-biblioref" onclick="">Dobigeon and Brun 2012</a>)</span>.</p>
 </div>
 <div class="fragment">
 <ul>
-<li><strong>Spectral foundation models</strong>: one encoder pretrained on a huge cross-modality unlabelled corpus, then probed/fine-tuned per task (phase ID, valence, quant features).</li>
+<li>Non-negativity and closure enter as <strong>priors</strong>, not post-hoc fixes.</li>
+<li>Returns posterior distributions → an error bar on every abundance (slide 16 discipline).</li>
 </ul>
 </div>
 <div class="fragment">
@@ -1413,18 +1606,304 @@
 <p><strong>Important</strong></p>
 </div>
 <div class="callout-content">
-<p><strong>Method = MFML u09 (SSL) + ML-PC u09b (transformer backbone). Reference, do not re-derive.</strong> Today’s content: which augmentations are <em>physically valid</em> for spectra, and the evidence that pretrained encoders beat from-scratch on small materials sets.</p>
+<p>A principled prior beats a generic decomposition when the physics (non-negativity, closure, dependence) is known. Encode the physics; don’t hope the SVD stumbles onto it.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> Close §3’s unmixing arc with a <em>probabilistic</em> method, and pay off slide 14b’s promise. It is also the natural place to say “decomposition can carry an uncertainty,” linking to slide 16.</p>
+<p><strong>Mechanism.</strong> Bayesian linear unmixing (BLU) posits <span class="math inline">\(\mathbf{x}=\sum_k a_k\mathbf{m}_k+\mathbf{n}\)</span> with Dirichlet-type priors enforcing <span class="math inline">\(a_k\ge0,\sum a_k=1\)</span> and priors on the end-members; MCMC (or variational) inference returns posteriors over both. PCA/ICA assume orthogonality/independence — false when, e.g., two oxides always co-vary — so they place end-members at non-physical, even negative, spectra.</p>
+<p><strong>Materials hook.</strong> Heterogeneous nanoparticle aggregates where a shell phase never appears without its core: the abundances are correlated by construction, exactly the regime where BLU’s joint prior wins and ICA’s independence assumption fails.</p>
+<p><strong>War story / diagnostic.</strong> An ICA “end-member” with negative lobes and an abundance map that anticorrelates perfectly with another is the signature of forcing independence on dependent phases. The posterior spread from BLU also flags pixels where the unmixing is simply underdetermined.</p>
+<p><strong>Pre-empt the question.</strong> “MCMC on a million-pixel cube?” — Run on the <em>spectral</em> end-member problem after spatial binning / PCA pre-reduction; the abundances then solve per-pixel. Cost is in the end-member inference, not per-pixel.</p>
+<p><strong>Cross-reference.</strong> Simplex geometry: 14b. Uncertainty deliverable: 16, ML-PC u11. Non-linear breakdown of the linear model: 17.</p>
+<p><strong>Pacing.</strong> ~3 minutes. End §3 on “encode the physics as a prior.”</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section></section>
+<section>
+<section id="representation-learning-for-spectra-applied" class="title-slide slide level1 section center">
+<h1>§4 · Representation learning for spectra, applied</h1>
+
+</section>
+<section id="deep-denoising-autoencoders-for-eels-the-em-native-workhorse" class="slide level2">
+<h2>18. Deep Denoising Autoencoders for EELS — the EM-Native Workhorse</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/rapideels_architecture.png" style="width:100.0%"></p>
+<figcaption>A 1-D convolutional denoising autoencoder: a low-SNR EELS spectrum is encoded to a ~5-D latent and decoded to a denoised spectrum; a small head reads oxidation state off the latent <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="fragment">
+<p><strong>What the EM field actually deploys.</strong> Not a giant foundation model — a compact <strong>convolutional denoising autoencoder</strong> mapping noisy → clean spectra. RapidEELS <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span> is the canonical case.</p>
+</div>
+<div class="fragment">
+<ul>
+<li>1-D conv encoder → small latent (≈5-D) → decoder → denoised spectrum.</li>
+<li>Train on simulated / paired clean–noisy spectra (slide 21); deploy at the column.</li>
+<li>The <strong>self-supervised / MAE extension</strong> (mask 75 %, reconstruct masked bins) is the generic recipe — <em>method owned by MFML u09</em>; add it when an unlabelled archive dwarfs the labels.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p>The conv-DAE is the workhorse because it is <strong>small, fast, trainable on simulation, and auditable</strong>: it drops in as a <em>preprocessing denoiser</em> feeding the physical fit (slide 10), not an end-to-end black box.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Why this slide replaced the old MAE-first slide.</strong> The EELS/EDS literature’s deployed deep learning is overwhelmingly conv denoising autoencoders, not Vision-Transformer foundation models. Leading with RapidEELS (Pate, Hart &amp; Taheri 2021) tells the field’s true story; the generic SSL recipe is demoted to a pointer (it is MFML u09’s content).</p>
+<p><strong>Mechanism.</strong> A denoising autoencoder reconstructs a clean target from a noisy input; the bottleneck forces it to learn the manifold of physically-plausible spectra, so off-manifold noise is not reproduced. 1-D convolutions exploit the ordered energy axis (slide 02). The latent is ~5-D because the chemistry is low-dimensional (slide 03).</p>
+<p><strong>Connection to ML-PC u05.</strong> Same encoder–decoder, same MSE as the vanilla AE; the only change is noisy-in / clean-out training. Do not re-derive — point to u05.</p>
+<p><strong>Materials hook.</strong> The denoiser earns its place by enabling <em>low dose</em>: halve the dose and still recover a fittable edge, which for beam-sensitive oxides is the difference between measuring the sample and measuring the beam (slides 23, 26).</p>
+<p><strong>Anti-pattern.</strong> Using the DAE’s latent value as “the answer” (an oxidation state, a concentration). It is an uncalibrated coordinate (slide 17). The DAE denoises; the <em>physical fit</em> quantifies (slides 10, 15).</p>
+<p><strong>Pre-empt the question.</strong> “Why not a transformer foundation model?” — Because (a) there is no validated EELS/EDS foundation model yet (slide 19), and (b) a ~1 M-param conv-DAE trains on one GPU and is auditable. Use the big hammer only when it demonstrably wins.</p>
+<p><strong>Cross-reference.</strong> AE method: ML-PC u05. SSL extension: MFML u09 (slide 19). Denoiser-feeds-fit: 10. Results: 18a; oxidation classification: 18b.</p>
+<p><strong>Pacing.</strong> ~4 minutes. The architecture figure carries it; stress “denoiser feeding a physical fit.”</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="a.-rapideels-low-dose-denoising-at-25400-fps" class="slide level2">
+<h2>18a. RapidEELS — Low-Dose Denoising at 25–400 FPS</h2>
+
+<img data-src="images/lit/rapideels_denoised_grid.png" style="width:64.0%" class="r-stretch quarto-figure-center"><p class="caption">Denoised EELS at 25/100/200/400 FPS vs ground truth: the conv-DAE recovers the O-K / Fe-L edge shape even at ~15 counts/channel (shot-noise SNR ≈ 3.8), and beats 5- and 7-component PCA on fine-feature MSE <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span>.</p><div class="columns">
+<div class="column" style="width:50%;">
+<div class="fragment">
+<ul>
+<li><strong>Dose, not method, is the constraint.</strong> At 400 FPS (0.0025 s dwell) the raw edge is buried in Poisson noise; the DAE restores a fittable edge.</li>
+</ul>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="fragment">
+<ul>
+<li><strong>Beats PCA</strong> on fine-feature MSE (vs 5-/7-component) — the non-linearity helps where peak <em>shape</em>, not just intensity, carries the signal.</li>
+</ul>
+</div>
+</div></div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p>Denoising here is a <em>preprocessing</em> step validated against <strong>ground truth</strong> (slide 10) — never a latent read as the answer (slide 17).</p>
 </div>
 </div>
 </div>
 </div>
 <aside class="notes">
-<p><strong>The genuinely new, domain-specific content.</strong> Not the algorithms (MFML u09 / ML-PC u09b) but <em>which augmentations encode true spectral invariances</em>. Energy shift within calibration tolerance — valid (it is just drift). Peak broadening within instrumental range — valid. Poisson resampling at lower dose — valid, physically motivated. But arbitrary intensity flips, channel permutation, large nonphysical warps — these teach <em>false</em> invariances and quietly destroy the chemical signal (recall slide 02: the axis is physics). The augmentation set <em>is</em> the inductive bias; choosing it is a materials decision, not an ML default.</p>
-<p><strong>Why I-JEPA is interesting for spectra.</strong> Predicting in latent space avoids wasting capacity reconstructing the noisy, scientifically-irrelevant background — capacity goes to peak/edge structure. Pre-empt the obvious question: “better than MAE for spectra?” — Often for very small downstream sets; MAE is the safer default and the natural PCA→AE→MAE progression.</p>
-<p><strong>Materials hook / war story.</strong> A “spectral foundation model” pretrained with vision-style augmentations (random brightness/contrast): brightness scaling ≈ dose (fine), but contrast stretching distorts peak ratios = the chemistry. Symptom: great pretraining loss, downstream valence prediction no better than from-scratch — the encoder learned invariance to exactly the signal you need.</p>
-<p><strong>Cross-reference.</strong> SSL families: MFML u09. Transformer backbone: ML-PC u09b. This slide = application + the physics-of-augmentation judgement only.</p>
-<p><strong>Forward link.</strong> Slide 20 immediately problematises all of this: powerful unsupervised compression can erase the rare science.</p>
+<p><strong>Purpose.</strong> The evidence slide for slide 18: real low-dose EELS denoised across an order of magnitude in frame rate, with a quantitative PCA baseline.</p>
+<p><strong>Quantitative anchors (from the paper).</strong> ~15 counts/channel at the O K-edge; shot-noise-limited SNR <span class="math inline">\(=\sqrt{N}\approx3.8\)</span>; 0.0025 s dwell at 400 FPS; the autoencoder reconstruction beats 5- and 7-component PCA in MSE (3-component PCA is comparable on the coarse shape but loses fine features).</p>
+<p><strong>Materials hook.</strong> Video-rate EELS turns spectrum imaging from a slow, damage-prone acquisition into something usable on beam-sensitive battery cathodes — <em>if</em> you can denoise. The grid shows the edge is recoverable even where the raw spectrum looks like hash.</p>
+<p><strong>War story / diagnostic.</strong> “Our denoiser is great” — on what metric? Against ground truth, per-feature, not eyeballed smoothness. A denoiser minimizing global MSE can still flatten the white-line ratio that carries the valence; validate the <em>feature you will quantify</em>.</p>
+<p><strong>Pre-empt the question.</strong> “If 3-component PCA is close, why bother?” — At the fine-feature level (white-line ratio, ELNES) the non-linear DAE wins, and that is the part that becomes the oxidation state (slides 18b, 23).</p>
+<p><strong>Cross-reference.</strong> Architecture: 18. Oxidation readout: 18b, 23. PCA baseline &amp; its limits: 20a/20b. Poisson floor: 03.</p>
 <p><strong>Pacing.</strong> ~3 minutes.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="b.-from-latent-to-oxidation-state-fe³-vs-fe⁴-rapideels" class="slide level2">
+<h2>18b. From Latent to Oxidation State — Fe³⁺ vs Fe⁴⁺ (RapidEELS)</h2>
+<div class="columns">
+<div class="column" style="width:52%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/rapideels_latent_oxidation.png" style="width:100.0%"></p>
+<figcaption>The learned latent separates Fe³⁺ (SrFeO₂.₅) from Fe⁴⁺ (SrFeO₃); a small classifier on the <em>frozen</em> latent reaches ≈ 93/92/89/82 % accuracy at 25/100/200/400 FPS <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:48%;">
+<div class="fragment">
+<ul>
+<li>Freeze the denoiser’s encoder; train a tiny classifier on the latent — the SSL “pretrain → probe” recipe (MFML u09), here on EELS.</li>
+<li>Accuracy <strong>degrades gracefully</strong> with dose: usable oxidation-state triage even at video rate.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p><strong>But a softmax class is not a calibrated valence.</strong> For the continuous mixed-valence gradient, read the <strong>fitted white-line ratio</strong> (slide 23), not the latent (slide 17). Classification is fast triage; the physical fit is the deliverable.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> Show the payoff of the latent — and immediately bound it. The slide-17 “latent ≠ physical quantity” lesson made concrete on a real, citable result.</p>
+<p><strong>Mechanism.</strong> The DAE encoder, trained only to denoise, already organizes spectra by edge shape; a small classifier on the frozen 5-D latent then separates Fe³⁺ from Fe⁴⁺ — exactly “pretrain (self-supervised denoising) → probe (small supervised head)”.</p>
+<p><strong>Quantitative anchor.</strong> Accuracy ≈ 93/92/89/82 % at 25/100/200/400 FPS (SrFeO₃ Fe⁴⁺ vs SrFeO₂.₅ Fe³⁺) — graceful degradation as dose drops.</p>
+<p><strong>War story / the bound.</strong> A two-class softmax cannot express “62 % Fe³⁺ at this pixel.” The science at an interface is the <em>continuous</em> gradient; fit the white-line ratio (slide 23, referee-checkable) and reserve the classifier for fast survey.</p>
+<p><strong>Pre-empt the question.</strong> “So is the classifier useless?” — No: it is the fast first pass that flags where to spend a careful fit, and honest evidence the denoiser preserved valence information.</p>
+<p><strong>Cross-reference.</strong> Latent caution: 17. Physical readout: 23. Pretrain→probe: MFML u09. Calibrating a class score: ML-PC u11.</p>
+<p><strong>Pacing.</strong> ~3 minutes.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="c.-self-supervised-deep-denoising-of-weak-signals-udvd-wang-et-al.-2025" class="slide level2">
+<h2>18c. Self-Supervised Deep Denoising of Weak Signals — UDVD (Wang et al.&nbsp;2025)</h2>
+<div class="fragment">
+<ul>
+<li><strong>No clean targets needed.</strong> The <strong>unsupervised deep video denoiser (UDVD)</strong>, adapted from computer vision, denoises an EELS <em>series</em> from the noisy data alone — blind-spot self-supervision, no ground truth <span class="citation" data-cites="wang2025denoiser">(<a href="#/references" role="doc-biblioref" onclick="">Wang et al. 2025</a>)</span>.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>Benchmarked on simulated EELS</strong> (&gt;10× SNR on core-loss), then shown on two hard cases:
+<ul>
+<li>mapping dilute <strong>Gd dopants in CeO₂</strong> nanoparticles;</li>
+<li><strong>vibrational / phonon modes in h-BN</strong> at atomic resolution.</li>
+</ul></li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p>Self-supervision is the right tool in the STEM because clean references rarely exist and dose is capped by beam damage — you learn from the noisy data you can afford to acquire (slides 03, 26).</p>
+</div>
+</div>
+</div>
+</div>
+<div class="fragment">
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p><strong>Method lineage:</strong> UDVD is a blind-spot CV denoiser <em>adapted</em> to EELS — the generic architecture is MFML u05/u09; the contribution is the physics-aware adaptation + simulation benchmarking.</p>
+</div>
+</div>
+</div>
+</div>
+<aside class="notes">
+<p><strong>Purpose.</strong> Bring the §4 denoising story to the present (2025) and contrast with the supervised conv-DAE: UDVD needs <em>no clean target</em>, which matters when none exists.</p>
+<p><strong>Mechanism.</strong> Blind-spot networks predict each channel from its neighbours while excluding itself, so the network cannot learn the identity map and must learn signal structure — self-supervised denoising from the noisy acquisition itself. Across an EELS series, scan/temporal redundancy supplies the “frames”.</p>
+<p><strong>Why simulation benchmarking matters.</strong> Without ground truth you cannot prove a denoiser preserves physics; Wang et al.&nbsp;generate simulated EELS to quantify &gt;10× SNR gains before trusting the method on real Gd/CeO₂ and h-BN vibrational data — the “validate against truth” discipline of slide 18a.</p>
+<p><strong>Materials hook.</strong> Vibrational (phonon) EELS and dilute-dopant mapping are the extreme low-signal frontier; recovering them at atomic resolution is exactly where self-supervised denoising changes what is measurable.</p>
+<p><strong>Pre-empt the question.</strong> “Supervised DAE (18) or self-supervised UDVD?” — Supervised when you can simulate/measure clean targets (fast, strong priors); self-supervised when you cannot. Often complementary.</p>
+<p><strong>Cross-reference.</strong> Supervised DAE: 18/18a. Simulation training: 21. Beam-damage/dose budget: 26. Generic blind-spot method: MFML u05/u09. (Image-domain and 4D-STEM deep denoisers exist too, but those are not EELS/EDS spectroscopy.)</p>
+<p><strong>Pacing.</strong> ~3 minutes. A figure-light slide — the “state of the art, honestly scoped” beat.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="foundation-self-supervised-models-for-spectra-promise-vs-reality" class="slide level2">
+<h2>19. Foundation &amp; Self-Supervised Models for Spectra — Promise vs Reality</h2>
+<div class="fragment">
+<ul>
+<li>The SSL families are <strong>generic, owned by MFML u09</strong>: masked autoencoders, <strong>DINOv2</strong>-style self-distillation <span class="citation" data-cites="oquab_2024_dinov2">(<a href="#/references" role="doc-biblioref" onclick=""><span class="nocase">Oquab et al.</span> 2024</a>)</span>, <strong>I-JEPA</strong>-style latent prediction. On spectra they would turn an unlabelled archive into a feature extractor — <em>rule of thumb:</em> you need <span class="math inline">\(\gtrsim 10\times\)</span> more unlabelled than labelled spectra before it pays off.</li>
+</ul>
+</div>
+<div class="fragment">
+<ul>
+<li><strong>The domain content is the augmentations</strong> — which transforms are <em>physically valid</em> invariances?
+<ul>
+<li>✅ energy shift within calibration tolerance · peak broadening within instrument range · Poisson resampling at lower dose.</li>
+<li>❌ intensity flips · channel permutation · contrast stretch — these teach <em>false</em> invariances and erase chemistry (slide 02: the axis is physics).</li>
+</ul></li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p><strong>Reality check.</strong> There is <strong>no validated EELS/EDS foundation model</strong> yet. The field’s deployed deep learning is the <strong>conv denoiser</strong> (slide 18) and decades-old <strong>multivariate statistics</strong> (slides 13–14a). Treat “spectral foundation model” as a research direction, not a tool to reach for.</p>
+</div>
+</div>
+</div>
+</div>
+<aside class="notes">
+<p><strong>Why this slide was reframed.</strong> The original led with DINOv2/I-JEPA/foundation models as if they were the EELS/EDS toolkit. They are not: a literature scan turns up no validated EELS/EDS foundation or generative model — the deployed reality is conv denoisers (slide 18) and multivariate statistics (13–14a). This slide now states that honestly and keeps only the genuinely domain-specific lesson: the augmentations.</p>
+<p><strong>The augmentation point (the keeper).</strong> The augmentation set <em>is</em> the inductive bias. Energy shift within calibration tolerance is just drift (valid). Peak broadening within instrumental range is valid. Poisson resampling to a lower dose is physically motivated (valid). Intensity flips, channel permutation, contrast stretch are nonphysical and teach invariance to exactly the chemistry you measure. Choosing augmentations is a materials decision, not an ML default.</p>
+<p><strong>Materials hook / war story.</strong> A “spectral foundation model” pretrained with vision-style brightness/contrast: brightness ≈ dose (fine), but contrast stretch distorts peak ratios = the chemistry. Symptom: great pretraining loss, downstream valence no better than from-scratch — invariance learned to the signal you need.</p>
+<p><strong>Pre-empt the question.</strong> “Should I build a spectral foundation model for my lab?” — Only if you have a genuinely huge, diverse unlabelled corpus <em>and</em> the augmentation discipline above; otherwise a conv-DAE (18) + a small supervised head beats it at a fraction of the cost and is auditable.</p>
+<p><strong>Cross-reference.</strong> SSL families: MFML u09. Transformer backbone: ML-PC u10 (the next unit). Deployed denoiser: 18. Compression erases the rare: 20.</p>
+<p><strong>Pacing.</strong> ~3 minutes. Land the reality-check callout — it is the slide’s reason to exist.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
           position:absolute!important;
@@ -1465,7 +1944,7 @@
 <p><strong>Important</strong></p>
 </div>
 <div class="callout-content">
-<p><strong>Denoising vs.&nbsp;discovery is a fundamental tension, not a tuning issue.</strong> Always inspect the <strong>residual</strong> <span class="math inline">\(\mathbf{x}-\hat{\mathbf{x}}\)</span> spatially — a rare phase hides there, not in the reconstruction.</p>
+<p><strong>Denoising vs.&nbsp;discovery is a fundamental tension, not a tuning issue.</strong> Always inspect the <strong>residual</strong> <span class="math inline">\(\mathbf{x}-\hat{\mathbf{x}}\)</span> spatially — a rare phase hides there, not in the reconstruction. In EELS this is documented: PCA filtering introduces a systematic <strong>bias</strong> <span class="citation" data-cites="lichtert2013pca">(<a href="#/references" role="doc-biblioref" onclick="">Lichtert and Verbeeck 2013</a>)</span> and artifacts when peak-to-background is poor <span class="citation" data-cites="cueva2012eels">(<a href="#/references" role="doc-biblioref" onclick="">Cueva et al. 2012</a>)</span> (slide 20b).</p>
 </div>
 </div>
 </div>
@@ -1477,6 +1956,107 @@
 <p><strong>Pre-empt the question.</strong> “So never denoise?” — Denoise for <em>known, common</em> features (matrix-phase quant). Do <em>not</em> trust a denoised map for <em>discovery</em>; for discovery work with anomaly/residual maps (slide 25). Different question → different tool. This is the through-line that makes §5’s discovery workflow honest.</p>
 <p><strong>Cross-reference.</strong> Indicts methods from MFML u02/u05/u09 — as an <em>application caution</em>, not a re-derivation. Forward to slide 25 (anomaly workflow) and 26 (operando novelty).</p>
 <p><strong>Pacing.</strong> ~4 minutes. Run as a genuine think-pause; let them answer the hint before revealing. High exam-weight: state the tension and the residual-inspection remedy.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="a.-getting-pca-denoising-right-weighting-optimal-truncation" class="slide level2">
+<h2>20a. Getting PCA Denoising Right — Weighting &amp; Optimal Truncation</h2>
+<div class="columns">
+<div class="column" style="width:44%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/potapov_weighted_pca_maps.png" style="width:100.0%"></p>
+<figcaption>STEM-XEDS element maps (Si/Ti/Al/Ta/Hf): raw → filtered → PCA unweighted → PCA weighted → PCA filtered &amp; weighted. Weighting + the right truncation separates a clean map from a destroyed one <span class="citation" data-cites="potapov2019pca">(<a href="#/references" role="doc-biblioref" onclick="">Potapov and Lubk 2019</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:56%;">
+<div class="fragment">
+<p><strong>PCA denoising must be done right.</strong></p>
+<ul>
+<li><strong>Weight for Poisson noise</strong> before the SVD (variance-stabilizing) — otherwise high-count channels dominate and the weak signal is lost (slide 13b).</li>
+<li><strong>Choose the truncation rank carefully:</strong> too few components erase real features, too many keep noise. Potapov &amp; Lubk give an <em>optimal</em> truncation that beats ad-hoc scree-elbow choices <span class="citation" data-cites="potapov2019pca">(<a href="#/references" role="doc-biblioref" onclick="">Potapov and Lubk 2019</a>)</span>.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/bosman_scree_weighted.png" style="width:76.0%"></p>
+<figcaption>Weighted vs unweighted PCA change which components count as “signal” <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span>.</figcaption>
+</figure>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> The constructive counterpart to slide 20: PCA denoising is genuinely useful <em>if</em> you weight and truncate correctly. Potapov &amp; Lubk (2019) is the EDS reference; Bosman (2006) supplies the weighted-vs-unweighted scree intuition.</p>
+<p><strong>Mechanism — weighting.</strong> Poisson variance = mean, so an unweighted SVD assigns the most variance to the highest-count (often least interesting) channels. Two-way / Poisson weighting divides each entry by its noise σ so the decomposition optimizes for signal-to-noise, not raw counts. The bottom-row “PCA weighted” maps in the figure are visibly cleaner than “PCA unweighted”.</p>
+<p><strong>Mechanism — truncation.</strong> Keeping rank <span class="math inline">\(K\)</span> too small projects real low-variance features away (slide 20); too large readmits noise. Potapov &amp; Lubk derive an optimal <span class="math inline">\(K\)</span> from the noise statistics that outperforms eyeballing the scree elbow.</p>
+<p><strong>War story.</strong> A facility pipeline used a fixed “keep 5 components” rule across every sample; on a dilute-dopant map that rule discarded the dopant. The fix was not a bigger model but a per-dataset optimal truncation + weighting.</p>
+<p><strong>Pre-empt the question.</strong> “Is weighted PCA enough, or do I need the DAE (18)?” — Weighted, optimally-truncated PCA is the fast, linear, auditable default; go non-linear only when peak <em>shape</em> (not just mixing) carries the signal (slide 18a MSE comparison).</p>
+<p><strong>Cross-reference.</strong> Weighting/Poisson: 03, 09, 13b. Rare-phase erasure: 20. Bias if done wrong: 20b. DAE alternative: 18/18a. EDS throughput: 24.</p>
+<p><strong>Pacing.</strong> ~4 minutes. The five-row figure is the whole argument — walk down it.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="b.-when-pca-filtering-lies-bias-artifacts" class="slide level2">
+<h2>20b. When PCA Filtering Lies — Bias &amp; Artifacts</h2>
+<div class="columns">
+<div class="column" style="width:38%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/lichtert_pca_artifacts.png" style="width:84.0%"></p>
+<figcaption>Atomic-resolution EELS maps after PCA noise filtering: the filter can inject structured artifacts and bias fitted parameters even when precision looks excellent <span class="citation" data-cites="lichtert2013pca">(<a href="#/references" role="doc-biblioref" onclick="">Lichtert and Verbeeck 2013</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:62%;">
+<div class="fragment">
+<p><strong>The cautionary literature — take it seriously.</strong></p>
+<ul>
+<li><strong>Lichtert &amp; Verbeeck (2013):</strong> PCA noise filtering introduces a <em>significant bias</em> in estimated parameters — precision can even beat the Cramér–Rao bound while the answer is wrong. Origin: incorrect retrieval of loadings for noisy data <span class="citation" data-cites="lichtert2013pca">(<a href="#/references" role="doc-biblioref" onclick="">Lichtert and Verbeeck 2013</a>)</span>.</li>
+<li><strong>Cueva et al.&nbsp;(2012):</strong> poor peak-to-background EELS, PCA-filtered → <em>serious artifacts</em> <span class="citation" data-cites="cueva2012eels">(<a href="#/references" role="doc-biblioref" onclick="">Cueva et al. 2012</a>)</span>.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p>“Looks clean” ≠ “is correct”. A denoised map can be <strong>precise and biased at once</strong>. Validate against unfiltered fits / known references (slide 16) before trusting PCA-denoised numbers.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> Name the specific failure mode and the specific papers so students cannot dismiss slide 20 as hand-waving. This is the integrity slide of §4.</p>
+<p><strong>Mechanism.</strong> PCA filtering = projection onto the top-<span class="math inline">\(K\)</span> subspace estimated <em>from noisy data</em>. For noisy data the estimated loadings are themselves biased, so the projection systematically distorts the signal. Crucially the <em>precision</em> (scatter) can look excellent — even below the Cramér–Rao bound for the unfiltered estimator — which fools people into trusting a biased number.</p>
+<p><strong>Why precision-beating-CRB is a red flag, not a triumph.</strong> The CRB bounds an <em>unbiased</em> estimator; “beating” it means you traded bias for variance. A tighter error bar around the wrong value is worse than an honest wide one.</p>
+<p><strong>Materials hook.</strong> Atomic-resolution column-by-column quantification (the Lichtert/Verbeeck setting): PCA-filtered maps look beautiful and report tight numbers that are shifted from truth — exactly the kind of result that survives review and is wrong.</p>
+<p><strong>Pre-empt the question.</strong> “So never PCA-filter?” — Filter for <em>visualization</em> and known/common features; never read <em>quantitative</em> parameters off filtered data without validating against an unfiltered fit or a reference (slide 16). Pair with slide 20a’s correct weighting/truncation.</p>
+<p><strong>Cross-reference.</strong> Tension: 20. Correct practice: 20a. Background artifacts: 07a. Validation/uncertainty: 16. Discovery via residual: 25.</p>
+<p><strong>Pacing.</strong> ~3 minutes. End §4 on “precise and biased at once”.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
           position:absolute!important;
@@ -1563,32 +2143,34 @@
 <h1>§5 · Applications &amp; operando</h1>
 
 </section>
-<section id="case-automatic-xrd-phase-identification" class="slide level2">
-<h2>22. Case: Automatic XRD Phase Identification</h2>
+<section id="case-automatic-xrd-phase-identification-non-stem-contrast" class="slide level2">
+<h2>22. Case: Automatic XRD Phase Identification (non-STEM contrast)</h2>
 <div class="fragment">
-<p><strong>Problem.</strong> Given a noisy multi-phase XRD pattern, identify the crystallographic phases. Database (ICDD) peak-matching is manual, slow, and brittle for mixtures, preferred orientation, and broadening.</p>
+<p><strong>Problem.</strong> Identify crystallographic phases in a noisy multi-phase XRD pattern; ICDD peak-matching is manual and brittle to mixtures, preferred orientation, and broadening.</p>
 </div>
 <div class="fragment">
-<p><strong>Pipeline (methods referenced, not re-derived).</strong></p>
-<ol type="1">
-<li>§2 preprocessing: background (SNIP), <span class="math inline">\(2\theta\)</span> calibration (LaB₆ standard), normalization.</li>
-<li>Encode with an AE/classifier <em>pretrained on simulated patterns</em> for all candidate phases (slide 21).</li>
-<li>Nearest-neighbour / clustering in latent space → phase set; high reconstruction error → amorphous / unknown (slide 20 residual logic).</li>
-</ol>
+<p><strong>Pipeline (all methods referenced).</strong> §2 preprocessing (SNIP background, LaB₆ <span class="math inline">\(2\theta\)</span> calibration) → AE/classifier <em>pretrained on simulated patterns</em> (slide 21) → nearest-neighbour in latent space; high reconstruction error → amorphous/unknown (slide 20).</p>
 </div>
 <div class="fragment">
-<p><strong>Why it beats database matching.</strong> Robust to peak broadening (size/strain) and preferred orientation that defeat rigid peak-position matching; decomposes mixtures in latent space.</p>
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
 </div>
-<blockquote>
-<p><strong>[FIGURE: noisy multiphase XRD pattern; below, resolved phase fractions and a flagged unindexed amorphous halo highlighted via reconstruction residual]</strong></p>
-</blockquote>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p><strong>Here only briefly.</strong> XRD is <em>not</em> a (S)TEM modality — a contrast case. The same recipe (sim-pretrain + latent + residual) carries straight over to the EELS/EDS cases that follow (23–24a).</p>
+</div>
+</div>
+</div>
+</div>
 <aside class="notes">
-<p><strong>Purpose.</strong> First case study — show the <em>whole pipeline assembled</em>, every box pointing back at §2–§4. The teaching value is the assembly, not new method content.</p>
-<p><strong>Materials hook.</strong> Preferred orientation is the killer for classical matching: a rolled or thin-film sample suppresses/enhances reflections so the <em>intensity pattern</em> no longer matches the powder reference even though the phase is correct. A representation trained on simulated patterns <em>with</em> texture variation learns the position structure and tolerates intensity reweighting — the concrete win.</p>
-<p><strong>War story / diagnostic.</strong> Amorphous content reported as “phase X at 12%” by naive matching because the broad amorphous halo overlapped X’s strongest line. The residual/anomaly route (slide 20) flags it as “unindexed broad feature” — the honest answer. Failure symptom: a phase fraction that depends strongly on the background window chosen (slide 07 — backgrounds bias everything).</p>
-<p><strong>Pre-empt the question.</strong> “Why not a supervised classifier on labelled patterns?” — Labels are scarce for mixtures and the combinatorial mixture space is huge; the sim-pretrain + latent approach (slide 21) sidesteps the labelling bottleneck and gives an anomaly channel for the unexpected.</p>
-<p><strong>Cross-reference.</strong> Sim pretrain: 21. Anomaly/residual: 20. Methods: MFML u02/u05.</p>
-<p><strong>Pacing.</strong> ~3 minutes. Brisk; an integration showcase.</p>
+<p><strong>Status — trimmed.</strong> XRD phase ID was the old flagship §5 case; the unit’s focus is EELS/EDS in the (S)TEM, so this is now a brief contrast that shows the sim-pretrain + latent + residual recipe is modality-general. Expand only for an XRD-heavy audience.</p>
+<p><strong>One-line teaching point.</strong> Preferred orientation/broadening defeat rigid peak-position matching; a representation trained on simulated patterns <em>with</em> texture variation tolerates intensity reweighting — the concrete win. The amorphous halo is caught by the residual (slide 20), not the matcher.</p>
+<p><strong>Cross-reference.</strong> Sim pretrain: 21. Residual/anomaly: 20, 25. EELS/EDS analogues: 23 (valence), 24/24a (EDS maps).</p>
+<p><strong>Pacing.</strong> ~1–2 minutes. Brisk — a contrast, not the destination.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
           position:absolute!important;
@@ -1601,23 +2183,33 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="case-eels-spectrum-imaging-fe²fe³-mapping" class="slide level2">
-<h2>23. Case: EELS Spectrum Imaging — Fe²⁺/Fe³⁺ Mapping</h2>
+<section id="case-eels-spectrum-imaging-fe-oxidation-state-mapping" class="slide level2">
+<h2>23. Case: EELS Spectrum Imaging — Fe Oxidation-State Mapping</h2>
+<div class="columns">
+<div class="column" style="width:42%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/rapideels_haadf_context.png" style="width:100.0%"></p>
+<figcaption>HAADF-STEM of a SrFeOₓ interface with atomic-resolution detail and the O-K / Fe-L EELS edges — the setting for low-dose valence mapping <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:58%;">
 <div class="fragment">
-<p><strong>Problem.</strong> Map iron oxidation state at nm resolution. The Fe-L₂,₃ white-line ratio (<span class="math inline">\(L_3/L_2\)</span>) and onset shift (~0.3 eV, slide 04) separate Fe²⁺ from Fe³⁺ — but it is buried in Poisson noise at usable dose.</p>
+<p><strong>Problem.</strong> Map Fe oxidation state at nm resolution. The Fe-L₂,₃ white-line ratio (<span class="math inline">\(L_3/L_2\)</span>) and onset shift (~0.3 eV, slide 04) separate the valences — but it is buried in Poisson noise at usable dose.</p>
 </div>
 <div class="fragment">
-<p><strong>Pipeline.</strong> Power-law background (slide 07) → energy calibration to ZLP (slide 08) → DAE denoise <em>pretrained on simulated Fe-L edges</em> (method ML-PC u05; sim slide 21) → <strong>constrained white-line fit</strong> (slide 10) → continuous valence via the fitted ratio, <strong>not</strong> a raw latent (slide 17 caution).</p>
+<p><strong>Pipeline.</strong> Power-law background (07/07a) → ZLP calibration (08) → <strong>DAE denoise</strong> pretrained on simulated Fe-L edges <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span>; weak signal → self-supervised UDVD <span class="citation" data-cites="wang2025denoiser">(<a href="#/references" role="doc-biblioref" onclick="">Wang et al. 2025</a>)</span> (18c) → <strong>constrained white-line fit</strong> (10) → continuous valence from the fitted ratio, <strong>not</strong> a raw latent (17).</p>
 </div>
 <div class="fragment">
-<p><strong>Impact.</strong> Oxidation-state mapping at ~5× lower dose; resolves <strong>continuous mixed-valence gradients</strong> at interfaces; validated against Fe²⁺/Fe³⁺ <strong>reference standards</strong> (slide 16 discipline).</p>
+<p><strong>Impact.</strong> Oxidation-state mapping at ~5–10× lower dose; resolves <strong>continuous mixed-valence gradients</strong>; validated against valence <strong>reference standards</strong> (16).</p>
 </div>
+</div></div>
 <aside class="notes">
-<p><strong>Purpose.</strong> The flagship characterization case — the slide where the <em>entire unit’s discipline</em> is visible in one pipeline: background (07) → calibration (08) → denoise (referenced AE) → constrained physical fit (10) → number not latent (17) → reference-validated (16).</p>
-<p><strong>Materials hook / anchor.</strong> <span class="math inline">\(L_3/L_2\)</span> white-line ratio is the textbook valence proxy; it shifts measurably between Fe²⁺ and Fe³⁺, onset moves ~0.3 eV. The 5× dose saving matters because the oxides of interest (battery cathodes, corrosion layers) are beam-sensitive — over-dose and you reduce Fe³⁺→Fe²⁺ <em>with the beam</em>, measuring an artifact of your own probe.</p>
-<p><strong>War story / killer anti-pattern.</strong> Beam-induced reduction: scan too slow/hot and the act of measuring changes the oxidation state, producing a gorgeous fake valence gradient that “correlates with dose.” Diagnostic symptom: the gradient tracks scan direction / dwell time, not microstructure. Why low-dose + denoising is not a convenience here — it is the difference between measuring the sample and measuring the beam. Forward-link to slide 26 (dose-fractionation / beam-damage detection).</p>
-<p><strong>Pre-empt the question.</strong> “Why not classify Fe²⁺ vs Fe³⁺ with a CNN?” — The science is the <em>continuous mixed-valence gradient</em>, not a binary label; and a fitted physical ratio is referee-checkable while a softmax is not (slide 15 logic).</p>
-<p><strong>Cross-reference.</strong> Every arrow points to a §2–§4 slide on purpose — say it: “this case study introduced no new method; it is §2–§4 assembled for one physics question.”</p>
+<p><strong>Purpose.</strong> The flagship characterization case — the entire unit’s discipline visible in one pipeline: background (07/07a) → calibration (08) → denoise (RapidEELS conv-DAE <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span>, slide 18) → constrained physical fit (10) → number not latent (17) → reference-validated (16). Now anchored on a real, citable EELS denoising paper rather than a generic AE.</p>
+<p><strong>Materials hook / anchor.</strong> <span class="math inline">\(L_3/L_2\)</span> white-line ratio is the textbook valence proxy; it shifts measurably with oxidation state, onset moves ~0.3 eV. The dose saving matters because the oxides of interest (battery cathodes, corrosion layers) are beam-sensitive — over-dose and you change the oxidation state <em>with the beam</em> (Fe³⁺→Fe²⁺), measuring an artifact of your own probe.</p>
+<p><strong>War story / killer anti-pattern.</strong> Beam-induced reduction: scan too slow/hot and the act of measuring changes the oxidation state, producing a gorgeous fake valence gradient that “correlates with dose.” Diagnostic symptom: the gradient tracks scan direction / dwell time, not microstructure. Why low-dose + denoising (18/18c) is not a convenience here — it is the difference between measuring the sample and measuring the beam (slide 26).</p>
+<p><strong>Pre-empt the question.</strong> “Why not just classify the valence with the latent (18b)?” — The RapidEELS classifier <em>does</em> this and is excellent fast triage; but the deliverable is the <em>continuous</em> mixed-valence gradient, and a fitted physical ratio is referee-checkable while a softmax is not (slide 15). Triage with the classifier, quantify with the fit.</p>
+<p><strong>Cross-reference.</strong> Denoise: 18/18a/18c. Latent caution: 17. Background/calibration: 07a/08. Beam damage: 26. Validation: 16.</p>
 <p><strong>Pacing.</strong> ~3 minutes.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1637,7 +2229,7 @@
 <p><strong>The scale challenge (the point of the slide).</strong> <span class="math inline">\(512{\times}512{\times}2048 \approx 5\times10^5\)</span> spectra per field; multiple fields → <span class="math inline">\(10^6\)</span>–<span class="math inline">\(10^7\)</span> spectra per sample. The bottleneck is <strong>engineering</strong>, not method novelty.</p>
 </div>
 <div class="fragment">
-<p><strong>Why PCA, specifically, here.</strong> Linear, one-pass, <span class="math inline">\(O(\min(N,D)^2)\)</span>, deterministic, streamable (incremental SVD). Denoise via top-<span class="math inline">\(K\)</span> reconstruction → K-means in score space → map clusters back to <span class="math inline">\((x,y)\)</span> → phase map in <strong>minutes on a workstation</strong>. (Method: ML-PC u02 — referenced.)</p>
+<p><strong>Why PCA, specifically, here.</strong> Linear, one-pass, <span class="math inline">\(O(\min(N,D)^2)\)</span>, deterministic, streamable (incremental SVD). Denoise via top-<span class="math inline">\(K\)</span> reconstruction → K-means in score space → map clusters back to <span class="math inline">\((x,y)\)</span> → phase map in <strong>minutes on a workstation</strong>. (Method: ML-PC u02; noise-weighted optimal truncation <span class="citation" data-cites="potapov2019pca">(<a href="#/references" role="doc-biblioref" onclick="">Potapov and Lubk 2019</a>)</span>; <strong>MCR</strong> for physical components <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span>, slide 14a.)</p>
 </div>
 <div class="fragment">
 <p><strong>Engineering reality.</strong> Memory-mapped datacubes, chunked/out-of-core SVD, GPU only where it pays. The win is <em>throughput at fixed accuracy</em>, not a better model.</p>
@@ -1663,6 +2255,62 @@
 <p><strong>War story.</strong> A group replaced PCA with a deep AE for “better” phase maps; per-sample processing went 4 → 40 minutes, the queue backed up two weeks, and the maps were not measurably better because preprocessing (slide 06!) was the actual limiter. The fix was a better background model, not a bigger network.</p>
 <p><strong>Pre-empt the question.</strong> “When <em>is</em> the AE worth it at scale?” — When non-linear effects (peak shift, slide 17) genuinely break the linear subspace <em>and</em> you amortise training across many samples. Otherwise PCA. Decision = effect size vs throughput cost, same logic as ML-PC u11’s budget table.</p>
 <p><strong>Cross-reference.</strong> PCA method: ML-PC u02. Rare-phase caveat: 20. Streaming connects forward to slide 26 (operando).</p>
+<p><strong>Pacing.</strong> ~2–3 minutes.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="a.-worked-case-stem-eds-phase-mapping-of-a-device-cross-section" class="slide level2">
+<h2>24a. Worked Case — STEM-EDS Phase Mapping of a Device Cross-Section</h2>
+<div class="columns">
+<div class="column" style="width:40%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="images/lit/kotula_device.png" style="width:100.0%"></p>
+<figcaption>STEM cross-section of a microelectronics device (Al/Ti/W contacts, ILD-1/ILD-2 dielectrics) — the specimen behind the MCR maps of slide 14a <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:60%;">
+<div class="fragment">
+<p><strong>The end-to-end story.</strong> Raw EDS datacube → noise-weighted PCA denoise + optimal truncation <span class="citation" data-cites="potapov2019pca">(<a href="#/references" role="doc-biblioref" onclick="">Potapov and Lubk 2019</a>)</span> → <strong>MCR</strong> for physical components <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span> → abundance maps registered to <span class="math inline">\((x,y)\)</span> → interfacial chemistry of the device.</p>
+</div>
+<div class="fragment">
+<ul>
+<li>Resolves nm-scale barrier / silicide layers and separates FIB Ga / Pt-cap artifacts into their own components (slide 14a).</li>
+<li><strong>Decades old, still the production default</strong> — the bar any deep method must clear.</li>
+</ul>
+</div>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p>The deliverable is <em>which phase is where, with what spectrum</em> — auditable components, not a latent embedding. Match the method to the question (throughput + interpretability), not to fashion.</p>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<aside class="notes">
+<p><strong>Purpose.</strong> A concrete, end-to-end EDS application that closes the loop between the §3 method slides (14a MCR, 20a optimal PCA) and the §5 throughput slide (24). Shows the classical multivariate-statistics pipeline solving a real device-analysis problem.</p>
+<p><strong>Mechanism / pipeline.</strong> (1) Noise-weight and optimally truncate the PCA of the datacube to denoise (Potapov &amp; Lubk, slide 20a). (2) Run MCR for non-negative physical component spectra + abundance maps (Kotula &amp; Keenan, slide 14a). (3) Register abundances to real space → the interfacial chemistry. No deep learning required.</p>
+<p><strong>Materials hook.</strong> Microelectronics failure/interface analysis is a high-throughput service-lab task; barrier layers a few nm thick and implanted-Ga artifacts must be separated cleanly. This is the canonical Sandia use-case and a reason MSA is standard in EDS software.</p>
+<p><strong>War story / diagnostic.</strong> Skipping the optimal-truncation step (slide 20a) either leaves noise (too many components) or erases the thin barrier layer (too few). The device geometry is the ground truth: if a known layer is missing from the maps, the truncation/weighting is wrong, not the sample.</p>
+<p><strong>Pre-empt the question.</strong> “Where would deep learning help here?” — Only if absorption/non-linear mixing in thick regions breaks the linear model (slide 17); otherwise MCR+PCA is faster, auditable, and certifiable. Reach for a network when the linear subspace demonstrably fails.</p>
+<p><strong>Cross-reference.</strong> MCR method: 14a. Optimal PCA: 20a. Throughput: 24. Non-linear breakdown: 17. Rare-phase caveat: 20.</p>
 <p><strong>Pacing.</strong> ~2–3 minutes.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1797,17 +2445,7 @@
 <h2>27. Spectral Inverse Problems — EXAFS → Local Structure (stretch)</h2>
 <div class="fragment">
 <ul>
-<li>Some spectra are an <strong>encoded structure</strong>, not a feature list. <strong>EXAFS</strong> oscillations <span class="math inline">\(\chi(k)\)</span> are a sum over scattering paths → Fourier-related to a <strong>radial distribution</strong> (neighbour distances, coordination numbers).</li>
-</ul>
-</div>
-<div class="fragment">
-<ul>
-<li>This is a <strong>modality-specific inverse problem</strong>: recover the structure that <em>generates</em> the spectrum via a known forward model (FEFF), not a generic decomposition.</li>
-</ul>
-</div>
-<div class="fragment">
-<ul>
-<li>ML role: a <strong>differentiable / surrogate forward model</strong> (seeded on slide 10’s idea) for fast amortised inversion + uncertainty — <em>the general inverse-problem theory is <strong>ML-PC u08</strong>; reference it, do not re-derive</em>.</li>
+<li>Some spectra <strong>encode a structure</strong>: <strong>EXAFS</strong> <span class="math inline">\(\chi(k)\)</span> is a sum over scattering paths, Fourier-related to a radial distribution (neighbour distances, coordination numbers). Recovering it is a <strong>modality-specific inverse problem</strong> through a known forward model (FEFF) — ML supplies a fast differentiable/surrogate inverse with uncertainty (<em>theory: ML-PC u08</em>).</li>
 </ul>
 </div>
 <div class="fragment">
@@ -1820,19 +2458,17 @@
 <p><strong>Important</strong></p>
 </div>
 <div class="callout-content">
-<p>An inverse problem can be <strong>ill-posed</strong>: many structures fit one spectrum. Same disease as MCR rotational ambiguity (slide 14) — physical constraints (known coordination chemistry, path filtering) are the cure.</p>
+<p><strong>The unit’s recurring lesson, a third time.</strong> Ill-posedness here = rotational ambiguity in MCR (14) = non-identifiable peaks (10). The cure is always the same: <strong>physical constraints</strong> (path filtering, known coordination chemistry). EXAFS is a synchrotron method, kept only to make that pattern unmistakable.</p>
 </div>
 </div>
 </div>
 </div>
 <aside class="notes">
-<p><strong>Purpose / status.</strong> Marked stretch — include if pace allows; it generalises the unit’s recurring identifiability theme to a third instance and links to ML-PC u08. If short, state the headline (some spectra are inverse problems; ill-posedness is the recurring disease; constraints the recurring cure) and move to the wrap.</p>
-<p><strong>Mechanism.</strong> EXAFS: photoelectron scattering off neighbours modulates the absorption fine structure; <span class="math inline">\(\chi(k)\)</span> is, to first approximation, a sum of damped sinusoids whose frequencies encode neighbour distances — a Fourier transform gives a (phase-shifted) radial distribution. The forward model (FEFF) is well-understood; inversion is the hard, ill-posed direction. ML contributes an amortised/differentiable surrogate for fast inversion with uncertainty.</p>
-<p><strong>The unifying teaching point (why the slide earns its place).</strong> Three times now the same disease: constrained peak fitting (slide 10, non-identifiable peaks), MCR-ALS (slide 14, rotational ambiguity), inverse problems (here, ill-posedness). Same cure: <em>physical constraints reduce a continuum of fits to a defensible one</em>. Say it explicitly — the single most transferable idea in the unit and a likely exam synthesis question.</p>
-<p><strong>Materials hook.</strong> EXAFS routinely over-fitted: add enough shells/paths and you fit noise, reporting meaningless coordination numbers. Diagnostic symptom: fit quality keeps improving with more free paths while parameters become physically absurd (negative Debye-Waller factors, non-physical distances). The constraint discipline (path filtering, known chemistry, bounded parameters) is identical in spirit to slide 10’s shared-width/branching-ratio constraints.</p>
-<p><strong>Pre-empt the question.</strong> “Why not just slide 10?” — Slide 10 fits peaks <em>in the spectrum</em>; here the unknown is a <em>structure</em> behind a non-trivial physical forward operator. The machinery (differentiable forward model, constraints) is shared; the object recovered differs and ill-posedness is more severe.</p>
-<p><strong>Cross-reference.</strong> General inverse theory: ML-PC u08. Differentiable forward model: 10. Identifiability/ambiguity family: 10, 14.</p>
-<p><strong>Pacing.</strong> ~2–3 minutes, or a 30-second headline if compressing.</p>
+<p><strong>Status — trimmed to a headline.</strong> EXAFS is non-(S)TEM (synchrotron); kept only because it completes the identifiability triad (10 → 14 → 27). Pressed for time, state the headline and move on.</p>
+<p><strong>The unifying point (why it survives the trim).</strong> Three times the same disease — non-identifiable peaks (10), MCR rotational ambiguity (14), inverse ill-posedness (here); one cure — physical constraints collapse a continuum of fits to a defensible one. Likely exam synthesis question.</p>
+<p><strong>Materials hook.</strong> EXAFS is routinely over-fitted: add shells/paths and you fit noise (negative Debye-Waller factors, absurd distances). Path filtering + bounded parameters is the same discipline as slide 10’s shared-width/branching-ratio constraints.</p>
+<p><strong>Cross-reference.</strong> Inverse theory: ML-PC u08. Differentiable forward model: 10. Identifiability family: 10, 14.</p>
+<p><strong>Pacing.</strong> ~1 minute headline.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
           position:absolute!important;
@@ -1882,7 +2518,7 @@
 </div>
 <div class="fragment">
 <ol start="6" type="1">
-<li>SSL/MAE turns the unlabelled archive into a feature extractor — <em>if</em> augmentations are physically valid (18, 19).</li>
+<li><strong>EM-native deep denoisers</strong> (conv-DAE, UDVD) recover low-dose EELS/EDS (18, 18c); PCA denoising must be <strong>weighted &amp; validated</strong> (20a/20b); spectroscopy foundation models are still nascent (19).</li>
 </ol>
 </div>
 </div></div>
@@ -1919,6 +2555,81 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
+</section>
+<section id="a.-eelseds-algorithms-in-the-stem-a-map" class="slide level2">
+<h2>28a. EELS/EDS Algorithms in the STEM — A Map</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Task</th>
+<th style="text-align: left;">Classical (still the default)</th>
+<th style="text-align: left;">Deep / modern</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><strong>Background</strong></td>
+<td style="text-align: left;">power law, SNIP, AsLS; LCPL + local averaging <span class="citation" data-cites="cueva2012eels">(<a href="#/references" role="doc-biblioref" onclick="">Cueva et al. 2012</a>)</span></td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong>Denoising</strong></td>
+<td style="text-align: left;">weighted / optimal PCA <span class="citation" data-cites="bosman2006eels potapov2019pca">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>; <a href="#/references" role="doc-biblioref" onclick="">Potapov and Lubk 2019</a>)</span></td>
+<td style="text-align: left;">conv-DAE <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span>; self-supervised UDVD <span class="citation" data-cites="wang2025denoiser">(<a href="#/references" role="doc-biblioref" onclick="">Wang et al. 2025</a>)</span></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><strong>Decomposition / unmixing</strong></td>
+<td style="text-align: left;">PCA <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span>, MCR <span class="citation" data-cites="kotula2006mcr">(<a href="#/references" role="doc-biblioref" onclick="">Kotula and Keenan 2006</a>)</span>, Bayesian LU <span class="citation" data-cites="dobigeon2012unmixing">(<a href="#/references" role="doc-biblioref" onclick="">Dobigeon and Brun 2012</a>)</span></td>
+<td style="text-align: left;">non-linear AE decoders (u05)</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong>Quantification</strong></td>
+<td style="text-align: left;">Cliff-Lorimer <span class="citation" data-cites="cliff1975quantitative">(<a href="#/references" role="doc-biblioref" onclick="">Cliff and Lorimer 1975</a>)</span>, ζ-factor <span class="citation" data-cites="watanabe2006zeta">(<a href="#/references" role="doc-biblioref" onclick="">Watanabe and Williams 2006</a>)</span></td>
+<td style="text-align: left;">ML for intensity extraction only</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><strong>Valence / ELNES</strong></td>
+<td style="text-align: left;">reference-spectrum fitting <span class="citation" data-cites="bosman2006eels">(<a href="#/references" role="doc-biblioref" onclick="">Bosman et al. 2006</a>)</span></td>
+<td style="text-align: left;">latent classifier <span class="citation" data-cites="pate2021rapideels">(<a href="#/references" role="doc-biblioref" onclick="">Pate et al. 2021</a>)</span></td>
+</tr>
+</tbody>
+</table>
+<div class="fragment">
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Important</strong></p>
+</div>
+<div class="callout-content">
+<p><strong>Two honest truths.</strong> (1) Multivariate statistics (2006–2019) is still the production workhorse. (2) Deep learning’s clearest EELS/EDS win so far is <strong>denoising for low dose</strong> — <em>the</em> enabler, not a replacement for the physics.</p>
+</div>
+</div>
+</div>
+</div>
+<aside class="notes">
+<p><strong>Purpose.</strong> One synthesis table the students photograph: which algorithm solves which EELS/EDS task, and the honest classical-vs-deep split. Aggregates every algorithm reference in the unit.</p>
+<p><strong>Teaching point.</strong> Read the two columns aloud: classical multivariate statistics still owns most tasks; deep learning’s clear win is denoising for low dose. Resist the narrative that deep learning replaced the field — it extended the low-dose frontier (slides 18, 18c) while the physics (15, 16) and the multivariate statistics (13a–14a) remain the deliverable.</p>
+<p><strong>Cross-reference.</strong> Background 07a; denoising 18/18c/20a; unmixing 13a–14b/17a; quantification 15–16; valence 18b/23.</p>
+<p><strong>Pacing.</strong> ~2 minutes. A reference/summary beat bridging the takeaways and the citations.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
 <!-- BEGIN prev-next -->
 </section>
 <section id="continue" class="slide level2">
@@ -1933,30 +2644,39 @@
 <section id="references" class="slide level2 smaller scrollable">
 <h2>29. References</h2>
 <div class="fragment">
-<h3 id="preprocessing-chemometrics">Preprocessing &amp; chemometrics</h3>
+<h3 id="eelseds-algorithms-in-the-stem">EELS/EDS algorithms in the (S)TEM</h3>
 <ul>
-<li>Background: <strong><span class="citation" data-cites="ryan1988snip">Ryan et al. (<a href="#/references" role="doc-biblioref" onclick="">1988</a>)</span></strong> (SNIP), <strong><span class="citation" data-cites="eilers2005baseline">Eilers and Boelens (<a href="#/references" role="doc-biblioref" onclick="">2005</a>)</span></strong> (Asymmetric Least Squares)</li>
-<li>Alignment: <strong><span class="citation" data-cites="nielsen1998cow">Nielsen et al. (<a href="#/references" role="doc-biblioref" onclick="">1998</a>)</span></strong> (correlation-optimized warping)</li>
-<li>Calibration transfer: <strong><span class="citation" data-cites="wang1991pds">Wang et al. (<a href="#/references" role="doc-biblioref" onclick="">1991</a>)</span></strong> (piecewise direct standardization)</li>
-<li>Curve resolution: <strong><span class="citation" data-cites="dejuan2014mcr">Juan et al. (<a href="#/references" role="doc-biblioref" onclick="">2014</a>)</span></strong> (MCR-ALS review)</li>
+<li>Multivariate statistics: <strong><span class="citation" data-cites="bosman2006eels">Bosman et al. (<a href="#/references" role="doc-biblioref" onclick="">2006</a>)</span></strong> (PCA-EELS, composition + bonding), <strong><span class="citation" data-cites="kotula2006mcr">Kotula and Keenan (<a href="#/references" role="doc-biblioref" onclick="">2006</a>)</span></strong> (MCR-EDS), <strong><span class="citation" data-cites="dobigeon2012unmixing">Dobigeon and Brun (<a href="#/references" role="doc-biblioref" onclick="">2012</a>)</span></strong> (Bayesian unmixing), <strong><span class="citation" data-cites="potapov2019pca">Potapov and Lubk (<a href="#/references" role="doc-biblioref" onclick="">2019</a>)</span></strong> (optimal PCA)</li>
+<li>Background &amp; PCA cautions: <strong><span class="citation" data-cites="cueva2012eels">Cueva et al. (<a href="#/references" role="doc-biblioref" onclick="">2012</a>)</span></strong> (LCPL / local averaging), <strong><span class="citation" data-cites="lichtert2013pca">Lichtert and Verbeeck (<a href="#/references" role="doc-biblioref" onclick="">2013</a>)</span></strong> (PCA noise-filter bias)</li>
+<li>Deep learning: <strong><span class="citation" data-cites="pate2021rapideels">Pate et al. (<a href="#/references" role="doc-biblioref" onclick="">2021</a>)</span></strong> (RapidEELS conv-DAE), <strong><span class="citation" data-cites="wang2025denoiser">Wang et al. (<a href="#/references" role="doc-biblioref" onclick="">2025</a>)</span></strong> (self-supervised UDVD)</li>
 </ul>
 </div>
 <div class="fragment">
-<h3 id="quantification">Quantification</h3>
+<h3 id="preprocessing-chemometrics-quantification">Preprocessing, chemometrics &amp; quantification</h3>
 <ul>
-<li><strong><span class="citation" data-cites="cliff1975quantitative">Cliff and Lorimer (<a href="#/references" role="doc-biblioref" onclick="">1975</a>)</span></strong> (Cliff-Lorimer <span class="math inline">\(k\)</span>-factors) · <strong><span class="citation" data-cites="watanabe2006zeta">Watanabe and Williams (<a href="#/references" role="doc-biblioref" onclick="">2006</a>)</span></strong> (ζ-factor method)</li>
+<li>Background <strong><span class="citation" data-cites="ryan1988snip">Ryan et al. (<a href="#/references" role="doc-biblioref" onclick="">1988</a>)</span></strong> (SNIP), <strong><span class="citation" data-cites="eilers2005baseline">Eilers and Boelens (<a href="#/references" role="doc-biblioref" onclick="">2005</a>)</span></strong> (AsLS) · alignment <strong><span class="citation" data-cites="nielsen1998cow">Nielsen et al. (<a href="#/references" role="doc-biblioref" onclick="">1998</a>)</span></strong> (COW) · transfer <strong><span class="citation" data-cites="wang1991pds">Wang et al. (<a href="#/references" role="doc-biblioref" onclick="">1991</a>)</span></strong> (PDS) · curve resolution <strong><span class="citation" data-cites="dejuan2014mcr">Juan et al. (<a href="#/references" role="doc-biblioref" onclick="">2014</a>)</span></strong> (MCR-ALS)</li>
+<li>Quantification <strong><span class="citation" data-cites="cliff1975quantitative">Cliff and Lorimer (<a href="#/references" role="doc-biblioref" onclick="">1975</a>)</span></strong> (Cliff-Lorimer), <strong><span class="citation" data-cites="watanabe2006zeta">Watanabe and Williams (<a href="#/references" role="doc-biblioref" onclick="">2006</a>)</span></strong> (ζ-factor)</li>
 </ul>
 </div>
 <div class="fragment">
-<h3 id="representation-learning-referenced-derived-in-mfml-u05u09">Representation learning (referenced — derived in MFML u05/u09)</h3>
+<h3 id="generic-ml-derived-in-mfml-u05u09-referenced-not-central">Generic ML (derived in MFML u05/u09 — referenced, not central)</h3>
 <ul>
 <li><strong><span class="citation" data-cites="he_2022_mae">He et al. (<a href="#/references" role="doc-biblioref" onclick="">2022</a>)</span></strong> (Masked Autoencoders) · <strong><span class="citation" data-cites="oquab_2024_dinov2"><span class="nocase">Oquab et al.</span> (<a href="#/references" role="doc-biblioref" onclick="">2024</a>)</span></strong> (DINOv2)</li>
 <li>Course texts: <strong><span class="citation" data-cites="sandfeld_materials_data_science"><span class="nocase">Sandfeld et al.</span> (<a href="#/references" role="doc-biblioref" onclick="">2024</a>)</span></strong>, <strong><span class="citation" data-cites="mcclarren2021machine">McClarren (<a href="#/references" role="doc-biblioref" onclick="">2021</a>)</span></strong>, <strong><span class="citation" data-cites="neuer2024machine"><span class="nocase">Neuer et al.</span> (<a href="#/references" role="doc-biblioref" onclick="">2024</a>)</span></strong></li>
 </ul>
 </div>
 <div id="refs" class="references csl-bib-body hanging-indent" role="list">
+<div id="ref-bosman2006eels" class="csl-entry" role="listitem">
+Bosman, M., M. Watanabe, D. T. L. Alexander, and V. J. Keast. 2006. <span>“Mapping Chemical and Bonding Information Using Multivariate Analysis of Electron Energy-Loss Spectrum Images.”</span> <em>Ultramicroscopy</em> 106 (11–12): 1024–32. <a href="https://doi.org/10.1016/j.ultramic.2006.04.016">https://doi.org/10.1016/j.ultramic.2006.04.016</a>.
+</div>
 <div id="ref-cliff1975quantitative" class="csl-entry" role="listitem">
 Cliff, G., and G. W. Lorimer. 1975. <span>“The Quantitative Analysis of Thin Specimens.”</span> <em>Journal of Microscopy</em> 103 (2): 203–7.
+</div>
+<div id="ref-cueva2012eels" class="csl-entry" role="listitem">
+Cueva, Paul, Robert Hovden, Julia A. Mundy, Huolin L. Xin, and David A. Muller. 2012. <span>“Data Processing for Atomic Resolution Electron Energy Loss Spectroscopy.”</span> <em>Microscopy and Microanalysis</em> 18 (4): 667–75. <a href="https://doi.org/10.1017/S1431927612000244">https://doi.org/10.1017/S1431927612000244</a>.
+</div>
+<div id="ref-dobigeon2012unmixing" class="csl-entry" role="listitem">
+Dobigeon, Nicolas, and Nathalie Brun. 2012. <span>“Spectral Mixture Analysis of <span>EELS</span> Spectrum-Images.”</span> <em>Ultramicroscopy</em> 120: 25–34. <a href="https://doi.org/10.1016/j.ultramic.2012.05.006">https://doi.org/10.1016/j.ultramic.2012.05.006</a>.
 </div>
 <div id="ref-eilers2005baseline" class="csl-entry" role="listitem">
 Eilers, Paul H. C., and Hans F. M. Boelens. 2005. <span>“Baseline Correction with Asymmetric Least Squares Smoothing.”</span> <em>Leiden University Medical Centre Report</em> 1 (1): 5.
@@ -1966,6 +2686,12 @@ He, Kaiming, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Dollár, and Ross Girsh
 </div>
 <div id="ref-dejuan2014mcr" class="csl-entry" role="listitem">
 Juan, Anna de, Joaquim Jaumot, and Romà Tauler. 2014. <span>“Multivariate Curve Resolution (<span>MCR</span>). Solving the Mixture Analysis Problem.”</span> <em>Analytical Methods</em> 6 (14): 4964–76.
+</div>
+<div id="ref-kotula2006mcr" class="csl-entry" role="listitem">
+Kotula, Paul G., and Michael R. Keenan. 2006. <span>“Application of Multivariate Statistical Analysis to <span>STEM</span> x-Ray Spectral Images: Interfacial Analysis in Microelectronics.”</span> <em>Microscopy and Microanalysis</em> 12 (6): 538–44. <a href="https://doi.org/10.1017/S1431927606060636">https://doi.org/10.1017/S1431927606060636</a>.
+</div>
+<div id="ref-lichtert2013pca" class="csl-entry" role="listitem">
+Lichtert, Stijn, and Jo Verbeeck. 2013. <span>“Statistical Consequences of Applying a <span>PCA</span> Noise Filter on <span>EELS</span> Spectrum Images.”</span> <em>Ultramicroscopy</em> 125: 35–42. <a href="https://doi.org/10.1016/j.ultramic.2012.10.001">https://doi.org/10.1016/j.ultramic.2012.10.001</a>.
 </div>
 <div id="ref-mcclarren2021machine" class="csl-entry" role="listitem">
 McClarren, Ryan G. 2021. <em>Machine Learning for Engineers: Using Data to Solve Problems for Physical Systems</em>. Springer.
@@ -1979,11 +2705,20 @@ Nielsen, Niels-Peter V., Jens M. Carstensen, and Jørn Smedsgaard. 1998. <span>�
 <div id="ref-oquab_2024_dinov2" class="csl-entry" role="listitem">
 <span class="nocase">Oquab, Maxime, Timothée Darcet, Théo Moutakanni, et al.</span> 2024. <span>“<span>DINOv2</span>: Learning Robust Visual Features Without Supervision.”</span> <em>Transactions on Machine Learning Research</em>.
 </div>
+<div id="ref-pate2021rapideels" class="csl-entry" role="listitem">
+Pate, Cassandra M., James L. Hart, and Mitra L. Taheri. 2021. <span>“<span>RapidEELS</span>: Machine Learning for Denoising and Classification in Rapid Acquisition Electron Energy Loss Spectroscopy.”</span> <em>Scientific Reports</em> 11 (1): 19515. <a href="https://doi.org/10.1038/s41598-021-97668-8">https://doi.org/10.1038/s41598-021-97668-8</a>.
+</div>
+<div id="ref-potapov2019pca" class="csl-entry" role="listitem">
+Potapov, Pavel, and Axel Lubk. 2019. <span>“Optimal Principal Component Analysis of <span>STEM</span> <span>XEDS</span> Spectrum Images.”</span> <em>Advanced Structural and Chemical Imaging</em> 5 (1): 4. <a href="https://doi.org/10.1186/s40679-019-0066-0">https://doi.org/10.1186/s40679-019-0066-0</a>.
+</div>
 <div id="ref-ryan1988snip" class="csl-entry" role="listitem">
 Ryan, C. G., E. Clayton, W. L. Griffin, S. H. Sie, and D. R. Cousens. 1988. <span>“<span>SNIP</span>, a Statistics-Sensitive Background Treatment for the Quantitative Analysis of <span>PIXE</span> Spectra in Geoscience Applications.”</span> <em>Nuclear Instruments and Methods in Physics Research Section B</em> 34 (3): 396–402.
 </div>
 <div id="ref-sandfeld_materials_data_science" class="csl-entry" role="listitem">
 <span class="nocase">Sandfeld, Stefan et al.</span> 2024. <em>Materials Data Science</em>. Springer.
+</div>
+<div id="ref-wang2025denoiser" class="csl-entry" role="listitem">
+Wang, Yifan, Mai Tan, Carlos Fernandez-Granda, and Peter A. Crozier. 2025. <span>“Revealing Information from Weak Signals in Electron Energy-Loss Spectroscopy with a Deep Denoiser.”</span> <em>Micron</em> 201: 103957. <a href="https://doi.org/10.1016/j.micron.2025.103957">https://doi.org/10.1016/j.micron.2025.103957</a>.
 </div>
 <div id="ref-wang1991pds" class="csl-entry" role="listitem">
 Wang, Yongdong, David J. Veltkamp, and Bruce R. Kowalski. 1991. <span>“Multivariate Instrument Standardization.”</span> <em>Analytical Chemistry</em> 63 (23): 2750–56.
