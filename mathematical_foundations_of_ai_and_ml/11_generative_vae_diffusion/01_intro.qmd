@@ -191,7 +191,7 @@ The latent $z$ is now a random variable, not a deterministic function of $x$.
 ![Plate notation for a latent-variable generative model: open circle $z_i$ = hidden, shaded circle $x_i$ = observed. The plate (box labelled $N$) means the pattern repeats over all data points. [@bishop2006pattern, Ch. 8]](images/plate_notation_observed_latent.png){width=75%}
 ::::
 ::::
-
+ 
 :::: {.notes}
 - The single most important framing to deliver, and the one students miss: **the architectural change is tiny and not where the magic is.** Encoder outputs $(\mu,\sigma)$ instead of $z$ — that's it. Write both diagrams stacked on the board so the diff is one node. Then say the line that matters: "this change does almost nothing by itself; the *loss* is what forces the latent to be sampleable. Hold that thought for three slides."
 - Pre-empt the misconception that "VAE = AE with noise added." It is not noise injection; it is making $z$ a *parameterized distribution* whose parameters the network predicts, so we can later (a) regularize that distribution toward a prior and (b) sample from the prior at test time. Both require the distributional view.
@@ -214,7 +214,7 @@ The latent $z$ is now a random variable, not a deterministic function of $x$.
 ::::
 ::::
 :::: {.column width="45%"}
-![Each $x$ gets its own posterior $q_\phi(z\mid x)$ (coloured Gaussian); the KL term makes their **union tile the prior** $\mathcal{N}(0,I)$ (dashed 1σ/2σ rings). That coverage is why a fresh $z\sim\mathcal{N}(0,I)$ decodes to a valid sample. Generated locally.](images/vae_aggregate_posterior.png){width=100%}
+![Each $x$ gets its own posterior $q_\phi(z\mid x)$ (coloured Gaussian); the KL term makes their **union tile the prior** $\mathcal{N}(0,I)$ (dashed 1σ/2σ rings). That coverage is why a fresh $z\sim\mathcal{N}(0,I)$ decodes to a valid sample. Generated locally.](images/vae_aggregate_posterior.png){width=90%}
 ::::
 ::::
 
@@ -227,6 +227,8 @@ The latent $z$ is now a random variable, not a deterministic function of $x$.
 
 ## VAE — the loss, intuitively
 
+:::: {.columns}
+:::: {.column width="56%"}
 For each training point $x$, the VAE loss has two terms:
 
 :::: {.incremental}
@@ -238,6 +240,11 @@ For each training point $x$, the VAE loss has two terms:
 $$
 \mathcal{L}(\theta, \phi; x) = \underbrace{-\mathbb{E}_{z \sim q_\phi(z|x)}[\log p_\theta(x \mid z)]}_{\text{reconstruction}} + \underbrace{\mathrm{KL}(q_\phi(z \mid x) \,\|\, p(z))}_{\text{prior-matching}}
 $$
+::::
+::::
+:::: {.column width="44%"}
+![Computational flow in a VAE: a datapoint $x$ passes through the **inference model** $q(z\mid x)$, a latent $z$ is **sampled**, the **generative model** $p(x,z)$ decodes it, and everything feeds the **ELBO** objective $\log p(x,z) - \log q(z\mid x)$ — the same two terms (reconstruction $+$ prior-matching) written below. [@kingma2019introvae]](images/vae_computational_flow.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -293,22 +300,26 @@ $$
 ## The reparameterization trick
 
 :::: {.columns}
-:::: {.column width="52%"}
+:::: {.column width="50%"}
 :::: {.incremental}
 - We need to backpropagate through the **sampling step** $z \sim \mathcal{N}(\mu, \sigma^2)$.
-- Problem: sampling is not differentiable.
-- Solution: rewrite the sample as a deterministic function of a noise variable:
+- Problem: sampling is not differentiable — you cannot push $\nabla_\phi$ through a **random node**.
+- Fix: **externalize the randomness**. Rewrite the sample as a deterministic, differentiable function of a *parameter-free* noise variable:
 $$
 z = \mu_\phi(x) + \sigma_\phi(x) \odot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I).
 $$
 ::::
 
 :::: {.fragment}
-The randomness sits in $\epsilon$ (no parameters); $\mu, \sigma$ are deterministic functions of $\phi$. Now gradients flow from the loss through $z$ back to $\phi$.
+**Why it works**: the gradient and the expectation now *commute*, giving a one-sample Monte-Carlo estimator:
+$$
+\nabla_\phi\, \mathbb{E}_{q_\phi(z|x)}[f(z)] = \mathbb{E}_{p(\epsilon)}\!\big[\nabla_\phi f(z)\big] \approx \nabla_\phi f(z),\quad z=\mu_\phi+\sigma_\phi\odot\epsilon.
+$$
+The randomness sits in $\epsilon$ (no parameters); the estimate is **unbiased**.
 ::::
 ::::
-:::: {.column width="48%"}
-![Reparameterization trick: instead of sampling $z$ directly (stochastic node, top path), inject external noise $\epsilon \sim \mathcal{N}(0,I)$ and compute $z = \mu + \sigma \odot \epsilon$ deterministically (bottom path). Gradients now flow through $\mu$ and $\sigma$. Source: Wikimedia Commons (CC-BY-SA 4.0). [@doersch2016vaetutorial]](images/vae_reparameterization_trick.png){width=90%}
+:::: {.column width="50%"}
+![**Reparameterization trick** (Kingma & Welling). *Left — original form:* the objective $f$ depends on $\phi$ only through the **random node** $z\sim q_\phi(z\mid x)$, so gradients cannot flow through it. *Right — reparameterized form:* inject external noise $\epsilon\sim p(\epsilon)$ and set $z=g(\phi,x,\epsilon)=\mu+\sigma\odot\epsilon$ (now a **deterministic node**); the red path is $\nabla_\phi f$ back-propagating through $z$. [@kingma2019introvae]](images/vae_reparam_kingma.png){width=100%}
 ::::
 ::::
 
@@ -425,15 +436,23 @@ That's it. No labels needed; no special procedure. The trained encoder/decoder p
 
 ## Latent interpolation in a VAE
 
+:::: {.columns}
+:::: {.column width="54%"}
 :::: {.incremental}
 - Encode two real samples $x_A, x_B$ → latents $z_A, z_B$.
 - Interpolate: $z_t = (1-t) z_A + t z_B$ for $t \in [0, 1]$.
 - Decode each $z_t$.
 - Result in a well-trained VAE: a **smooth path** between the two outputs in $x$-space.
+- Same idea with an **attribute direction**: move $z$ along a learned vector (e.g. a "smile vector") to edit one factor at a time.
 ::::
 
 :::: {.fragment}
 For materials: interpolate between two micrographs to see how phases transition; interpolate between two compositions to traverse phase space.
+::::
+::::
+:::: {.column width="46%"}
+![**Image resynthesis by latent-space editing.** Starting from one original image (top-left), moving its latent code along a **smile vector** sweeps the output smoothly from smiling to sad — evidence the VAE latent encodes semantic factors as directions. Example by White, 2016. [@kingma2019introvae]](images/vae_smile_vector_resynthesis.png){width=100%}
+::::
 ::::
 
 :::: {.notes}
@@ -696,18 +715,52 @@ $T$ network calls per sample. With $T = 1000$, this is **slow** compared to a VA
 - Use the figure to *set up the next two slides*: trace the curve left→right — quality climbs steeply then **flatlines by ~50 steps**. Land two points: (1) past the green band you pay compute for ~zero quality (this is the "1000 steps is wasteful" punchline); (2) the curve is the entire reason DDIM/DPM-Solver (10–25 steps) and consistency models (1 step) exist — they live at the left of this plot. Resist any MCMC analogy: diffusion sampling has *no* accept/reject and too-few-steps gives discretization blur, not mode-trapping — say "discretization error," not "mixing."
 ::::
 
+## What the sampling loop is really doing
+
+:::: {.incremental}
+- A trained denoiser doesn't just clean an image — its correction **points toward more realistic data**.
+- So each reverse step is just: **take a small step in the denoiser's direction, then add a little fresh noise.**
+- Picture a ball **rolling downhill** toward the data, with a bit of jitter to keep exploring — a *random walk that drifts toward realistic samples*.
+- The jitter amount is a **temperature** knob: too low → samples collapse to one over-smoothed answer; too high → noise; balanced → realistic *and* diverse.
+- DDPM, score models and NCSN are all the **same** "denoise a bit, add noise, repeat" recipe with different settings [@park2025randomwalk].
+::::
+
+![Same sampler, different ending temperature (jitter level). Too low → over-smoothed, low-variety faces; too high → noise; the balanced setting gives realistic, diverse samples. Source: [@park2025randomwalk] Fig. 3.](images/diffusion_temperature_faces.png){width=100%}
+
+:::: {.notes}
+- This is the *intuition payoff* for the whole sampling loop — students who got lost in $\bar\alpha_t$ algebra get the picture back here. Deliver one sentence on the board: **"a good denoiser already knows which way is 'toward the data'; sampling just keeps stepping that way with a little randomness."** That sentence is all of diffusion sampling.
+- The deep, *true* simplification (Tweedie's formula, but don't name the math): the denoiser's correction $D(x)-x$ is — up to scale — exactly the gradient $\nabla\log p$ of the data density. So "step toward the denoised image" *is* gradient ascent on data-likelihood. You never compute that gradient; the denoiser hands it to you for free. This is why a single trained denoiser is all you need, and why we can skip the entire forward/reverse-SDE apparatus [@park2025randomwalk].
+- Use the figure to make **temperature** concrete and to connect forward to classifier-free guidance (next-but-two): the ending temperature trades *diversity vs. fidelity*, the same axis CFG's $w$ controls from the other direction. Low temperature ≈ "play it safe, collapse to the mean" (callback to the VAE-blurriness story); temperature $=1$ is the mathematically correct setting. ~2 min.
+::::
+
+## Coarse structure first, fine detail last
+
+![A digit forming from pure noise, reverse process left → right: structureless noise → a rough blob → the identity ("5") → sharp detail. Large-scale structure emerges *early*, fine detail *late*. Source: [@weitzner2025correlation] Fig. 1.](images/diffusion_coarse_to_fine_digit.png){width=85% fig-align="center"}
+
+:::: {.incremental}
+- Watch a sample form: the **coarse, low-frequency structure appears first**; the **fine, high-frequency detail fills in last**.
+- Why: in the simplest (linear) case the optimal denoiser is exactly a **PCA projection** (Unit 2!). Early steps recover the **top principal components** — the largest-variance, coarsest structure; later steps add the smaller components — fine texture [@weitzner2025correlation].
+- This is why a *half-finished* diffusion sample already "looks like" the right object: the identity is set early, the polish comes late.
+::::
+
+:::: {.notes}
+- This slide answers "what is the network actually building, step by step?" with a picture instead of equations — and lands a satisfying course callback: **diffusion generation is PCA, unrolled in time.** In the linear case the optimal denoiser at each noise level is literally projection onto the leading principal components (Unit 2's SVD), and as noise drops you keep more components — coarse (high-variance) directions first, fine (low-variance) directions last [@weitzner2025correlation].
+- Make the frequency connection explicit because it's memorable and true for natural images: top principal components ≈ smooth, low-frequency modes; later components ≈ edges/texture. So "low frequencies emerge early" is the same statement as "big-picture structure first." This also explains *why few-step samplers still get the gist* — the gist lives in the few components that converge first.
+- Practical hook for the cohort: this coarse-to-fine order is why you can (a) stop early for a cheap rough preview, and (b) trust that a 10–25-step sample has the right global structure even if texture is soft. It also demystifies the next slide (DDIM/few-step): you're keeping the part that converges first. ~90 s; let the digit strip do the work.
+::::
+
 ## DDIM and faster sampling
 
 :::: {.incremental}
 - DDPM uses stochastic reverse steps. Each step has injected noise.
-- **DDIM** (Song et al. 2021): a deterministic reverse process. Same trained network, fewer steps.
+- **DDIM** [@song2021ddim]: a deterministic reverse process. Same trained network, fewer steps.
 - 50 DDIM steps ≈ 1000 DDPM steps in quality.
 - Modern solvers (DPM-Solver, EDM): 10–25 steps with state-of-the-art quality.
 ::::
 
 :::: {.notes}
 - The single most important practical point, and the one students find counterintuitive: **DDIM does not retrain anything.** Same $\epsilon_\theta$, same weights — only the *sampler* (the reverse-step rule) changes. The network learned a denoiser; how you chain it is a separate, swappable algorithmic choice. Say "training and sampling are decoupled" and write it down — it reframes a whole class of speedups (DDIM, DPM-Solver, EDM) as post-hoc, free.
-- The intuition for *why* fewer steps work deterministically: removing the injected noise turns the reverse process into integrating a smooth ODE (foreshadow flow matching — "hold this thought, we'll formalize it in 15 minutes"), and smooth ODEs can be solved with large adaptive steps. 1000→50→25 with negligible quality loss.
+- The intuition for *why* fewer steps work deterministically: with the random jitter removed, the path from noise to data becomes **smooth and predictable**, so you can take big steps along it instead of many tiny ones (foreshadow flow matching — "we'll see the straight-path version in 15 minutes"). 1000→50→25 with negligible quality loss. Keep it to "smooth path ⇒ big steps"; no ODE vocabulary with this cohort.
 - The concrete payoff line for the cohort: "this is *why* Stable Diffusion runs in ~25 steps on a laptop, and why diffusion is viable inside a materials design loop at all." Connect back to the "diffusion is slow" problem the previous slide set up — this slide is its resolution. ~90 s.
 ::::
 
@@ -777,25 +830,26 @@ $$
 
 <!-- ===== §10. Flow matching & consistency models ===== -->
 
-## Flow matching: ODE-based generation (the modern unifying view)
+## Flow matching: the modern default (the simple version)
 
 :::: {.columns}
 :::: {.column width="50%"}
-**From SDE to ODE:**
+**The idea, without the calculus:**
 
 :::: {.incremental}
-- DDPM samples by stepping a stochastic differential equation backward; reverses many small noise additions.
-- A deterministic ODE view: define a probability path $p_t(x)$ from data ($t=0$) to Gaussian ($t=1$), learn a vector field $u_\theta(x, t)$ that transports samples along it.
-- Sampling is then ODE integration of $\dot x = u_\theta(x, t)$ from noise to data — needs *far fewer steps* than the reverse SDE.
+- DDPM's reverse walk takes a **curvy, wandering** route from noise to data — so it needs many small steps.
+- Flow matching trains the network to follow a **straight, direct** route from noise to data instead.
+- Same network, same MSE-style loss; a straighter route → **far fewer steps**.
+- No new theory: it is still "learn to move noise toward data" — we just ask for the most direct path.
 ::::
 ::::
 :::: {.column width="50%"}
 **Three flavours, one idea:**
 
 :::: {.incremental}
-- **Flow Matching** [@lipman2023flowmatching]: regress the vector field directly. Loss is MSE on $u_\theta$ vs the conditional-OT vector field — closed form for Gaussian paths.
-- **Rectified Flow** [@liu2023rectifiedflow]: enforce the path to be a straight line in $(x_0, x_1)$ space. Reflow trick: a few iterations make sampling ~1-step.
-- **Stable Diffusion 3** [@esser2024sd3] uses rectified flow with a transformer backbone (MM-DiT). DDPM is now a special case.
+- **Flow Matching** [@lipman2023flowmatching]: train the network to predict the **straight-line direction** from noise toward data (a simple MSE target).
+- **Rectified Flow** [@liu2023rectifiedflow]: straighten that route until it is nearly a straight line → sampling in a *few* steps, even ~1.
+- **Stable Diffusion 3** [@esser2024sd3]: this recipe with a transformer backbone (MM-DiT). DDPM is now a special case.
 ::::
 ::::
 ::::
@@ -805,10 +859,10 @@ $$
 ::::
 
 :::: {.notes}
-- Set expectations honestly first: this is a *modern-context awareness* slide, not a derivation to master — it is also the most compressible block if you are behind (one sentence: "DDPM has a deterministic, straighter-path successor called flow matching; SD3 uses it; same network, simpler loss, fewer steps"). Say none of that to students; it's your pacing valve.
-- The one conceptual upgrade worth landing: DDPM's reverse process is a *curved, stochastic* trajectory (SDE) needing many small steps; flow matching learns a *velocity field* whose trajectories can be made *straight* (rectified flow), and straight paths integrate in very few ODE steps. "Curvy random walk vs straight drive" — that picture is enough.
-- The unifying point is the intellectually satisfying payoff and is *true*: DDPM is flow matching with a specific noise schedule and path; score matching is the same trick on $\nabla\log p$ instead of velocity. So the second half of this lecture is one idea with three coordinate systems — say it, then move on.
-- Code reality check (keeps it from feeling abstract): the change from a DDPM codebase to flow matching is ≈ *one line* in the loss (predict velocity instead of noise); architecture identical. That's why SD3/Flux switched and why it's the 2026 default for new models. ~2 min, or 30 s if compressing.
+- Set expectations honestly first: this is a *modern-context awareness* slide, not a derivation to master — it is also the most compressible block if you are behind (one sentence: "DDPM has a straighter-path successor called flow matching; SD3 uses it; same network, simpler loss, fewer steps"). Say none of that to students; it's your pacing valve.
+- The one conceptual upgrade worth landing, and the *only* picture students need: DDPM's reverse walk wanders along a **curvy** route from noise to data, so it needs many small steps; flow matching trains the network to follow a **straight** route instead, and a straight route can be covered in very few steps. "Curvy random walk vs. straight drive" — that picture is enough; deliberately *do not* invoke ODEs/SDEs/velocity fields with this cohort.
+- The unifying point is the intellectually satisfying payoff and is *true*: DDPM, score-based models and flow matching are **one idea** — "learn to move noise toward data" — differing only in *which path* and *how much randomness*. So the whole second half of this lecture is a single recipe with a few knobs; say it, then move on.
+- Code reality check (keeps it from feeling abstract): the change from a DDPM codebase to flow matching is ≈ *one line* in the loss (predict the straight-line direction instead of the noise); architecture identical. That's why SD3/Flux switched and why it's the 2026 default for new models. ~2 min, or 30 s if compressing.
 ::::
 
 ## Consistency models: one-step generation
@@ -996,7 +1050,7 @@ Generative + physics is one of the most active research frontiers in materials M
 
 ## Notebook companion + references
 
-:::: {.callout-note icon=false}
+:::: {.callout-info icon=false}
 ### Week 11 notebooks (in `example_notebooks/` once added)
 - VAE on Fashion-MNIST: train, plot 2-D latent, interpolate, generate, observe KL term.
 - Toy diffusion in 200 lines: 2-D Swiss roll, tiny U-Net, DDPM training and sampling.
