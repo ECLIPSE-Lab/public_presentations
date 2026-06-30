@@ -1,4 +1,4 @@
-# Unit 13 Plan: Physics-Informed and Constrained ML
+# Unit 11 Plan: Physics-Informed and Constrained ML
 
 ## Metadata
 - **Course:** Machine Learning for Characterization and Processing (ML-PC)

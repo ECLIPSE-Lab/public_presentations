@@ -221,7 +221,7 @@
     - Bayesian methods can be computationally heavy.
 
 48. **Slide 48: Integration: Putting it all together**
-    - Unit 13 (PINNs) reduced epistemic uncertainty using physics.
+    - Unit 11 (PINNs) reduced epistemic uncertainty using physics.
     - Unit 12 (GPs) quantifies what's left.
 
 49. **Slide 49: Take-Home Messages**

@@ -1,9 +1,9 @@
-# Unit 13: Physics-Informed and Constrained ML (50 Slide Draft)
+# Unit 11: Physics-Informed and Constrained ML (50 Slide Draft)
 
 ## Section 1: Introduction & The Limits of Pure Data-Driven ML (Slides 1-5)
 
 1. **Slide 1: Title Slide**
-   - Title: Unit 13: Physics-Informed and Constrained Machine Learning
+   - Title: Unit 11: Physics-Informed and Constrained Machine Learning
    - Course: ML for Characterization and Processing (SS26)
    - Prof. Dr. Philipp Pelz
    - Focus: Scientific ML, PINNs, and Material Processing
@@ -224,7 +224,7 @@
     - Using sparse regression to find the simplest law that explains the physics.
 
 47. **Slide 47: Integration: Putting it all together**
-    - Use FFT/Expert features (Unit 13).
+    - Use FFT/Expert features (Unit 11).
     - Apply PINN constraints for physics.
     - Quantify uncertainty (Unit 12).
 
