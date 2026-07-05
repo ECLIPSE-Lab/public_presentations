@@ -169,6 +169,261 @@ tune convergence angle and defocus to maximize phase contrast for your spatial f
 
 ::: 
 
+## The 4D-STEM Acquisition Chain: Overview
+
+- Every ptychography experiment is a chain — the weakest link limits the reconstruction:
+
+electron gun → condenser optics & corrector → **probe** → scan system → sample → **pixelated detector** → data pipeline → reconstruction
+
+::: {.columns}
+::: {.column width="50%" .fragment}
+- **Microscope side** determines the physics:
+  - probe wavefunction (aperture, aberrations, coherence)
+  - scan geometry (step size, dwell time, distortions)
+:::
+::: {.column width="50%" .fragment}
+- **Detector & data side** determines what we record:
+  - dynamic range, speed, noise of the camera
+  - data rates, formats, live feedback
+:::
+:::
+
+::: {.callout-note .fragment}
+This section: hardware choices you make *before* any algorithm sees the data
+:::
+
+::: {.aside}
+[1] @Ophus_2019
+:::
+
+## Probe Formation: From Aperture to Wavefunction
+
+::: {.columns}
+::: {.column width="55%"}
+- The probe is shaped by the aperture and the lens aberrations:
+
+$$
+\psi(\vec{r}) = \mathcal{F}^{-1}\left[ A(\vec{k}) \, e^{-i\chi(\vec{k})} \right]
+$$
+
+- $A(\vec{k})$: top-hat aperture with semi-convergence angle $\alpha$
+- $\chi(\vec{k})$: aberration function, lowest orders
+
+$$
+\chi(\vec{k}) = \pi \lambda k^2 \, \Delta f + \frac{\pi}{2} \lambda^3 k^4 C_s + \ldots
+$$
+:::
+::: {.column width="45%" .fragment}
+- Diffraction-limited probe size: $d \approx 0.61 \, \lambda / \alpha$
+- Depth of focus: $\mathrm{DOF} \approx \lambda / \alpha^2$
+- Large $\alpha$ → small probe, but thin optical sections
+- Defocus $\Delta f$ is a *free parameter* in ptychography — used deliberately
+:::
+:::
+
+::: {.callout-note .fragment}
+Ptychography reconstructs the probe → residual aberrations become fit parameters, not resolution limits
+:::
+
+## Aberration Correction: How Perfect Does the Probe Need to Be?
+
+::: {.columns}
+::: {.column width="55%"}
+- Hardware correctors [@Haider_1998] cancel $C_s$ (and higher orders) → routine sub-Å probes at $\alpha \approx$ 20–35 mrad
+- Remaining limits: chromatic aberration, residual higher-order aberrations, corrector stability
+- For conventional STEM imaging: probe quality **is** the resolution
+:::
+::: {.column width="45%" .fragment}
+- For ptychography the requirements relax:
+  - probe is reconstructed alongside the object
+  - defocused / structured probes are usable — even beneficial for dose spreading
+  - super-resolution beyond the aperture limit is possible
+:::
+:::
+
+::: {.callout-note .fragment}
+Rule of thumb: spend your alignment time on *stability and coherence*, not on the last picometer of probe size
+:::
+
+## The Scan System: Dwell Time, Distortions, Drift
+
+::: {.columns}
+::: {.column width="55%"}
+- Scan coils position the probe on a (usually square) grid
+- Real scans are imperfect:
+  - **flyback error** at line starts (hysteresis)
+  - low-frequency **drift** (thermal, stage)
+  - high-frequency jitter (interference, EMI)
+- Errors of a few 10 pm already matter at atomic resolution
+:::
+::: {.column width="45%" .fragment}
+- Practical mitigations:
+  - fast scans + many frames instead of one slow scan
+  - non-rectangular / spiral scan patterns
+  - **post-facto position refinement** in the reconstruction (→ iterative methods section)
+:::
+:::
+
+::: {.callout-note .fragment}
+Scan positions are nuisance parameters: hardware gets you close, the algorithm does the rest
+:::
+
+## Detector Evolution: From Scintillators to Direct Detection
+
+- Conventional detection: scintillator + fiber optics + CCD → slow (ms readout), noisy conversion, blooming
+- **Direct electron detection** (electrons hit silicon directly) changed the game [@Levin_2021; @McMullan_2014]:
+  - single-electron sensitivity → counting → Poisson-limited detection
+  - kHz–MHz readout instead of Hz–kHz
+- Two main architectures for 4D-STEM today:
+
+::: {.columns}
+::: {.column width="50%" .fragment}
+**Monolithic Active Pixel Sensors (MAPS)**: thin sensor + integrated readout; many small pixels
+:::
+::: {.column width="50%" .fragment}
+**Hybrid Pixel Array Detectors (PAD)**: thick sensor bump-bonded to a readout ASIC; fewer, smarter pixels
+:::
+:::
+
+::: {.callout-note .fragment}
+4D-STEM = one full diffraction pattern per scan position — the detector defines what is possible
+:::
+
+## Monolithic Active Pixel Sensors (MAPS)
+
+::: {.columns}
+::: {.column width="55%"}
+- Examples: Gatan K2/K3, Direct Electron DE-series, 4D Camera [@Ercius_2024]
+- Thin, back-thinned CMOS sensor → sharp point-spread, electron counting
+- Large pixel counts (1k–4k)², excellent DQE at low dose
+:::
+::: {.column width="45%" .fragment}
+- Trade-offs for 4D-STEM:
+  - limited count rate per pixel → beam current capped
+  - central (bright-field) disk easily saturates
+  - frame rate historically the bottleneck — solved by massive parallel readout (4D Camera: 87 kHz)
+:::
+:::
+
+::: {.callout-note .fragment}
+MAPS shine for low-dose, finely-sampled diffraction — beam-sensitive samples
+:::
+
+## Hybrid Pixel Array Detectors
+
+::: {.columns}
+::: {.column width="55%"}
+- Thick high-Z sensor + per-pixel electronics (counting, thresholds)
+- **EMPAD** [@Tate_2016]: 128×128, 1.1 kHz, dynamic range ~1:1,000,000 → records the full bright-field disk *and* single electrons in the same pattern
+- **Medipix3 / Merlin** [@Ballabriga_2013]: 256×256 counting, 12/24-bit, up to ~kHz frame rates
+:::
+::: {.column width="45%" .fragment}
+- Trade-offs:
+  - modest pixel counts (128–512)²
+  - thick sensor → charge sharing between pixels at high energy
+  - radiation-hard, tolerate direct central beam
+:::
+:::
+
+::: {.callout-note .fragment}
+Hybrid PADs are the current workhorses for ptychography: high dynamic range where the central beam lives
+:::
+
+## Event-Driven Detection
+
+::: {.columns}
+::: {.column width="55%"}
+- **Timepix3** [@Poikela_2014] / **Timepix4** [@Llopart_2022]: no frames — each electron is an event (x, y, time-of-arrival, time-over-threshold)
+- Time resolution ~1.6 ns; sparse readout → data volume scales with **dose**, not with scan size
+- Demonstrated 4D-STEM with µs dwell times [@Jannis_2022]
+:::
+::: {.column width="45%" .fragment}
+- Consequences:
+  - dwell time becomes a free post-processing choice (re-binning events in time)
+  - natural fit for low-dose & in-situ experiments
+  - needs new sparse data formats and event-based algorithms
+:::
+:::
+
+::: {.callout-note .fragment}
+Event-driven cameras dissolve the concept of "frame rate" — acquisition speed is set by the scan, not the camera
+:::
+
+## Detector Metrics That Matter
+
+<div style="font-size:0.8em">
+
+| Metric | Meaning | Why it matters for ptychography |
+|--------|---------|--------------------------------|
+| DQE(ω) | How much of the signal's information survives detection | Dose efficiency — critical for beam-sensitive samples |
+| MTF | Blurring of a single electron event across pixels | Mixes adjacent detector pixels → acts like partial coherence |
+| Dynamic range | Brightest vs. faintest usable signal per pattern | Central disk is 10³–10⁶ × brighter than dark-field |
+| Frame rate / event rate | Patterns (or events) per second | Sets total field of view per unit time; drift window |
+| Duty cycle | Fraction of time actually recording | Dead time = wasted dose |
+</div>
+
+::: {.callout-note .fragment}
+Counting detectors reach DQE close to the Poisson limit — integrating detectors add read noise to every pattern
+:::
+
+## Which Detector for Which Experiment?
+
+<div style="font-size:0.75em">
+
+| | MAPS (K3, 4D Camera) | Hybrid PAD (EMPAD, Merlin) | Event-driven (Timepix3/4) |
+|---|---|---|---|
+| Pixels | (1k–4k)² | (128–512)² | (256–512)² |
+| Speed | up to 87 kHz frames | ~1–10 kHz frames | sparse, no frames |
+| Dynamic range | limited (saturation) | up to 1:10⁶ | counting, per-event |
+| Central beam | attenuate/avoid | fine | fine at low current |
+| Best at | low dose, fine diffraction sampling | quantitative ptychography/DPC | ultrafast, in-situ, ultra-low dose |
+</div>
+
+::: {.callout-note .fragment}
+There is no universally best camera — match dynamic range, speed and sampling to *your* reconstruction method
+:::
+
+## Data Rates: Drinking from the Firehose
+
+::: {.columns}
+::: {.column width="55%"}
+- 4D-STEM multiplies data: (scan pixels) × (detector pixels)
+- Merlin @ 4 kHz, 256², 12-bit → ~3 Gbit/s
+- 4D Camera @ 87 kHz, 576×576 → ~480 Gbit/s, ~700 GB per minute [@Ercius_2024]
+- A single overview scan (2k×2k probe positions) with a 256² camera = **0.5 TB** raw
+:::
+::: {.column width="45%" .fragment}
+- Survival strategies:
+  - electron counting + sparse/compressed formats (events, run-length encoding)
+  - hierarchical formats: HDF5 / EMD, vendor formats (.mib, .dm5)
+  - keep raw data close to GPUs — network becomes part of the microscope
+:::
+:::
+
+::: {.callout-note .fragment}
+Budget storage and compute *per session*, not per project — TB/day is normal now
+:::
+
+## Live Processing: Closing the Loop
+
+::: {.columns}
+::: {.column width="55%"}
+- Open-source streaming frameworks: **LiberTEM** [@Clausen_2020] — distributed, camera-agnostic live 4D-STEM processing
+- Live virtual detectors, first-moment/DPC and even live SSB ptychography during acquisition [@Strauch_2021]
+- GPU pipelines reconstruct while the stage is still there → immediate quality feedback
+:::
+::: {.column width="45%" .fragment}
+- Why it matters:
+  - catch bad alignment / sampling *before* the sample is burned
+  - enables automated experiments: acquisition parameters adjusted on the fly
+  - direct methods (WPO/SSB, next section) are fast enough to run live
+:::
+:::
+
+::: {.callout-note .fragment}
+Design the experiment with the reconstruction in mind — live feedback turns the microscope into a closed-loop instrument
+:::
+
 ## Direct Reconstruction Methods
 
 ::: {.columns}
