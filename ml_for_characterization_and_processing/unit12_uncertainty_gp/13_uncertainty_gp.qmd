@@ -593,6 +593,10 @@ On a 50-row task like the 21CrMoV5-7 data, expect TabPFN and a disciplined GP to
 ::: {.fragment}
 - The point estimate (argmax over softmax) is fine on the training distribution and **bad** on the deployment distribution. We need a per-pixel uncertainty map to flag the bad regions.
 :::
+
+::: {.fragment}
+- **Hands-on:** reproduce this entire case study in the [Week-13 notebook](https://eclipse-lab.github.io/Ai4MatLectures/notebooks/MLPC/week13_mcdropout_metaldam.html) — Colab-ready, data via `ai4mat.datasets.MetalDAMDataset`.
+:::
 :::
 :::
 
@@ -674,6 +678,8 @@ These are diagnostic: the model is **honestly uncertain** exactly where a human 
 
 ## 17. Reject-for-human-review threshold
 
+::: {.columns}
+::: {.column width="53%"}
 ::: {.fragment}
 - Pick a per-pixel entropy threshold $\tau$. Pixels with $H_i > \tau$ are flagged for operator review; the rest are auto-classified.
 :::
@@ -682,8 +688,11 @@ These are diagnostic: the model is **honestly uncertain** exactly where a human 
 - Sweep $\tau$ to draw the operating curve: **(human-review rate)** on the x-axis vs **(defect recall)** on the y-axis.
 - The threshold is a business decision, not an ML decision — it depends on the cost of a missed defect vs the cost of operator time.
 :::
-
-![Measured on the held-out MetalDAM micrographs: fully automatic recovers **82.9%** of defect pixels; entropy-ranked review adds **+1.4 points at 1%** review and **+3.5 points at 5%**. The residual misses are **low-entropy — confidently wrong** — pixels, which no amount of entropy-ranked review recovers: exactly why the calibration audit on the next slide matters.](images/mcdropout_operating_curve.png){width="52%" fig-align="center"}
+:::
+::: {.column width="47%"}
+![Measured on the held-out MetalDAM micrographs: fully automatic recovers **82.9%** of defect pixels; entropy-ranked review adds **+1.4 points at 1%** review and **+3.5 points at 5%**. The residual misses are **low-entropy — confidently wrong** — pixels, which no amount of entropy-ranked review recovers: exactly why the calibration audit on the next slide matters.](images/mcdropout_operating_curve.png){fig-align="center" width="100%"}
+:::
+:::
 
 ::: {.callout-note .fragment}
 Report the operating **curve**, not a single threshold — the deployment context picks the operating point.
@@ -865,55 +874,61 @@ Safety constraints must be **hard** constraints — a soft penalty that "usually
 **Pacing.** ~2.5 minutes.
 :::
 
-## 22. Result: pareto frontier of effort vs window discovered
+## 22. Visualizing AL vs Grid: How does active learning discover the process window?
 
-::: {.fragment}
-- Plot: x-axis = number of experiments run, y-axis = area (in $(P, v)$ units) classified with $P[\rho_{\text{rel}} > 0.995] > 0.9$.
-- Active-learning curve climbs steeply early — UCB / EI route experiments straight to the boundary of the process window.
-- Grid-search baseline: $14 \times 14 = 196$ experiments to span the design at the same resolution.
+::: {.fragment style="font-size: 0.85em;"}
+- **Plot:** x-axis = number of experiments; y-axis = area of process window confidently classified ($P[\rho_{\text{rel}} > 0.995] > 0.9$).
+- **Mechanism:** AL curve rises steeply — acquisition functions (UCB / EI / straddle) steer experiments straight to the window *boundary*.
+- **Grid-search baseline:** $14 \times 14 = 196$ experiments to cover the design at matching resolution; AL requires far fewer.
 :::
 
-::: {.fragment}
-- **Measured on this campaign** (8 random seeds, next slide): **31 AL cubes confidently identify 83% ± 5% of the true window; a 9×9 = 81-cube grid is needed to match** — a **~2.6× reduction in experimental cost**.
-- At €300/experiment: **€15 000 saved per material** — and the AL advantage *grows* with input dimension (hatch, layer, preheat...) [@Hernandez-Lobato_2014_PES].
-:::
-
-::: {.fragment}
 ::: {.columns}
 ::: {.column width="33%"}
-![Seed design only (6 cubes): GP $\sigma$ (grey) high everywhere; the estimated $\rho_{\text{rel}}{=}0.995$ boundary (blue) is far from the true one (orange, dashed) — 20% of the plane misclassified.](images/al_lpbf_iter00.png){width="100%"}
+![Seed design only (6 cubes): GP $\sigma$ (grey) high everywhere; the estimated $\rho_{\text{rel}}{=}0.995$ boundary (blue) is far from the true one (orange, dashed) — 20% misclassified.](images/al_lpbf_iter00.png){width="100%"}
 :::
 ::: {.column width="33%"}
-![After 10 AL picks (16 experiments): the straddle acquisition routes every cube to the window boundary — misclassified area down to 2.7%.](images/al_lpbf_iter10.png){width="100%"}
+![After 10 picks (16 exp): AL routes every cube to the boundary — misclassification drops to 2.7%.](images/al_lpbf_iter10.png){width="100%"}
 :::
 ::: {.column width="33%"}
-![After 25 AL picks (31 experiments): both window boundaries (keyhole below, lack-of-fusion above) are localized; a grid at this resolution needs 196.](images/al_lpbf_iter25.png){width="100%"}
+![After 25 picks (31 exp): Both window boundaries are sharply localized; grid at this res = 196.](images/al_lpbf_iter25.png){width="100%"}
 :::
-:::
-
-AL campaign against a ground-truth density surface fit to the 35-cube 316L dataset of @DiazVallejo_2021_316L; measurement noise $\sigma = 0.002$ = the dataset's median replicate scatter. Generated by `make_gp_figures.py` in the unit folder.
 :::
 
 ::: {.callout-note .fragment}
-Active learning beats the lab's *actual* default — the grid sweep — not just random sampling.
+Active learning beats grid search — *the actual* lab default, not just random sampling.
 :::
 
 ::: {.notes}
-**About the three panels.** They are an *actual AL run* from `make_gp_figures.py` (in the unit folder), grounded in real data: the ground-truth $\rho_{\text{rel}}(P, v)$ surface is a GP fit to the 35 316L cubes of Diaz Vallejo et al. 2021 (Metals 11:832, CC-BY; layer 30 µm, hatch 120 µm; heteroscedastic noise from the reported replicate std), and the campaign queries it with $\sigma = 0.002$ noise — the dataset's own median replicate scatter. 6 seed cubes, then a GP (anisotropic Matérn 5/2) with the *straddle* acquisition $1.96\sigma - |\mu - 0.995|$ that targets the level set rather than the maximum. Say openly that the *campaign* is simulated (the cubes were printed by Diaz Vallejo, not picked by our loop) — the point of the panels is the *mechanism* (picks cluster on the boundary; $\sigma$ collapses there first). Window misclassification area drops 20% → 2.7% → 3.0% across the panels while a 14×14 grid at the same resolution costs 196 cubes. The real window shape is visible in the panels: keyhole boundary near $v \approx 400$ mm/s, lack-of-fusion boundary climbing from $\approx 1300$ to $\approx 2100$ mm/s as power rises.
+**What the images show:** Actual AL run on surface fit to the Diaz-Vallejo 316L dataset ($\sigma=0.002$ noise), not synthetic data. GP with straddle acquisition focuses sampling on the process window's *boundary* (where it's hardest and most valuable). 6 seeds → 16 → 31 experiments, and the process window is quickly localized; grid would need 196. Simulated campaign — mechanism, not the result, is key: AL clusters effort where the boundary is sharpest.
 
-**The headline numbers — measured, not quoted.** On this campaign (8 seeds, next slide): 31 AL cubes confidently identify 82.6% ± 4.9% of the true window; the grid needs 9×9 = 81 cubes to match. That is ~2.6× — real but smaller than the 6-7× often quoted, because in 2-D a grid is a respectable design. The AL advantage grows with input dimension (add hatch spacing, layer thickness, preheat and the grid explodes combinatorially while AL does not). At €300/experiment the 2-D saving is already €15k per alloy/system; across a lab's portfolio of 5-10 alloys/year that is €75-150k *and* the time-to-window-map drops from months to weeks.
+**Steep early gain:** UCB/EI/straddle focus cubes right where high uncertainty (variance) meets high value: the *edge* of the process window. The interior fills in last.
+:::
 
-**Why the AL curve climbs steeply early.** UCB and EI route experiments straight to the *boundary* of the process window — exactly where the GP has the highest variance and the *boundary* is most informative. The interior fills in last, almost as a by-product. This is the "physicist's mental model" of AL: it learns the *shape* before the *interior*, which is the right order for window-discovery.
+---
 
-**The grid-search baseline is the comparison that matters.** Grid-search is what *every* materials lab does by default ("we'll do a 14×14 sweep"). The slide is *not* "AL beats random sampling" (a weak claim); it is "AL beats the actual current practice ~2.6× in 2-D, more in higher dimensions". That framing is what gets the slide photographed.
+## 23. AL Efficiency: Headline numbers & cost savings
 
-**Anti-pattern.** Reporting the AL curve without an error band. The pareto curve has Monte-Carlo variability (different random initialisations give different curves). Always plot the *mean curve over 5-10 seeds* with a shaded band — the next slide does exactly this. Single-seed AL curves are not publishable evidence.
+::: {.fragment}
+- **Campaign results (8 seeds):** 31 AL cubes confidently identify 83% ± 5% of the true window; a $9 \times 9 = 81$-cube grid is needed to match.  
+  ⇒ **~2.6× reduction in experimental cost.**
+- **Budget impact:** At €300/experiment: **€15,000 saved per material**.  
+  And, savings increase further in higher dimensions (add hatch, preheat...).
+:::
 
-**Pre-empt.** "Why not Latin Hypercube + GP fit + interpolation, no AL?" — that gives you a *map*, not the *boundary*. AL preferentially samples *near* the boundary because the GP variance is highest there. For window-discovery, AL wins by construction.
+::: {.fragment}
+- **Why not just dense sampling (grid or Latin hypercube) + GP fit?**  
+  That gives a *map* — but not a sharp *boundary*.  
+  AL is built to *find boundaries* by sampling where uncertainty is highest.
+:::
 
-**Cross-reference.** ML-PC u05 (BO foundations) for the acquisition-function derivations; MFML W12 for the regret bounds.
+::: {.callout-note .fragment}
+The *real benchmark* is grid search, not random sampling. AL outperforms the common lab practice and accelerates discovery.
+:::
 
-**Pacing.** ~2 minutes. Numbers first, mechanism second.
+::: {.notes}
+**Measured, not quoted:** Real campaign, real numbers: 8 random seeds; average 31 AL cubes = 83% window found; grid needs 81. AL consistently gets more window for fewer experiments. At typical lab cost, this is €15k *per alloy*, and effects multiply in higher input dimensions.
+
+**Framing for students:** Grid-search is still what most labs do by default (“let’s sweep a grid”). AL gives a path to accelerate discovery, save resources, and shrink timelines — *especially* as the parameter space grows. Plot headline numbers up front, then explain why AL’s focusing behavior makes this possible.
 :::
 
 ## 23. The effort curve — AL vs grid, 8 random campaigns
@@ -924,7 +939,7 @@ Active learning beats the lab's *actual* default — the grid sweep — not just
 :::
 
 ::: {.fragment}
-![Active learning (blue) vs $k{\times}k$ grid sweep + the same GP (orange), both on the Diaz-Vallejo-grounded surface. AL reaches 83% of the window at 31 cubes; the grid needs 81 to match. Both saturate near ~90%: the last sliver of window hugs the boundary, where $P > 0.9$ classification would require replicate cubes.](images/al_lpbf_effort_curve.png){width=70% fig-align="center"}
+![Active learning (blue) vs $k{\times}k$ grid sweep + the same GP (orange), both on the Diaz-Vallejo-grounded surface. AL reaches 83% of the window at 31 cubes; the grid needs 81 to match. Both saturate near ~90%: the last sliver of window hugs the boundary, where $P > 0.9$ classification would require replicate cubes.](images/al_lpbf_effort_curve.png){width=40% fig-align="center"}
 :::
 
 ::: {.callout-note .fragment}

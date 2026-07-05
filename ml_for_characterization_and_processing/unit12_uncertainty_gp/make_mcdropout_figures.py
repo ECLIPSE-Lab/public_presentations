@@ -8,15 +8,15 @@ such on the slide.
 
 Run from the unit folder with the repo venv:
     ../../.venv/bin/python make_mcdropout_figures.py
-Downloads MetalDAM into data_metaldam/ on first run (~100 MB, GitHub
-release of ari-dasci/OD-MetalDAM). Writes PNGs into images/ and prints
-the measured numbers quoted on the slides.
+Data loading goes through the course package (pip install
+git+https://github.com/ECLIPSE-Lab/Ai4MatLectures), which downloads
+MetalDAM into data_metaldam/ on first run (~40 MB zip, GitHub release of
+ari-dasci/OD-MetalDAM). Writes PNGs into images/ and prints the measured
+numbers quoted on the slides. Students can reproduce the case study in
+the Week-13 notebook notebooks/MLPC/week13_mcdropout_metaldam.
 """
 
-import os
 import time
-import urllib.request
-import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -25,7 +25,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
-from PIL import Image
+
+from ai4mat.datasets import MetalDAMDataset
 
 SEED = 0
 torch.manual_seed(SEED)
@@ -48,36 +49,13 @@ DEFECT = 4
 CLASS_COLORS = ["#9e9e9e", "#4878a8", "#ff9d3c", "#4daf4a", "#d62728"]
 CLS_CMAP = ListedColormap(CLASS_COLORS)
 
-DATA_DIR = Path("data_metaldam")
-URL = ("https://github.com/ari-dasci/OD-MetalDAM/releases/download/1.0/"
-       "MetalDAM_labeled.zip")
-
 # ---------------------------------------------------------------- data
-def fetch_data():
-    if not (DATA_DIR / "MetalDAM" / "images").exists():
-        DATA_DIR.mkdir(exist_ok=True)
-        zp = DATA_DIR / "MetalDAM_labeled.zip"
-        if not zp.exists():
-            print("downloading MetalDAM ...")
-            urllib.request.urlretrieve(URL, zp)
-        with zipfile.ZipFile(zp) as z:
-            z.extractall(DATA_DIR)
-
-
 def load_images():
-    imgs, labs, names = [], [], []
-    img_dir = DATA_DIR / "MetalDAM" / "images"
-    lab_dir = DATA_DIR / "MetalDAM" / "labels"
-    for f in sorted(img_dir.iterdir()):
-        lab = np.array(Image.open(lab_dir / (f.stem + ".png")))
-        if lab.ndim == 3:  # one file ships as RGB with identical channels
-            lab = lab[..., 0]
-        img = np.array(Image.open(f).convert("L")).astype(np.float32) / 255.0
-        img = img[: lab.shape[0], : lab.shape[1]]  # crop info band
-        imgs.append(img)
-        labs.append(lab.astype(np.int64))
-        names.append(f.stem)
-    return imgs, labs, names
+    """Load MetalDAM through the ai4mat course package (auto-downloads)."""
+    ds = MetalDAMDataset(root="data_metaldam", download=True)
+    imgs = [im[0].numpy() for im in ds.images]   # (H, W) float32 in [0, 1]
+    labs = [m.numpy() for m in ds.masks]         # (H, W) int64 in {0..4}
+    return imgs, labs, ds.names
 
 
 def simulate_tool_shift(img):
@@ -269,7 +247,6 @@ def reliability(conf, correct, n_bins=15):
 
 # =====================================================================
 def main():
-    fetch_data()
     imgs, labs, names = load_images()
     order = rng.permutation(len(imgs))
     tr_idx, cal_idx, te_idx = order[:30], order[30:34], order[34:]
