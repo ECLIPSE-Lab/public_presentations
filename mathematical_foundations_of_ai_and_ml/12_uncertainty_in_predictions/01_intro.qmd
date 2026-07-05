@@ -70,7 +70,11 @@ By the end of this lecture, students can:
 - Overconfident models are more dangerous than inaccurate ones.
 ::::
 
+![Same predictions, different error bars: an **overconfident** NN ensemble (left, bars too small — points miss the diagonal), an **underconfident** GP (middle, bars too large), and a **well-calibrated** model (right). The point estimates look similar; only the honesty of the error bar differs. Source: [@tran2020uqmaterials] Fig. 4 (parity plots, formation-energy $\Delta E$).](images/point_predictions_overconfidence_tran2020.png){width=92% fig-align="center"}
+
 ::: {.notes}
+- The figure is the payoff for the whole slide: three models with *nearly identical point predictions* (all cluster on the diagonal) but wildly different error bars — the NN ensemble's bars are too small (overconfident: points fall outside their bars), the GP's are too large (underconfident), the calibrated model's are right. Say: "the mean is the same; the *bar* is where the trust lives — and a small bar is not the same as a correct one." Materials-relevant (DFT formation-energy prediction), which pre-empts "this is just an image-classification problem."
+- Tie to the three bullets: bullet 1 (±5 vs ±100) = the bar's *width*; bullet 3 (overconfidence is dangerous) = the left panel literally — tiny bars that miss the truth are the failure mode you ship. Forward link: the GP (middle) is deliberately conservative; the next sections build toward calibrated bars.
 - Land the third bullet hard — it is the moral of the unit. An inaccurate-but-honest model says "I don't know" and you go collect data; an overconfident model says "450 ± 3" when the truth is ±80 and you ship a part that fails. Wrong-and-loud beats wrong-and-quiet only for the person who isn't liable.
 - Make the ±5 vs ±100 concrete: same point estimate, completely different engineering action — one passes a safety factor, the other forbids the design. The decision lives entirely in the bar, not the mean.
 - Misconception to preempt: students equate "good model" with "low test error." Reframe — a model can have great average error and be catastrophically miscalibrated on the tail you actually care about. Average accuracy is necessary, not sufficient.
@@ -383,6 +387,62 @@ graph LR
 - Keep this slide short; it is the bridge between "what is a GP" and "so we must choose $m$ and $k$" — the next three slides.
 :::
 
+## From weight space to function space
+
+:::: {.columns}
+:::: {.column width="55%"}
+:::: {.incremental}
+- Any linear-in-parameters model with a Gaussian prior on the weights **is** a GP:
+
+$$
+f(\mathbf{x}) = \mathbf{w}^\top \boldsymbol{\phi}(\mathbf{x}), \quad \mathbf{w} \sim \mathcal{N}(\mathbf{u}, \mathbf{S}) \;\Rightarrow\; f \sim \mathcal{GP}(m, k)
+$$
+
+$$
+m(\mathbf{x}) = \mathbf{u}^\top \boldsymbol{\phi}(\mathbf{x}), \qquad k(\mathbf{x}, \mathbf{x}') = \boldsymbol{\phi}(\mathbf{x})^\top \mathbf{S} \, \boldsymbol{\phi}(\mathbf{x}')
+$$
+
+- Example: $f(x) = w_0 + w_1 x$ with $w_0, w_1 \sim \mathcal{N}(0,1)$ gives $m(x) = 0$, $k(x,x') = 1 + xx'$.
+- Bayesian linear regression (Unit's prerequisite!) **is** a GP with the linear kernel.
+::::
+::::
+
+:::: {.column width="45%"}
+![Sequential Bayesian learning of $f(x) = w_0 + w_1 x$: weight-space posterior (left) and the corresponding sampled functions (right) as observations arrive. [@bishop2006pattern, Fig. 3.7]](images/bayesian_sequential_learning.png){width=80%}
+::::
+::::
+
+::: {.notes}
+- This slide earns the GP its place in a *foundations* course: it is not a new exotic model but the function-space view of the Bayesian linear regression they already know. Derive the linear example live in two lines — $m(x) = \mathbb{E}[w_0 + w_1 x] = 0$; $k(x,x') = \mathbb{E}[(w_0 + w_1 x)(w_0 + w_1 x')] = 1 + xx'$ — it is thirty seconds of algebra and it demystifies the whole kernel concept: *a kernel is what a prior over weights looks like from function space*.
+- Now the Bishop figure is in its rightful home: the left column is the posterior contracting in *weight* space, the right column is the same contraction seen in *function* space. Same information, two coordinate systems. The GP's proposition is that the right column is the one you can reason about — "smooth, slowly varying, periodic" are statements about functions, not about $w_{17}$.
+- The punchline to say explicitly: since $\boldsymbol{\phi}$ can be *any* basis — polynomials, Fourier modes, radial bumps — this construction covers a huge model class. The next slide pushes it to infinitely many basis functions and gets the RBF kernel.
+:::
+
+## The RBF kernel: infinitely many basis functions
+
+:::: {.incremental}
+- Place $J$ Gaussian bumps $\phi_i(x) = \exp\left(-\frac{(x - c_i)^2}{2\ell^2}\right)$ at centers $c_i$, with $w_i \sim \mathcal{N}\!\left(0, \frac{\sigma^2}{J}\right)$:
+
+$$
+k(x, x') = \frac{\sigma^2}{J} \sum_{i=1}^{J} \phi_i(x)\,\phi_i(x')
+$$
+
+- Let $J \to \infty$ with centers spread over the whole real line — the sum becomes an integral:
+
+$$
+k(x,x') = \int_{-\infty}^{\infty} \phi_c(x)\,\phi_c(x')\, dc \;\propto\; \exp\!\left(-\frac{(x-x')^2}{2(\sqrt{2}\ell)^2}\right)
+$$
+
+- **The RBF kernel is a model with infinitely many basis functions — evaluated with finite computation.**
+- A GP with an RBF kernel is a **universal approximator**, yet does not overfit: complexity is controlled by the marginal likelihood, not the parameter count.
+::::
+
+::: {.notes}
+- This is the "infinite parameters, finite compute" claim from two slides ago, now *derived* instead of asserted — the kernel trick in its cleanest form. Walk the limit slowly: each basis function is a bump of width $\ell$; as $J\to\infty$ the weighted sum becomes a Riemann integral; the Gaussian-times-Gaussian integral evaluates in closed form to… a Gaussian in $(x - x')$. The RBF kernel *is* the covariance of infinitely many radial bumps.
+- Connect to the effective-parameters slide: infinitely many nominal parameters, yet $\gamma$ — the number the data actually pays for — stays finite and modest. That is why an RBF-GP does not overfit despite infinite capacity: the evidence machinery from the first half of the lecture is doing the complexity control automatically. Two blocks of the lecture just clicked together; point at it.
+- One-sentence bridge for the deep-learning students: the same construction applied to a one-hidden-layer network with infinitely many units (via CLT) gives the *neural network kernel* — infinitely wide NNs are GPs. Mention by name only; it reframes the NN-vs-GP debate as "not as distinct as they look" and seeds the deep-kernel-learning pointer in the DSEM course.
+:::
+
 ## Mean function m(x)
 
 - $m(\mathbf{x}) = \mathbb{E}[f(\mathbf{x})]$: the expected function value at each input.
@@ -452,14 +512,14 @@ $$
 ::::
 
 :::: {.column width="45%"}
-![Sequential Bayesian learning: prior (row 1) → posterior after 1 obs. (row 2) → 2 obs. (row 3) → 20 obs. (row 4). Left: parameter space. Right: sample functions. [@bishop2006pattern, Fig. 3.7]](images/bayesian_sequential_learning.png){width=100%}
+![Five sample functions drawn from a zero-mean GP prior with RBF kernel — each curve is one complete draw from the distribution over functions.](images/gp-sample-prior-functions.svg){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- This is the slide that makes "distribution over functions" finally tangible — slow down and let them look. Each curve on the right is *one sample* — one entire function drawn from the prior. The spread of the curves at a fixed $x$ *is* the prior uncertainty there. Trace one curve with your hand so they see it as a single draw, not a band.
-- Walk the figure top to bottom as the GP story in one image: row 1 = pure prior, wild disagreement everywhere; each new observation collapses the bundle through that point while leaving the gaps free. By 20 observations the curves agree where data is and fan out where it isn't. This figure *is* "epistemic uncertainty shrinks with data" — call back to the recall slide and the variance decomposition explicitly.
-- This is also the spine the next slide (posterior) and the band slide hang on — tell them "we just did conditioning visually; the next slide does it with the formula."
+- This is the slide that makes "distribution over functions" finally tangible — slow down and let them look. Each curve is *one sample* — one entire function drawn from the prior. The spread of the curves at a fixed $x$ *is* the prior uncertainty there. Trace one curve with your hand so they see it as a single draw, not a band.
+- Ask the room the modeling question the figure poses: "do these look like plausible candidates for *your* signal?" That is what choosing a prior means — you are not fitting anything yet, you are declaring which function families are on the table (how wiggly, what amplitude). If their physical signal is smoother or rougher than these draws, the kernel hyperparameters are wrong *before any data arrives*.
+- This is also the spine the next slide (posterior) hangs on — tell them "conditioning will take exactly this bundle of curves and force it through the observations; the next slide shows that happen."
 :::
 
 ## GP posterior: conditioning on data
@@ -473,11 +533,12 @@ $$
 ::::
 
 :::: {.column width="45%"}
-![GP regression: blue curve = posterior mean, shaded band = 95% credible interval. Band widens away from observations (×).](images/gp_plot.png){width=100%}
+![Sample functions from the GP *posterior*: the prior bundle from the previous slide, now forced through the observations — samples agree at the data and fan out in the gaps.](images/gp-sample-posterior-functions.svg){width=100%}
 ::::
 ::::
 
 ::: {.notes}
+- The figure is the direct sequel to the previous slide — same kind of sample curves, but now every one of them passes (near) the observations. Conditioning didn't replace the prior; it *filtered* it. Say it that way: "these are the survivors of the prior."
 - The structurally beautiful fact to emphasize: conditioning a GP on data gives *another GP*. The family is closed under observation — that is exactly why everything stays in closed form and why GPs are the "exact Bayesian" row of the taxonomy. No approximation enters here.
 - "Passes through (or near)": the *near* is doing real work — it is the $\sigma_n^2$ noise term. With noisy observations the posterior mean should *not* interpolate every point exactly; forcing it through noisy data is overfitting. Tie $\sigma_n^2$ to the aleatory floor from the variance decomposition — same quantity, reappearing.
 - "Reverts to the prior away from data" is the one-sentence summary of honest uncertainty and a verbatim callback to the recall figure. Pause on it, then transition: "Now the formulas that produce exactly this picture — and you will be asked to write them."
@@ -535,7 +596,7 @@ $$
 ::::
 
 :::: {.column width="45%"}
-![GP posterior with $\pm 2\sigma$ band (shaded). The band collapses at observed points and expands in unsampled regions.](images/gp_plot.png){width=100%}
+![Posterior mean with 95% credible band — the sample-function bundle from the previous slide summarized as mean ± 2σ. The band collapses at observed points and expands in unsampled regions.](images/gp-posterior-samples-95.svg){width=100%}
 ::::
 ::::
 
@@ -592,6 +653,47 @@ $$
 - This is the bias–variance trade-off from Unit 8 wearing a GP costume — say that out loud. Short $\ell$ = high variance (chases noise, uncertainty re-inflates between *every* point); long $\ell$ = high bias (smooths real structure away). Students who see it as the *same* trade-off, not a new one, retain it; make the cross-reference explicit.
 - Drive the figure as the warning it is: identical data, three radically different stories. The implication for their exercise and thesis work: a GP's bands are only trustworthy *after* the length scale is fit by the marginal likelihood — a hand-set or badly-initialized $\ell$ produces confidently wrong uncertainty. This is the most common way people misuse GPs in practice.
 - Subtle but examinable observation from panel (b): short $\ell$ doesn't just wiggle — its uncertainty shoots up *between* points because correlation dies off within the gap. The length scale controls the *bands*, not only the mean.
+:::
+
+## Length scale effect: prior and posterior samples
+
+:::: {.columns}
+:::: {.column width="50%"}
+**Short $\ell = 0.1$**
+
+![](images/gp-priorpoint1.svg){width=85%}
+
+![](images/gp-postpoint1.svg){width=85%}
+::::
+
+:::: {.column width="50%"}
+**Long $\ell = 5$**
+
+![](images/gp-prior5.svg){width=85%}
+
+![](images/gp-post5.svg){width=85%}
+::::
+::::
+
+- Top: prior samples. Bottom: posterior samples on the same data.
+- Short $\ell$: function values decorrelate within tiny gaps → wiggly draws, bands re-inflate **between** every pair of points.
+- Long $\ell$: strong long-range correlation → smooth draws, narrow bands — confident even far from data (possibly overconfident).
+
+::: {.notes}
+- This is the previous slide's message shown in the raw material — *sample functions*, not just summary bands. Left column: at $\ell = 0.1$ the prior draws are noise-like, and the posterior draws only agree in a hair-thin neighborhood of each observation; one step away, the data has no opinion. Right column: at $\ell = 5$ every draw is a lazy arc, and a handful of points pins the function down over the entire domain.
+- The dangerous panel is the bottom-right and worth dwelling on: long-$\ell$ confidence far from data is a *prior assumption*, not evidence. The narrow band says "I assumed long-range smoothness," not "I measured this region." If the true signal has short-range structure, this model is confidently wrong — the exact failure mode the calibration section audits later.
+- Practical takeaway to dictate: when a GP's bands look suspiciously tight, check the fitted length scale against domain knowledge *first* — it is the single most common cause of overconfident GPs in practice.
+:::
+
+## Interactive: explore GP kernels and hyperparameters
+
+<iframe src="https://www.infinitecuriosity.org/vizgp/" style="width:100%; height:850px;" frameborder="0" scrolling="yes">
+</iframe>
+
+::: {.notes}
+- Live demo, 3–4 minutes maximum, with one scripted goal: click data points into the canvas, then drag the length scale through its range and watch the posterior band re-inflate between points (short $\ell$) and iron flat (long $\ell$) — the previous two slides, now under the students' control.
+- If time allows, switch the kernel (Matérn vs RBF) on the same data to show the smoothness assumption changing the draws — a 30-second payoff of the "Other kernels" slide.
+- Have the two static sweep slides ready as fallback if the network or the site is down; this slide is enrichment, not load-bearing, and is a safe cut when running behind.
 :::
 
 ## GP: computational cost
@@ -893,7 +995,7 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 ::::
 
 :::: {.column width="50%"}
-![GP regression: blue curve = posterior mean, shaded 95% CI narrows at training points and widens in unexplored regions — guiding next experiments.](images/gp_plot.png){width=100%}
+![GP point predictions with 95% credible set: the band narrows at training points and widens in unexplored regions — exactly the signal that guides the next experiment.](images/gp-point-predictions.svg){width=100%}
 ::::
 ::::
 
@@ -908,25 +1010,55 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 :::: {.columns}
 :::: {.column width="50%"}
 - **Goal**: map the composition-property landscape with minimum experiments.
-- **Strategy**: train GP, identify input with highest uncertainty, synthesize and test it.
+- **Strategy**: train GP, identify input with highest posterior variance, synthesize and test it.
 - **Iterate**: retrain GP, select next experiment, repeat.
-- This is **Bayesian optimization** applied to materials discovery.
+- This uncertainty-driven loop is **active learning** — the goal is an accurate map of the *whole* function.
 ::::
 
 :::: {.column width="50%"}
-::: {.card}
-**[PLACEHOLDER: Active Learning animation/sequence]**
-- Panel 1: Initial GP with high uncertainty
-- Panel 2: Selection of point with max variance
-- Panel 3: Updated GP with reduced uncertainty after adding point
-:::
+![Active learning with a GP surrogate: iterations 0 → 4 → 8. Each round queries the point of maximum posterior variance; the band collapses where data is added and the loop attacks the widest remaining gap.](images/active_learning_iter0.png){width=90%}
+
+![](images/active_learning_iter4.png){width=90%}
+
+![](images/active_learning_iter8.png){width=90%}
 ::::
 ::::
 
 ::: {.notes}
 - This is the intellectual peak of the unit — the moment the variance formula becomes an *action*. Recall the boxed result from the GP-posterior slide: the predictive variance depends only on *where* you sample, not on $\mathbf{y}$. So you can compute the variance at an unseen composition *before synthesizing it* — and deliberately go make the most informative experiment. Say this slowly; it is the deepest idea in the lecture.
-- Name the closed loop and its name: train GP → pick argmax-variance point → run the experiment → retrain → repeat. That is Bayesian optimization / active learning, and it is *the* modern paradigm for autonomous materials discovery and self-driving labs. Give them the term so they recognize it in the literature and the ML-PC course.
-- Be honest about the slide state: this is a placeholder, so *narrate the animation by hand* — "watch the band collapse where we add a point and stay wide elsewhere; the algorithm always attacks the widest gap." (Self-note: build this 3-panel sequence — it is the unit's signature figure and currently missing. Logged for the assets backlog.)
+- Walk the three panels top to bottom as the animation: initial GP with huge bands → the loop queries the widest gap → by iteration 8 the band has collapsed nearly everywhere. "Watch the band collapse where we add a point and stay wide elsewhere; the algorithm always attacks the widest gap."
+- Name the loop precisely and *don't* call it Bayesian optimization yet: max-variance selection is **active learning** (uncertainty sampling) — pure exploration, aimed at learning the whole function. When the goal is instead *finding the best composition*, exploration must be traded against exploitation — that is Bayesian optimization, next slide. Students (and papers) conflate the two constantly; this unit doesn't.
+:::
+
+## From active learning to Bayesian optimization
+
+:::: {.columns}
+:::: {.column width="55%"}
+:::: {.incremental}
+- **Active learning**: map the function accurately → acquire at max **variance** (pure exploration).
+- **Bayesian optimization**: find the *maximum* with fewest experiments → acquisition must balance **exploitation** (high mean) against **exploration** (high variance).
+- **Expected Improvement** over the best value $f^+$ observed so far:
+
+$$
+\mathrm{EI}(\mathbf{x}) = \left(\mu(\mathbf{x}) - f^+ - \epsilon\right)\Phi(Z) + \sigma(\mathbf{x})\,\phi(Z), \quad Z = \frac{\mu(\mathbf{x}) - f^+ - \epsilon}{\sigma(\mathbf{x})}
+$$
+
+- $\epsilon$ dials exploration ↔ exploitation. Alternatives: probability of improvement, UCB $\mu + \beta\sigma$, Thompson sampling.
+::::
+::::
+
+:::: {.column width="45%" .fragment}
+- Both loops are the engine of **self-driving labs** and autonomous microscopy.
+- Same GP machinery, different acquisition function — the acquisition *is* the experimental strategy.
+- Deep dive with iteration-by-iteration visualizations: Data Science for EM, Units 6–7.
+::::
+::::
+
+::: {.notes}
+- The one distinction to leave the room with: active learning asks "where do I know *least*?", Bayesian optimization asks "where is the *best* candidate likely hiding?" — and the entire difference is the acquisition function. The GP underneath is identical; you swap one formula and get a different scientific instrument.
+- Read EI's two terms as the trade-off made explicit: the first term is large where the *mean* already beats the incumbent $f^+$ (exploitation); the second is large where $\sigma$ is big (exploration). $\Phi$ and $\phi$ are just the Gaussian CDF/PDF of the standardized improvement — no new machinery, everything comes from the GP posterior of this lecture.
+- Don't derive EI — state it and interpret it. If a student wants the derivation and the ε-sweep animations (what happens with too much exploration), point them at the DSEM course units 6–7, which walk PI/EI/Thompson iteration by iteration on the same kind of 1-D toy problem.
+- Close the loop to the unit thesis: the acquisition function is uncertainty *acted upon*. A model that cannot say "I don't know here" cannot run this loop at all — honest UQ is not a reporting nicety, it is the prerequisite for autonomous experimentation.
 :::
 
 
