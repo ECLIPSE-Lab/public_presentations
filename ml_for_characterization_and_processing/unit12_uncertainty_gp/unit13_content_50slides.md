@@ -233,4 +233,4 @@
 50. **Slide 50: References & Further Reading**
     - Rasmussen & Williams (2006): Gaussian Processes for Machine Learning.
     - Neuer (2024), Bishop (2006).
-    - Next Unit: Automation in Microscopy.
+    - Next Unit: Integration, limits, and reflection (unit13_reflection).
