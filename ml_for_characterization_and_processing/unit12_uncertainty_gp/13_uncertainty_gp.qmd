@@ -121,10 +121,7 @@ Trust = prediction + **calibrated** confidence. The "calibrated" word is what mo
 :::
 :::
 :::
-
-::: {.fragment}
-![Aleatoric (irreducible noise) vs epistemic (lack of knowledge) uncertainty: the epistemic part grows exactly where data is sparse.](images/uncertainty_types.png){width="40%" fig-align="center"}
-:::
+ 
 
 ::: {.callout-warning .fragment}
 A model that gets *quieter* as the input drifts is broken — under tool, operator, or coating shift your uncertainty must **grow**.
@@ -266,10 +263,10 @@ All four anti-patterns share the same antidote: a reliability diagram on a held-
 ::: {.column width="55%"}
 ::: {.fragment}
 - Steel grade DIN 1.7709 / **21CrMoV5-7** [@Mantzoukas_2021_17709].
-- Process: austenitize 960 °C, oil quench, **temper 2 h at variable $T_{\text{temper}}$**.
-- Input: $T_{\text{temper}} \in [200, 700]$ °C.
-- Output: hardness $\text{HRC}(T_{\text{temper}})$.
-- Real published dataset, $\sim 10\text{–}30$ specimens per condition with measurement scatter.
+- Process: austenitize 960 °C / 30 min, oil quench, **temper 2 h at variable $T_{\text{temper}}$**.
+- Input: $T_{\text{temper}} \in \{475, 500, 525, 550, 575\}$ °C.
+- Output: hardness **HV30** (six indents per specimen, averaged); $379\text{–}409$ HV30 $\approx 38.7\text{–}41.7$ HRC.
+- Real published dataset: **5 temperatures × 10 specimens = 50 values**, published to the last indent (Table 3 of the paper; `data_mantzoukas2021_table3.csv`).
 :::
 :::
 
@@ -277,27 +274,29 @@ All four anti-patterns share the same antidote: a reliability diagram on a held-
 ::: {.fragment}
 **Why this is a textbook GP problem:**
 
-- $n$ small, $d{=}1$ input.
-- Response **monotonically softens** with $T$ but is **non-linear** (carbide coarsening kinetics).
-- We need a CI to skip half of the destructive tests.
+- $n$ small, $d{=}1$ input, real cost per specimen.
+- Response is **not monotonic**: secondary-hardening peaks at 500 and 550 °C (Cr/Mo/V carbide precipitation) — a parametric "softening curve" fit would be *wrong*.
+- 10 replicates per condition → the noise level $\sigma_n$ can be estimated **from the data**, independent of the model.
 :::
 :::
 :::
 
 ::: {.callout-note .fragment}
-Small $n$, one smooth physical input, real cost per data point — the textbook regime for a GP.
+Small $n$, one physical input, replicate scatter, non-trivial shape — the textbook regime for a GP.
 :::
 
 ::: {.notes}
-**Why this alloy, why this data set.** 21CrMoV5-7 (DIN 1.7709) is a workhorse Cr-Mo-V quench-and-temper steel for pressure-vessel and rotor applications — and the Mantzoukas et al. 2021 paper publishes clean tempering response curves with replicate scatter. This is the closest thing to a *textbook GP problem* you find in real metallurgy: 1-D input, smooth nonlinear output, modest noise, real lab cost per data point.
+**Why this alloy, why this data set.** 21CrMoV5-7 (DIN 1.7709) is a workhorse Cr-Mo-V quench-and-temper steel for pressure-vessel and rotor applications — and the Mantzoukas et al. 2021 paper (MATEC Web Conf. 349, 02005, open access) publishes the *complete raw data*: 50 randomized specimens from one bar batch, five tempering groups, every HV30 value in Table 3. Everything on the next four slides is computed from that table — the CSV and the fitting script (`make_gp_figures.py`) are in the unit folder, so students can reproduce every number.
 
-**Physics in one breath.** Tempering at increasing $T$ drives carbide nucleation, growth, and coarsening; the response is the *competition* between strengthening (fine carbides) and softening (over-aging). Below ~400 °C the response is nearly flat; between 400-600 °C carbides coarsen and HRC drops sharply; above 650 °C you saturate. That regime change is the whole reason kernel choice (Matérn vs RBF, next slide) matters.
+**Physics in one breath.** In plain-carbon steels tempering monotonically softens. *Not here*: in Cr-Mo-V grades the 475-575 °C window is exactly where **secondary hardening** happens — Cr/Mo/V alloy carbides precipitate and re-strengthen the matrix, competing with the recovery of the martensite. The measured response is nearly flat overall (379-409 HV30) with peaks at 500 and 550 °C. The paper's own conclusion: the grade "resists tempering back" in this window. This non-monotonic fine structure is the whole reason a parametric softening law fails and kernel choice (next slide) matters.
 
-**Why $n \sim 30$.** A typical industrial heat-treatment qualification campaign measures hardness on 3 specimens per condition, at 6-10 conditions, with retries — total $n$ lands in the 20-40 range. That is far too small for any neural network to give honest uncertainty, and exactly the regime where a GP shines.
+**Why the group means are trustworthy.** 10 replicates per condition, each specimen itself the mean of six HV30 indents, all specimens randomized from one batch (Minitab randomization, one furnace). Standard error of a group mean ≈ $\sigma_n/\sqrt{10} \approx 4$ HV30 — so the 500 °C peak (409 vs 381 at the neighbours) is a ~7-SE effect, unambiguously real signal, not noise.
 
-**Anti-pattern.** Students will try to fit a polynomial regression with bootstrapped CIs. That hides the heteroscedasticity and overfits at the boundaries. The GP is the *right* tool because it has a principled prior (smoothness) and a principled posterior CI.
+**Why $n = 50$ is still "small data".** Fifty scalar measurements is far too small for any neural network to give honest uncertainty, and exactly the regime where a GP shines. Also note the heteroscedasticity in Table 3: group SDs run from 4.6 (575 °C) to 20.2 HV30 (500 °C) — precipitation-driven scatter. We fit a homoscedastic GP with the pooled SD and flag the heteroscedastic extension in the notes of slide 09.
 
-**Cross-reference.** Mantzoukas_2021_17709 in `ref.bib`. MFML W12 for the posterior derivation. ML-PC u02 (physics-of-data) for the discussion of replicate scatter vs model uncertainty.
+**Anti-pattern.** Students will try to fit a polynomial regression with bootstrapped CIs. On this data a low-order polynomial *averages away* the two secondary-hardening peaks and a high-order one chases the noise. The GP is the *right* tool because it has a principled prior (correlation length) and a principled posterior CI.
+
+**Cross-reference.** Mantzoukas_2021_17709 in `ref.bib`; full PDF in the unit folder. MFML W12 for the posterior derivation. ML-PC u02 (physics-of-data) for the discussion of replicate scatter vs model uncertainty.
 
 **Pacing.** ~1.5 minutes. The setup is short — the lecture should move quickly to the kernel slide.
 :::
@@ -307,38 +306,40 @@ Small $n$, one smooth physical input, real cost per data point — the textbook 
 ::: {.columns}
 ::: {.column width="55%"}
 ::: {.fragment}
-- $n \sim 30$: **too small for a deep net to give honest uncertainty**, plenty for a GP.
-- Output is smooth in input — RBF or Matérn $\nu{=}5/2$ is the right inductive bias.
+- $n = 50$: **too small for a deep net to give honest uncertainty**, plenty for a GP.
+- Matérn $\nu{=}5/2$ encodes "smooth response with a finite correlation length" — the right inductive bias for precipitation kinetics.
 - The GP delivers what the lab manager wants: $\hat{y}(T) \pm 2\sigma(T)$, narrowing at sampled $T$, widening between.
 :::
 
 ::: {.fragment}
-- Hyperparameters $(\ell, \sigma_f, \sigma_n)$ are fit by maximizing the log marginal likelihood — see MFML W12 for the formula. We **use** the result.
+- Fitted to Table 3: $\sigma_n = 13.4$ HV30 **fixed from the replicates**; $\sigma_f = 13$ HV30 by maximum likelihood; $\ell = 13$ °C by MAP (next slide). See MFML W12 for the marginal-likelihood formula — we **use** the result.
 :::
 :::
 
 ::: {.column width="45%"}
 ::: {.fragment}
-![GP regression on sparse data: mean prediction with a 95% CI that narrows at the training points and widens between them.](images/gp_uncertainty.png){width="100%"}
+![GP fit to the actual Mantzoukas Table-3 data (all 50 specimens): the CI on the mean response narrows at the five sampled temperatures and widens between them; the light band adds the replicate noise.](images/gp_17709_fit.png){width="100%"}
 :::
 :::
 :::
 
 ::: {.callout-note .fragment}
-At $n \sim 30$ the GP's posterior CI is honest **by construction** — no separate calibration set needed.
+At $n = 50$ the GP's posterior CI is honest **by construction** — the leave-one-out check on this fit gives 92% empirical coverage for the 95% band (slide 10).
 :::
 
 ::: {.notes}
 **Three reasons GP wins here, in plain words.**
-1. Small-data calibration: with $n \sim 30$ the GP's posterior CI is *honest by construction* — no need for a separate calibration set. Neural-net UQ at $n \sim 30$ is fantasy.
-2. Smoothness prior: RBF or Matérn 5/2 encodes "the response is a smooth function of $T$" — exactly the inductive bias the physics gives you for free.
-3. Interpretable hyperparameters: $\ell$ is a *characteristic temperature scale* the metallurgist can read. Try explaining a 100-parameter MLP's hidden activations to your lab manager.
+1. Small-data calibration: with $n = 50$ the GP's posterior CI is *honest by construction* — no need for a separate calibration set. Neural-net UQ at $n = 50$ is fantasy. And we *check* the construction: leave-one-specimen-out coverage on this fit is 46/50 = 92% for the nominal 95% band (slide 10).
+2. Correlation-length prior: Matérn 5/2 encodes "the response varies smoothly with a characteristic temperature scale" — exactly the inductive bias precipitation kinetics gives you for free. Note it does *not* assume monotonicity, which is what saves us here.
+3. Interpretable hyperparameters: $\ell$ is a *characteristic temperature scale* the metallurgist can read — here 13 °C, i.e. the secondary-hardening peaks are narrower than the 25 °C sampling grid. Try explaining a 100-parameter MLP's hidden activations to your lab manager.
+
+**Walk the figure.** All 50 raw specimens (open circles), group means ± 95% CI (red diamonds), GP posterior mean, dark band = 95% CI on the mean response, light band = predictive interval including replicate noise. Point at the 449 HV30 specimen at 500 °C: a genuine outlier the paper kept; the predictive band absorbs it, the mean band does not chase it.
 
 **Why we do not derive the marginal likelihood.** It is a one-liner: $\log p(y \mid X, \theta) = -\tfrac{1}{2} y^\top K_\theta^{-1} y - \tfrac{1}{2}\log|K_\theta| - \tfrac{n}{2}\log 2\pi$. The two terms balance data fit against model complexity — automatic Occam's razor. We use this; MFML W12 derives it.
 
 **Pre-empt.** "Why not just bootstrap the data and fit polynomials?" — bootstrap CIs are *empirical*, not *predictive*; they do not widen between data points. GP is the right tool because the CI *grows where there is no data* and *shrinks where there is*.
 
-**Materials-specific pre-empt.** "Why not a physics-based parametric model (Hollomon-Jaffe parameter)?" — Hollomon-Jaffe is a great *mean predictor* for tempering. You can use it as the GP's prior mean and let the GP correct deviations. That's the right hybrid; in this case study we go non-parametric for simplicity, but tell students the hybrid exists.
+**Materials-specific pre-empt.** "Why not a physics-based parametric model (Hollomon-Jaffe parameter)?" — Hollomon-Jaffe assumes monotonic tempering-back and *cannot represent secondary hardening at all*; on this alloy it is structurally wrong in exactly this window. The defensible hybrid is Hollomon-Jaffe (or any parametric softening law) as the GP's prior mean with the GP correcting deviations — mention that the hybrid exists; here the non-parametric GP alone is the honest choice.
 
 **Cross-reference.** MFML W12 for the marginal-likelihood objective and the Cholesky-based solver; ML-PC u11 (PINNs, the previous deck) for the physics-prior hybrid.
 
@@ -355,22 +356,26 @@ $$
 ::: {.column width="60%"}
 ::: {.fragment}
 - **Length scale** $\ell$: the "characteristic process variability" on the temperature axis.
-  - $\ell \approx 50$ °C → response varies sharply with temper temperature; carbide kinetics regime-change is captured.
-  - $\ell \approx 300$ °C → response is essentially a slow trend; we are oversmoothing.
+  - Fitted here: $\ell \approx 13$ °C → the secondary-hardening peaks are *narrower than the 25 °C sampling grid*.
+  - $\ell \approx 200$ °C → prior samples are near-straight trends; the peaks at 500/550 °C are oversmoothed away.
 :::
 
 ::: {.fragment}
-- **Signal variance** $\sigma_f^2$: amplitude of the HRC variation across the explored window. Read off the data range.
-- **Noise variance** $\sigma_n^2$: instrument + specimen scatter at fixed $T$. **Estimate it from replicates**, do not let the optimizer absorb model misfit into noise.
+- **Signal variance** $\sigma_f^2$: amplitude of the hardness variation across the window — fitted $\sigma_f = 13$ HV30, matching the $\sim$ 30 HV30 peak-to-valley swing.
+
 :::
 :::
+
 
 ::: {.column width="40%"}
 ::: {.fragment}
-![Sample functions drawn from a GP prior — the kernel sets their smoothness, amplitude, and correlation length before any data arrives.](images/gp-sample-prior-functions.svg){width="90%"}
+![Samples from the GP prior with the hyperparameters fitted to the 1.7709 data (left) and with a deliberately oversmoothed length scale (right); red: the measured group means.](images/gp_17709_prior_samples.png){width="100%"}
 :::
 :::
 :::
+
+
+- **Noise variance** $\sigma_n^2$: instrument + specimen scatter at fixed $T$. **Estimated from the 10 replicates per group and fixed**: $\sigma_n = 13.4$ HV30. Do not let the optimizer absorb model misfit into noise.
 
 ::: {.callout-note .fragment}
 For metallurgical responses with regime changes, prefer **Matérn $\nu{=}5/2$** over RBF — it is once-differentiable instead of $C^\infty$, which matches the physics better.
@@ -379,51 +384,55 @@ For metallurgical responses with regime changes, prefer **Matérn $\nu{=}5/2$** 
 ::: {.notes}
 **The slide that distinguishes ML-PC from MFML.** In MFML we taught the GP as math — kernels are positive-definite functions. Here, each kernel hyperparameter has a *physical reading*: $\ell$ is a temperature scale, $\sigma_f^2$ is the data range, $\sigma_n^2$ is replicate scatter. If a student cannot give each hyperparameter a unit and a physical interpretation after this slide, they did not get the point.
 
-**Trap to flag explicitly: $\sigma_n^2$ as a model-misfit sponge.** If you let the optimiser pick all three hyperparameters freely, it will absorb model misfit (wrong kernel, wrong mean function) into $\sigma_n^2$, blowing up the noise estimate. The right discipline is to estimate $\sigma_n^2$ *separately* from replicate measurements at one or two conditions and *fix* it during marginal-likelihood optimisation. Free hyperparameters: $\ell$ and $\sigma_f$. This single discipline change is the most common audit-fix I make on student GP code.
+**Trap to flag explicitly: $\sigma_n^2$ as a model-misfit sponge.** If you let the optimiser pick all three hyperparameters freely, it will absorb model misfit (wrong kernel, wrong mean function) into $\sigma_n^2$, blowing up the noise estimate. The right discipline — used for this actual fit — is to estimate $\sigma_n^2$ from the replicates (pooled within-group SD of Table 3: $\sigma_n = 13.4$ HV30) and *fix* it during marginal-likelihood optimisation. This single discipline change is the most common audit-fix I make on student GP code.
 
-**Why Matérn 5/2 for metallurgy.** RBF is $C^\infty$ smooth — every derivative exists. Real tempering curves have *kinks* (regime changes at $\sim 400$ °C). Matérn 5/2 is twice differentiable but not more — it can bend more sharply where the physics calls for it. Bishop ch.6 has the full kernel zoo.
+**The second trap, which this data actually springs: degenerate $\ell$ under free MLE.** With 25 °C spacing and an up-down-up-down group-mean pattern, the marginal likelihood is nearly flat for all $\ell$ below the grid spacing and the optimiser runs $\ell \to 0$ (the "every condition is independent" limit). The fix is the one slide 11's caveat preaches: an informative prior. We used $\ell \sim \text{LogNormal}(\ln 25\,°\text{C}, 0.5)$ — centred on the sampling spacing — and took the MAP, landing at $\ell = 12.6$ °C. Lesson: the data *cannot resolve* structure finer than its own sampling grid, and the hyperparameters will tell you so if you listen.
+
+**Heteroscedasticity footnote.** Table 3's group SDs range 4.6–20.2 HV30 (largest exactly at the 500 °C precipitation peak). We pool to a single $\sigma_n$ for simplicity; the honest extension is a heteroscedastic noise model with per-group $\sigma_n$ — good MSc-thesis exercise.
+
+**Why Matérn 5/2 for metallurgy.** RBF is $C^\infty$ smooth — every derivative exists. Real tempering responses have sharp features (here: secondary-hardening peaks barely wider than 25 °C). Matérn 5/2 is twice differentiable but not more — it can bend more sharply where the physics calls for it. Bishop ch.6 has the full kernel zoo.
 
 **Pre-empt.** "Should I use ARD (one $\ell$ per input dimension)?" — yes, *always*, when $d > 1$. It is the cheapest interpretability win and it surfaces which inputs are irrelevant.
 
-**Anti-pattern.** Reporting a GP fit without listing the optimised hyperparameter values. If the paper does not say "$\ell = 58$ °C, $\sigma_f = 12$ HRC, $\sigma_n = 0.9$ HRC", the GP is unreproducible.
+**Anti-pattern.** Reporting a GP fit without listing the hyperparameter values and how each was set. The reproducible statement for this fit is: "Matérn 5/2, $\ell = 13$ °C (MAP, LogNormal prior at the 25 °C spacing), $\sigma_f = 13$ HV30 (MLE), $\sigma_n = 13.4$ HV30 (fixed from replicates)". If a paper does not give you the equivalent sentence, treat its GP as unreproducible.
 
 **Cross-reference.** ML-PC u12 (next unit, PINNs) builds on the prior-mean / kernel-prior structure.
 
 **Pacing.** ~3 minutes — this is *the* GP-internals slide. Spend the time.
 :::
 
-## 10. The fit — described
+## 10. The fit — and its held-out test
 
 ::: {.columns}
 ::: {.column width="55%"}
 ::: {.fragment}
-- Posterior mean: a smooth softening curve from $\sim 55$ HRC at 200 °C to $\sim 25$ HRC at 700 °C.
-- 95% CI ribbon: tight ($\pm 1$ HRC) at sampled tempers (300, 450, 600 °C), widens to $\pm 4$ HRC in the gaps.
-- The reliability of the CI is checked on a leave-one-out CV reliability diagram — and **only then** do we trust the ribbon.
+- Posterior mean: flat around 380 HV30 with two secondary-hardening peaks (407 at 500 °C, 401 at 550 °C).
+- 95% CI ribbon on the mean: tight ($\pm 8$ HV30) at the five sampled tempers, widens to $\pm 19$ HV30 mid-gap — the ribbon *breathes* with the data.
+- Leave-one-specimen-out check on the full fit: **46/50 = 92%** of specimens inside the nominal 95% predictive band.
 :::
 
 ::: {.fragment}
-**Numerical example.** With $n{=}30$, $\sigma_n \approx 0.8$ HRC (from replicates), $\ell \approx 60$ °C: the GP posterior at $T{=}500$ °C (a held-out point) gives $\hat{\text{HRC}} = 38.2 \pm 1.6$ (2$\sigma$). Spec sheet says 36–40 — we just skipped a destructive test.
+**Held-out check (figure).** Refit with the entire 525 °C group hidden: the GP predicts $399 \pm 26$ HV30 (95%) there; the hidden group measured $382 \pm 5$ — inside the band. The interval is wide *because* the neighbouring peaks make interpolation genuinely uncertain. That width is information, not weakness.
 :::
 :::
 
 ::: {.column width="45%"}
 ::: {.fragment}
-![GP posterior samples with the 95% credible band — the ribbon collapses at observations and widens in the gaps.](images/gp-posterior-samples-95.svg){width="90%"}
+![The real test: the 525 °C group (red) was hidden from the GP, which was fit on the other 40 specimens. The held-out group mean lands inside the 95% band.](images/gp_17709_heldout.png){width="100%"}
 :::
 :::
 :::
 
 ::: {.callout-note .fragment}
-Trust the ribbon **only after** the leave-one-out reliability diagram says you may.
+Trust the ribbon **only after** a held-out or leave-one-out check says you may — here: 92% empirical coverage for a 95% band.
 :::
 
 ::: {.notes}
-**The shape of the posterior matters more than any single number.** Walk the class through the ribbon: tight at sampled points (the posterior collapses to noise-floor width $\approx 2\sigma_n$), wide between points (the prior takes over), reverting toward $\sigma_f$ at the edges (no data → prior). That ribbon shape is the whole reason we used a GP.
+**The shape of the posterior matters more than any single number.** Walk the class through the ribbon: tight at sampled points (with 10 replicates the CI on the mean collapses to $\approx \pm 2\sigma_n/\sqrt{10} \approx \pm 8$ HV30), wide mid-gap ($\pm 19$ HV30 — the prior takes over), reverting toward $\sigma_f$ outside the data (next slide). That ribbon shape is the whole reason we used a GP.
 
-**Leave-one-out CV is the GP's free diagnostic.** Because the GP posterior is closed-form, leave-one-out predictions are *cheap* (Sundararajan-Keerthi trick: no refit per fold). Always compute LOO RMSE and LOO reliability before quoting any CI as trustworthy.
+**Leave-one-out CV is the GP's free diagnostic.** Because the GP posterior is closed-form, leave-one-out predictions are *cheap* (Sundararajan-Keerthi trick: no refit per fold; our script brute-force refits because $n = 50$ costs milliseconds). On this fit: 46/50 specimens inside the 95% predictive band — 92% empirical vs 95% nominal, i.e. the band is honest to within the resolution 50 points can check ($\pm$ a few points is expected binomial fluctuation).
 
-**Why the held-out spec-sheet check matters.** $\hat{\text{HRC}} = 38.2 \pm 1.6$ at $T=500$°C with spec 36-40 means we *just demonstrated* the GP is inside spec at that condition — without running a destructive test. The dollar value of that skipped test is the whole ROI story (two slides later).
+**Why the held-out-group check is the one to show.** Held-out *specimens* mostly test the noise model; a held-out *condition* tests interpolation — the thing we actually want the GP for. The GP fit without the 525 °C group predicts $399 \pm 26$ HV30; measured $382 \pm 5$. Two readings: (a) covered — the CI is honest; (b) the point prediction pulled up toward the neighbouring peaks and missed by 17 HV30, and the wide band *told you not to trust the point estimate*. Both readings are the lesson. If your process decision needs $\pm 10$ HV30 at an unsampled temper, the GP's answer is "measure it" — and it says so quantitatively.
 
 **Anti-pattern.** Reporting $\pm 1\sigma$ instead of $\pm 2\sigma$. Always quote 95 % CI ($\pm 2\sigma$ under Gaussian); $\pm 1\sigma$ is the *standard error*, half as wide, and reads like overconfidence to a lab manager.
 
@@ -440,19 +449,22 @@ Trust the ribbon **only after** the leave-one-out reliability diagram says you m
 ::: {.column width="55%"}
 ::: {.fragment}
 - The GP variance grows back toward $\sigma_f^2$ as we move away from data.
-- For 21CrMoV5-7: ribbon balloons **outside** $[200, 700]$ °C — the model is honestly saying "I have not seen tempers below 200 or above 700, my prediction here is essentially the prior."
+- For the 1.7709 data: the ribbon balloons **outside** $[475, 575]$ °C — the model is honestly saying "I have not seen tempers below 475 or above 575, my prediction here is essentially the prior."
+- And the prior mean (391 HV30, the data average) **is physically wrong out there**: below 475 °C the real response climbs toward the as-quenched $42 \pm 2$ HRC; above 575 °C tempering-back sets in. The wide band is the *only* honest part of the extrapolation.
 :::
 
-::: {.fragment}
-- This is the right answer. **Do not** clip the variance, **do not** force-fit a parametric extrapolation. If you need predictions at 750 °C, run the experiment.
-:::
+
 :::
 
 ::: {.column width="45%"}
 ::: {.fragment}
-![GP point predictions with their credible band: the band balloons wherever data is absent — the honest answer.](images/gp-point-predictions.svg){width="90%"}
+![The actual fit, extended beyond the data: inside 475–575 °C the band tracks the measurements; outside, it reverts to the prior within a couple of length scales — the honest answer.](images/gp_17709_extrapolation.png){width="90%"}
 :::
 :::
+:::
+
+::: {.fragment}
+- This is the right answer. **Do not** clip the variance, **do not** force-fit a parametric extrapolation. If you need predictions at 625 °C, run the experiment
 :::
 
 ::: {.callout-warning .fragment}
@@ -464,11 +476,11 @@ The CI growth is **only honest if the kernel is correct**. A too-long $\ell$ wil
 
 **The honesty caveat is critical.** If you let $\ell$ optimise too freely and it lands at a too-long length scale (because your data covers a flat region), the GP will *think* the response is slowly varying and will extrapolate confidently. The fix is a prior on $\ell$ (informative-prior MAP rather than free MLE), or a Matérn 5/2 with its sharper roll-off. Without those, "honest extrapolation" is a slogan, not a guarantee.
 
-**Materials hook.** A tempering response below 200 °C is essentially as-quenched HRC — physically you *can* extrapolate downward because the carbide kinetics are frozen. So the GP is being overcautious *for this physics*. The lesson: if you have physics intuition, encode it (informative prior, or a parametric mean function on top of which the GP corrects deviations).
+**Materials hook.** Note what the GP reverts *to*: the prior mean, here the grand data average (391 HV30). Below 475 °C that is physically wrong — the response climbs toward the as-quenched $42 \pm 2$ HRC (the paper reports 40–44 HRC after quench, i.e. 392–434 HV) as carbide precipitation slows. The GP does not know this; the wide band is it admitting so. If you *have* that physics intuition, encode it: a parametric tempering-law mean function (with the GP correcting deviations) would extrapolate downward sensibly *and* keep honest variance growth. With $\ell = 13$ °C the reversion happens within ~2 length scales — 25-30 °C past the last data point the model is already back at the prior. Short length scale = short memory; that is the price of resolving the peaks.
 
 **Anti-pattern.** "Forcing" a parametric extrapolation by fitting a polynomial to the GP's mean curve and extending it. This *loses* the honest CI growth — you have replaced a Bayesian model with a deterministic one outside the training range. If you need predictions out there, run the experiment or use a physics model.
 
-**Pre-empt.** "Could I use a periodic kernel?" — yes, where physics is periodic (cyclic loading, rotating-disc spectra). Not here; tempering is monotonic in $T$.
+**Pre-empt.** "Could I use a periodic kernel? The fitted curve looks oscillatory." — good eye, and no: the two peaks come from *distinct* precipitation reactions (Cr-, then Mo/V-rich carbides), not from a periodic mechanism. A periodic kernel would hallucinate more peaks outside the data with high confidence — the exact opposite of honest extrapolation. Periodic kernels belong where physics is genuinely periodic (cyclic loading, rotating-disc spectra).
 
 **Cross-reference.** §6 OOD detection — the same "out of training distribution" question, formalised. ML-PC u12 (PINNs) uses physics to extrapolate where data fails.
 
@@ -517,7 +529,7 @@ Caveat: the GP **does not replace** verification at the spec extremes. It replac
 ::: {.column width="55%"}
 ::: {.fragment}
 - **[TabPFN](https://github.com/PriorLabs/TabPFN)** [@hollmann_2025_tabpfn] is a transformer **pre-trained on millions of synthetic tabular tasks** to do in-context prediction — no per-task fitting.
-- Pass your $\sim 30$ rows + new query → it returns a **calibrated posterior predictive** in one forward pass.
+- Pass your 50 rows + new query → it returns a **calibrated posterior predictive** in one forward pass.
 - 2025 version (`v2`) handles up to $\sim 10\,000$ rows and is competitive with tuned XGBoost on small-tabular benchmarks.
 - Code: [`github.com/PriorLabs/TabPFN`](https://github.com/PriorLabs/TabPFN) — `pip install tabpfn`, scikit-learn-compatible API.
 :::
@@ -540,7 +552,7 @@ Caveat: the GP **does not replace** verification at the spec extremes. It replac
 :::
 
 ::: {.callout-note .fragment}
-On the 21CrMoV5-7 task TabPFN matches the GP's leave-one-out RMSE within $\sim 0.3$ HRC; the GP wins on interpretability of $\ell$ and $\sigma_f$. Use whichever your stakeholder will sign off on.
+On a 50-row task like the 21CrMoV5-7 data, expect TabPFN and a disciplined GP to give comparable held-out error; the GP wins on interpretability of $\ell$ and $\sigma_f$ and on encoding the replicate-based $\sigma_n$. Use whichever your stakeholder will sign off on — try it as a homework exercise against `data_mantzoukas2021_table3.csv`.
 :::
 :::
 :::
@@ -571,9 +583,9 @@ On the 21CrMoV5-7 task TabPFN matches the GP's leave-one-out RMSE within $\sim 0
 ::: {.columns}
 ::: {.column width="55%"}
 ::: {.fragment}
-- Task: per-pixel segmentation of SEM micrographs into {matrix, **porosity**, **crack**, **inclusion**}.
+- Task: per-pixel segmentation of SEM micrographs of an additively manufactured steel into {matrix, austenite, martensite/austenite, precipitate, **defect**} — the public **MetalDAM** set [@metaldam; @luengo_2022_metaldam].
 - Architecture: U-Net with dropout layers ($p \approx 0.2$) in the bottleneck and decoder.
-- Training data: $\mathcal{O}(10^3)$ labeled tiles, hand-segmented by an expert. Evaluation set drawn from a **different** SEM session to expose tool drift [@Modarres_2017_SEM].
+- Training data: 42 expert-segmented micrographs $\to$ $\mathcal{O}(10^3)$ 256×256 tiles; **whole micrographs held out** for evaluation. The second tool ("SEM #2") is **simulated** below by a detector gamma/contrast/noise shift — MetalDAM is single-source.
 :::
 :::
 
@@ -591,7 +603,7 @@ Always evaluate on a session or tool you did **not** train on — a random split
 ::: {.notes}
 **Why segmentation, why MC Dropout.** Segmentation is the one task where you want UQ *per pixel*, not per image. A 1024×1024 SEM tile is ~1M decisions; even a 99 % per-pixel accuracy means ~10 000 wrong pixels per tile — enough to lose the small pores that matter most. MC Dropout gives you a *spatial* uncertainty map for the same training cost as a deterministic U-Net. That is a deal you cannot easily refuse.
 
-**Why this matches Modarres et al.** The Modarres 2017 SEM benchmark provides labelled defect tiles and was deliberately curated across multiple tools to expose the tool-drift problem. Cite it as the testbed; on your own data, you should always *evaluate on a tool you did not train on*.
+**The data is real; the tool shift is simulated.** All §D figures come from an actual run (`make_mcdropout_figures.py`, seed 0) on MetalDAM — 42 SEM micrographs of AM steel from ArcelorMittal with expert pixel labels; class shares are heavily imbalanced (austenite 58%, matrix 32%, M/A 9%, defect 0.7%, precipitate 0.2%). MetalDAM comes from a single instrument, so the "SEM #2" evaluation applies a physically motivated detector perturbation (gamma 0.75, contrast ×1.3, brightness +0.04, extra noise σ=0.02) to the held-out micrographs — say this out loud; on your own data you should always *evaluate on a tool you did not train on*. (For a multi-category SEM benchmark without pixel masks, see Modarres et al. [@Modarres_2017_SEM] — classification only, which is why it is not used here.)
 
 **Dropout placement matters.** Dropout in the bottleneck + decoder is the standard recommendation: too early and the early features collapse; too late and the variance is tiny because you have already committed to a class. $p \approx 0.2$ is the typical sweet spot; below 0.1 the variance collapses (the well-known MC-Dropout pathology in deep modern networks); above 0.4 training stalls.
 
@@ -623,7 +635,7 @@ $T{=}30$ is the typical knee — below 10 the variance estimate is too noisy, ab
 
 **The $T=30$ heuristic.** Why 30? Variance of a Monte Carlo mean scales as $1/T$; the *variance of the variance estimator* scales as $1/T$ too, so doubling $T$ from 30 to 60 only tightens the variance estimate by $\sqrt 2$. Below $T=10$ you cannot tell calibrated from broken; above $T=50$ you pay linearly with no payoff. Tell students to *measure* the knee on their own task with a reliability diagram, not to trust 30 blindly.
 
-**Compute budget.** At 256×256 tiles, $T=30$ on a 1080Ti is ~3 seconds per tile — fine for offline analysis (tens of tiles/day on a benchtop SEM), *too slow* for inline detection at 1 Hz. If real-time, drop to ensembles (parallelisable) or temperature-scaled deterministic + Mahalanobis OOD.
+**Compute budget (measured).** $T=30$ on a 256×256 tile took 0.07 s on an RTX A6000 in our run (`make_mcdropout_figures.py`); on a 1080Ti-class workstation card expect roughly 1–2 s per tile. Fine for offline analysis (tens of tiles/day on a benchtop SEM), *too slow* for inline detection at 1 Hz on modest hardware. If real-time, drop to ensembles (parallelisable) or temperature-scaled deterministic + Mahalanobis OOD.
 
 **Anti-pattern.** Using the *variance* of softmax outputs instead of the entropy of the *mean* softmax. They are different quantities and have different calibration properties; the predictive-entropy of $\bar p$ is what the variational interpretation calls "total uncertainty".
 
@@ -634,17 +646,10 @@ $T{=}30$ is the typical knee — below 10 the variance estimate is too noisy, ab
 
 ## 16. Per-pixel uncertainty maps — what they look like
 
-::: {.fragment}
-- **Low entropy** in the bulk matrix and inside large, well-formed pores: easy classification.
-- **High entropy** where you would expect:
-  - Grain-boundary triple junctions — class boundary on the image.
-  - **Edge artifacts** of the field of view.
-  - **Charging zones** — bright halos around insulators.
-  - Tile edges where the U-Net's receptive field is incomplete.
-:::
+![Two held-out MetalDAM micrographs: SEM input, MC-mean prediction, per-pixel predictive entropy ($T{=}30$). **Low entropy** inside well-formed austenite/matrix regions; **high entropy** at phase boundaries, inside ambiguous martensite/austenite laths, and at defect rims.](images/mcdropout_maps.png){height=700px fig-align="center"}
 
 ::: {.callout-note .fragment}
-These are diagnostic: the model is **honestly uncertain** exactly where a human operator would also hesitate.
+These are diagnostic: the model is **honestly uncertain** exactly where a human operator would also hesitate. On your own instrument, FoV/tile edges and charging halos light up the same way.
 :::
 
 ::: {.notes}
@@ -652,10 +657,12 @@ These are diagnostic: the model is **honestly uncertain** exactly where a human 
 
 **Demo opportunity.** If you have a teaching SEM micrograph with a known charging halo (insulator next to conductor), show the entropy map next to the input image. Charging zones light up. Students gasp. This is the slide that converts the skeptics.
 
-**The four failure modes named on the slide are the real-world ones.**
+**What the figure actually shows (our MetalDAM run).** High entropy concentrates (i) on austenite/matrix phase boundaries, (ii) *inside* martensite/austenite regions — the class the annotators themselves find hardest, IoU 0.43 — and (iii) at defect rims. Precipitates are essentially unlearnable in MetalDAM (IoU ~0.01) because most were left unannotated (stated in the dataset README) — a live example of the u03 label-noise lecture.
+
+**The generic failure modes to name beyond this figure.**
 - Grain-boundary triple junctions: legitimate class ambiguity; the model is right to hesitate.
 - FoV edges: receptive-field artefact; cropping fix or boundary-aware loss.
-- Charging zones: physical SEM artefact; the model is *correctly refusing* — pass it to a human or to a charge-compensation preprocessor.
+- Charging zones: physical SEM artefact; the model is *correctly refusing* — pass it to a human or to a charge-compensation preprocessor. (MetalDAM has no charging halos; show one from your own instrument if available.)
 - Tile edges: stitching artefact; overlap-and-blend at inference.
 
 **Anti-pattern.** Smoothing the uncertainty map (Gaussian blur) before thresholding. Spatial resolution of the entropy map is its *point*; smoothing destroys the diagnostic value. If the map is too noisy, increase $T$ or fix the dropout placement.
@@ -673,9 +680,10 @@ These are diagnostic: the model is **honestly uncertain** exactly where a human 
 
 ::: {.fragment}
 - Sweep $\tau$ to draw the operating curve: **(human-review rate)** on the x-axis vs **(defect recall)** on the y-axis.
-- Typical knee on a benchtop SEM benchmark: at **5% review rate** we recover **>98% of defect pixels**; at 1% review we drop to ~92%.
 - The threshold is a business decision, not an ML decision — it depends on the cost of a missed defect vs the cost of operator time.
 :::
+
+![Measured on the held-out MetalDAM micrographs: fully automatic recovers **82.9%** of defect pixels; entropy-ranked review adds **+1.4 points at 1%** review and **+3.5 points at 5%**. The residual misses are **low-entropy — confidently wrong** — pixels, which no amount of entropy-ranked review recovers: exactly why the calibration audit on the next slide matters.](images/mcdropout_operating_curve.png){width="52%" fig-align="center"}
 
 ::: {.callout-note .fragment}
 Report the operating **curve**, not a single threshold — the deployment context picks the operating point.
@@ -684,9 +692,9 @@ Report the operating **curve**, not a single threshold — the deployment contex
 ::: {.notes}
 **This is a real engineering decision.** Make sure students understand: the threshold is not "set by the ML method"; it is set by *operational cost*. Two labs running the same model will pick different thresholds based on what their analyst hour costs and what a missed defect costs.
 
-**The operating-curve mindset.** Treat this like an ROC curve: the model gives you a sliding tradeoff, and the deployment context picks the operating point. "98 % recall at 5 % review" is *one point on the curve*; the *curve itself* is the deliverable. Always plot it.
+**The operating-curve mindset.** Treat this like an ROC curve: the model gives you a sliding tradeoff, and the deployment context picks the operating point. "86 % recall at 5 % review" is *one point on the curve*; the *curve itself* is the deliverable. Always plot it.
 
-**Numerical interpretation.** At 5 % review rate, on a 1024×1024 tile that is ~50k flagged pixels — clusterable into a few hundred candidate ROIs that an analyst can scan in under a minute. At 1 % review, ~10k pixels and ~50 ROIs — too few to catch the long-tail defects. The 5 % knee is where most lab benchmarks land.
+**Numerical interpretation (our run).** Auto-only recall is already 82.9% because the weighted loss makes the model defect-sensitive; entropy-ranked review then buys +1.4 points at 1% review and +3.5 at 5% (89.2% at an unrealistic 20%). There is no sharp knee here, and the gap to 100% is the honest headline: the remaining defect pixels are *confidently wrong* — the entropy map cannot flag them, only recalibration (next slide) or more labels can. At 5% review on a 1024×703 micrograph that is ~36k flagged pixels — clusterable into a few hundred ROIs an analyst scans in under a minute.
 
 **Anti-pattern.** Reporting only a single threshold ("we used $\tau = 0.5$"). The threshold has *no meaning without the operating curve*. If the paper does not show the curve, the operating point is unjustified.
 
@@ -720,7 +728,7 @@ Report the operating **curve**, not a single threshold — the deployment contex
 :::
 
 ::: {.notes}
-**The single most underrated slide in the deck.** Most students who deploy a model and watch its accuracy drop will immediately assume *retraining* is the fix. Wrong instinct: recalibration ($\sim 50$ images, 5 minutes of work) often recovers most of the loss. Retraining is the *last* resort.
+**The single most underrated slide in the deck.** Most students who deploy a model and watch performance drop will immediately assume *retraining* is the fix. Wrong first move: run the calibration audit ($\sim 50$ images, 5 minutes of work) before touching the weights. Be precise about what recalibration buys — our run shows both sides: temperature scaling restored *honest confidences* (ECE 9.2% → 3.5%), so every confidence-thresholded downstream step (reject-for-review, defect triage) works again, but it cannot restore raw pixel accuracy (argmax is unchanged; 59% stays 59%). If the accuracy loss itself is unacceptable, that is a fine-tuning decision — made *after* the audit, not instead of it.
 
 **Why a single scalar $T$ works.** Temperature scaling (Guo et al. 2017) divides logits by $T$ before softmax: $\hat p = \text{softmax}(z/T)$. It is a one-parameter rescaling that does not change argmax — the *predictions stay the same*, only the *confidences* change. So retraining the entire network is not required when only the confidence calibration has drifted. This is the slide that gets a "huh" reaction from the audience.
 
@@ -728,7 +736,7 @@ Report the operating **curve**, not a single threshold — the deployment contex
 
 **The trigger list is real.** Detector swaps, gun replacements, coating changes, large chamber vents — each one shifts the contrast distribution enough to break a softmax calibration. *Re-run the reliability diagram on day 1 of any of these events.*
 
-**War story.** A collaborator's pore-detection model dropped from 96 % to 78 % accuracy after a routine chamber clean. They retrained for two weeks and recovered to 91 %. We later showed that temperature scaling on 30 calibration images would have recovered 95 % in an hour. The training time was *wasted*; the diagnosis was the bug.
+**War story.** A collaborator's pore-detection *pipeline* (segmentation + confidence-thresholded defect triage) dropped from 96 % to 78 % end-to-end after a routine chamber clean. They retrained for two weeks and recovered to 91 %. The actual bug: the contrast shift had broken the *calibration*, so the fixed confidence threshold silently discarded most true detections — temperature scaling on 30 calibration images restored the thresholding step in an hour. (Note the mechanism: recalibration can rescue a confidence-*thresholded pipeline*; it never changes the raw argmax accuracy.) The training time was *wasted*; the diagnosis was the bug.
 
 **Cross-reference.** §6 reliability diagrams (the diagnostic); ML-PC u02 (physics-of-data; the chamber vent is a physics-of-the-instrument issue).
 
@@ -743,9 +751,9 @@ Report the operating **curve**, not a single threshold — the deployment contex
 ## 19. Setup: laser powder-bed fusion process map
 
 ::: {.fragment}
-- Process: laser powder-bed fusion (L-PBF) on a benchtop printer, single material.
-- Two-axis design space: laser power $P \in [80, 350]$ W and scan speed $v \in [200, 1500]$ mm/s.
-- Goal: identify the **process window** — the region in $(P, v)$ where relative density $\rho_{\text{rel}} > 0.995$ and no melt-pool collapse is observed.
+- Process: laser powder-bed fusion (L-PBF) of 316L stainless steel, fixed layer thickness (30 µm) and hatch spacing (120 µm).
+- Two-axis design space: laser power $P \in [125, 350]$ W and scan speed $v \in [100, 3400]$ mm/s — the ranges of the 35-cube dataset of @DiazVallejo_2021_316L that grounds this case study.
+- Goal: identify the **process window** — the region in $(P, v)$ where relative density $\rho_{\text{rel}} > 0.995$: below it, keyhole porosity (low $v$); above it, lack-of-fusion porosity (high $v$).
 :::
 
 ::: {.fragment}
@@ -866,22 +874,24 @@ Safety constraints must be **hard** constraints — a soft penalty that "usually
 :::
 
 ::: {.fragment}
-- **Typical result** on this kind of L-PBF problem: **~30 active-learning experiments find the process-window area that grid-search needs ~200 for** — a roughly **6–7× reduction in experimental cost** [@Hernandez-Lobato_2014_PES].
-- At €300/experiment: **€51 000 saved per material**.
+- **Measured on this campaign** (8 random seeds, next slide): **31 AL cubes confidently identify 83% ± 5% of the true window; a 9×9 = 81-cube grid is needed to match** — a **~2.6× reduction in experimental cost**.
+- At €300/experiment: **€15 000 saved per material** — and the AL advantage *grows* with input dimension (hatch, layer, preheat...) [@Hernandez-Lobato_2014_PES].
 :::
 
 ::: {.fragment}
 ::: {.columns}
 ::: {.column width="33%"}
-![Iteration 0: one sample, flat GP surrogate, uncertainty everywhere.](images/active_learning_iter0.png){width="100%"}
+![Seed design only (6 cubes): GP $\sigma$ (grey) high everywhere; the estimated $\rho_{\text{rel}}{=}0.995$ boundary (blue) is far from the true one (orange, dashed) — 20% of the plane misclassified.](images/al_lpbf_iter00.png){width="100%"}
 :::
 ::: {.column width="33%"}
-![Iteration 4: the mean tracks the ground truth near sampled points.](images/active_learning_iter4.png){width="100%"}
+![After 10 AL picks (16 experiments): the straddle acquisition routes every cube to the window boundary — misclassified area down to 2.7%.](images/al_lpbf_iter10.png){width="100%"}
 :::
 ::: {.column width="33%"}
-![Iteration 8: surrogate converged — each query went where $\sigma$ was largest.](images/active_learning_iter8.png){width="100%"}
+![After 25 AL picks (31 experiments): both window boundaries (keyhole below, lack-of-fusion above) are localized; a grid at this resolution needs 196.](images/al_lpbf_iter25.png){width="100%"}
 :::
 :::
+
+AL campaign against a ground-truth density surface fit to the 35-cube 316L dataset of @DiazVallejo_2021_316L; measurement noise $\sigma = 0.002$ = the dataset's median replicate scatter. Generated by `make_gp_figures.py` in the unit folder.
 :::
 
 ::: {.callout-note .fragment}
@@ -889,13 +899,15 @@ Active learning beats the lab's *actual* default — the grid sweep — not just
 :::
 
 ::: {.notes}
-**The headline numbers.** ~30 AL experiments find what grid-search needs ~200 for — a ~6-7× reduction in experimental cost. At €300/experiment that is €51k saved per alloy/system characterised. Across a lab's portfolio of 5-10 alloys/year, the savings are €250-500k *and* the time-to-window-map drops from months to weeks. That is the business case for AL.
+**About the three panels.** They are an *actual AL run* from `make_gp_figures.py` (in the unit folder), grounded in real data: the ground-truth $\rho_{\text{rel}}(P, v)$ surface is a GP fit to the 35 316L cubes of Diaz Vallejo et al. 2021 (Metals 11:832, CC-BY; layer 30 µm, hatch 120 µm; heteroscedastic noise from the reported replicate std), and the campaign queries it with $\sigma = 0.002$ noise — the dataset's own median replicate scatter. 6 seed cubes, then a GP (anisotropic Matérn 5/2) with the *straddle* acquisition $1.96\sigma - |\mu - 0.995|$ that targets the level set rather than the maximum. Say openly that the *campaign* is simulated (the cubes were printed by Diaz Vallejo, not picked by our loop) — the point of the panels is the *mechanism* (picks cluster on the boundary; $\sigma$ collapses there first). Window misclassification area drops 20% → 2.7% → 3.0% across the panels while a 14×14 grid at the same resolution costs 196 cubes. The real window shape is visible in the panels: keyhole boundary near $v \approx 400$ mm/s, lack-of-fusion boundary climbing from $\approx 1300$ to $\approx 2100$ mm/s as power rises.
+
+**The headline numbers — measured, not quoted.** On this campaign (8 seeds, next slide): 31 AL cubes confidently identify 82.6% ± 4.9% of the true window; the grid needs 9×9 = 81 cubes to match. That is ~2.6× — real but smaller than the 6-7× often quoted, because in 2-D a grid is a respectable design. The AL advantage grows with input dimension (add hatch spacing, layer thickness, preheat and the grid explodes combinatorially while AL does not). At €300/experiment the 2-D saving is already €15k per alloy/system; across a lab's portfolio of 5-10 alloys/year that is €75-150k *and* the time-to-window-map drops from months to weeks.
 
 **Why the AL curve climbs steeply early.** UCB and EI route experiments straight to the *boundary* of the process window — exactly where the GP has the highest variance and the *boundary* is most informative. The interior fills in last, almost as a by-product. This is the "physicist's mental model" of AL: it learns the *shape* before the *interior*, which is the right order for window-discovery.
 
-**The grid-search baseline is the comparison that matters.** Grid-search is what *every* materials lab does by default ("we'll do a 14×14 sweep"). The slide is *not* "AL beats random sampling" (a weak claim); it is "AL beats the actual current practice by ~7×". That framing is what gets the slide photographed.
+**The grid-search baseline is the comparison that matters.** Grid-search is what *every* materials lab does by default ("we'll do a 14×14 sweep"). The slide is *not* "AL beats random sampling" (a weak claim); it is "AL beats the actual current practice ~2.6× in 2-D, more in higher dimensions". That framing is what gets the slide photographed.
 
-**Anti-pattern.** Reporting the AL curve without an error band. The pareto curve has Monte-Carlo variability (different random initialisations give different curves). Always plot the *mean curve over 5-10 seeds* with a shaded band. Single-seed AL curves are not publishable evidence.
+**Anti-pattern.** Reporting the AL curve without an error band. The pareto curve has Monte-Carlo variability (different random initialisations give different curves). Always plot the *mean curve over 5-10 seeds* with a shaded band — the next slide does exactly this. Single-seed AL curves are not publishable evidence.
 
 **Pre-empt.** "Why not Latin Hypercube + GP fit + interpolation, no AL?" — that gives you a *map*, not the *boundary*. AL preferentially samples *near* the boundary because the GP variance is highest there. For window-discovery, AL wins by construction.
 
@@ -904,7 +916,34 @@ Active learning beats the lab's *actual* default — the grid sweep — not just
 **Pacing.** ~2 minutes. Numbers first, mechanism second.
 :::
 
-## 23. Materials-acceleration-platform framing
+## 23. The effort curve — AL vs grid, 8 random campaigns
+
+::: {.fragment}
+- $y$-axis: fraction of the **true** window area confidently identified — $P[\rho_{\text{rel}} > 0.995] > 0.9$ *and* actually inside the window.
+- Shaded bands: $\pm 1$ std over 8 random campaigns (jittered seed designs + fresh measurement noise) — single-seed AL curves are not evidence.
+:::
+
+::: {.fragment}
+![Active learning (blue) vs $k{\times}k$ grid sweep + the same GP (orange), both on the Diaz-Vallejo-grounded surface. AL reaches 83% of the window at 31 cubes; the grid needs 81 to match. Both saturate near ~90%: the last sliver of window hugs the boundary, where $P > 0.9$ classification would require replicate cubes.](images/al_lpbf_effort_curve.png){width=70% fig-align="center"}
+:::
+
+::: {.callout-note .fragment}
+The AL advantage is the *steep early slope* — under a hard experiment budget you stop exactly in the regime where AL is far ahead of the grid.
+:::
+
+::: {.notes}
+**How to read the figure.** Same ground truth, same GP, same noise — the *only* difference between the curves is which cube gets printed next. The straddle acquisition spends every cube on the level set; the grid spends most cubes in the interior and the corners where the classification is already easy or hopeless.
+
+**The honest numbers.** AL at 31 cubes: 82.6% ± 4.9% of the true window confidently identified. The grid needs 9×9 = 81 cubes to reach that level. That is a ~2.6× cost reduction in this 2-D, 316L-grounded campaign — real, but *not* the 6-7× sometimes quoted. Two reasons: (a) in 2-D a grid is a respectable design; the AL advantage grows with input dimension (add hatch spacing, layer thickness, preheat...); (b) both curves saturate near 90% because the remaining window area hugs the boundary, where confident classification at σ = 0.002 needs replicates, not more single cubes.
+
+**Why the bands matter.** This is the anti-pattern from the previous slide done right: 8 campaigns with jittered seed designs and fresh noise. The AL band (± 5%) is the honest statement of run-to-run variability; a single lucky seed can look 10 points better.
+
+**Pre-empt.** "Why does the grid curve wobble downward at some sizes?" — coarse grids can straddle the boundary luckily or unluckily; the GP's confident region shifts with where the grid points happen to land relative to the level set.
+
+**Pacing.** ~2 minutes. Read the two numbers off the plot, state the two saturation reasons, move on.
+:::
+
+## 24. Materials-acceleration-platform framing
 
 ::: {.fragment}
 - This loop — surrogate model + acquisition + closed-loop instrument + safety constraints — is the prototype of a **self-driving lab**.
@@ -940,7 +979,7 @@ With a miscalibrated $\sigma$ the loop still runs — it just spends your budget
 
 ### §F · Calibration & deployment hygiene {style="text-align: center; margin-top: 15%;"}
 
-## 24. Reliability diagrams on lab data
+## 25. Reliability diagrams on lab data
 
 ::: {.columns}
 ::: {.column width="50%"}
@@ -986,7 +1025,7 @@ Always run a reliability diagram on a **held-out, lab-realistic** calibration se
 **Pacing.** ~3 minutes.
 :::
 
-## 25. OOD detection — when the model sees something new
+## 26. OOD detection — when the model sees something new
 
 ::: {.columns}
 ::: {.column width="45%"}
@@ -1032,7 +1071,7 @@ Calibration and OOD detection are **separate responsibilities** — a perfectly 
 **Pacing.** ~3 minutes.
 :::
 
-## 26. Reproducibility hygiene
+## 27. Reproducibility hygiene
 
 ::: {.fragment}
 - **Random seed logged** for: data split, model init, dropout sampling, ensemble members, BO acquisition.
@@ -1068,7 +1107,7 @@ If you cannot write that paragraph for your model, you cannot deploy it.
 **Pacing.** ~2 minutes. Read the paragraph, make students notice every clause.
 :::
 
-## 27. What MFML covers that we skipped
+## 28. What MFML covers that we skipped
 
 ::: {.fragment}
 **Pointer slide.** If you want the math behind today's tools:
@@ -1113,7 +1152,7 @@ Read the MFML math first, then deploy with this deck open — the reverse order 
 
 ### §G · Wrap {style="text-align: center; margin-top: 15%;"}
 
-## 28. Recap: Unit 12
+## 29. Recap: Unit 12
 
 ::: {.fragment}
 1. **Pick the UQ tool per task**: GP or **TabPFN** for small tabular data, MC dropout for trained CNNs, ensembles for high-stakes regression, MDN for multi-modal outputs.
@@ -1156,10 +1195,11 @@ A model without calibrated uncertainty fails silently; a model with it tells you
 
 <!-- END prev-next -->
 
-## 29. References & further reading
+## 30. References & further reading
 
 - **Mantzoukas et al. (2021)** — 21CrMoV5-7 quench-and-temper data used in §C [@Mantzoukas_2021_17709].
 - **Modarres et al. (2017)** — SEM benchmark for the segmentation/classification setup of §D [@Modarres_2017_SEM].
+- **Diaz Vallejo et al. (2021)** — 316L L-PBF process-parameter/density dataset grounding the §E active-learning campaign [@DiazVallejo_2021_316L].
 - **Gal & Ghahramani (2016)** — MC Dropout as approximate Bayesian inference [@gal2016dropout].
 - **Lakshminarayanan et al. (2017)** — Deep ensembles, the empirical gold standard for NN UQ [@lakshminarayanan2017simple].
 - **Hernández-Lobato et al. (2014)** — Predictive entropy search; foundational for BO/active learning in materials [@Hernandez-Lobato_2014_PES].
