@@ -41,7 +41,7 @@ format:
 ::: {.notes}
 - Open by naming the arc of the whole second half: Units 9–11 were about *representation* (latent spaces, attention, generative models) — squeezing structure out of data. This unit pivots from "what did the model learn" to "how much should we trust what it says." That reframing is the entire point; say it before any math.
 - One-sentence stakes for a materials cohort: a regression model that says "yield strength = 450 MPa" is not a usable engineering object — a *decision* needs the bar around it. The number without the bar is the most dangerous artifact in applied ML.
-- Plant the destination: by minute 85 they will have a method (a GP) that *honestly widens its error bars where it has no data*, and a wrapper (conformal, recalled from Unit 7) that gives a coverage guarantee even when the model is wrong. Tell them that payoff now so the Bayesian middle has a target.
+- Plant the destination: by minute 85 they will have a method (a GP) that *honestly widens its error bars where it has no data*, its scalable imitations (dropout, ensembles, MDN), and the calibration audit that checks whether any of those bars can be trusted. Tell them that payoff now so the Bayesian middle has a target.
 - Timing contract: ~10 min framing, ~15 min Bayesian predictive + variance split, ~15 min evidence, ~20 min GPs, ~15 min practical UQ, ~10 min calibration + materials. The checkpoints are your pace-recovery valves.
 :::
 
@@ -70,7 +70,11 @@ By the end of this lecture, students can:
 - Overconfident models are more dangerous than inaccurate ones.
 ::::
 
+![Same predictions, different error bars: an **overconfident** NN ensemble (left, bars too small — points miss the diagonal), an **underconfident** GP (middle, bars too large), and a **well-calibrated** model (right). The point estimates look similar; only the honesty of the error bar differs. Source: [@tran2020uqmaterials] Fig. 4 (parity plots, formation-energy $\Delta E$).](images/point_predictions_overconfidence_tran2020.png){width=92% fig-align="center"}
+
 ::: {.notes}
+- The figure is the payoff for the whole slide: three models with *nearly identical point predictions* (all cluster on the diagonal) but wildly different error bars — the NN ensemble's bars are too small (overconfident: points fall outside their bars), the GP's are too large (underconfident), the calibrated model's are right. Say: "the mean is the same; the *bar* is where the trust lives — and a small bar is not the same as a correct one." Materials-relevant (DFT formation-energy prediction), which pre-empts "this is just an image-classification problem."
+- Tie to the three bullets: bullet 1 (±5 vs ±100) = the bar's *width*; bullet 3 (overconfidence is dangerous) = the left panel literally — tiny bars that miss the truth are the failure mode you ship. Forward link: the GP (middle) is deliberately conservative; the next sections build toward calibrated bars.
 - Land the third bullet hard — it is the moral of the unit. An inaccurate-but-honest model says "I don't know" and you go collect data; an overconfident model says "450 ± 3" when the truth is ±80 and you ship a part that fails. Wrong-and-loud beats wrong-and-quiet only for the person who isn't liable.
 - Make the ±5 vs ±100 concrete: same point estimate, completely different engineering action — one passes a safety factor, the other forbids the design. The decision lives entirely in the bar, not the mean.
 - Misconception to preempt: students equate "good model" with "low test error." Reframe — a model can have great average error and be catastrophically miscalibrated on the tail you actually care about. Average accuracy is necessary, not sufficient.
@@ -171,7 +175,7 @@ $$
 ::: {.notes}
 - Use this table as the map for the rest of the lecture: every method we cover is one row. GPs are "Bayesian (exact)"; MC Dropout / VI are "Bayesian (approx.)"; ensembles and MDNs live just off this table as practical surrogates. Point at the row before each method block so students always know where they are.
 - The honest framing of the cost column: "principled" and "cheap" are in tension all unit. The engineering skill is not knowing the most rigorous method — it is choosing the cheapest row that still gives a defensible bar for the decision at hand.
-- Note the "(or ad-hoc)" on MLE: people *do* bolt error bars onto point estimates (bootstrap, a variance head). It can work, but it has no consistency guarantee — flag this so the conformal slide later lands as "the wrapper that fixes exactly this."
+- Note the "(or ad-hoc)" on MLE: people *do* bolt error bars onto point estimates (bootstrap, a variance head). It can work, but it has no consistency guarantee — flag this so the calibration section later lands as "the audit that catches exactly this."
 :::
 
 ## When uncertainty matters most
@@ -214,7 +218,7 @@ $$
 ::: {.notes}
 - This is the skeleton students should be able to redraw on the exam from memory — four families, one representative each, the trade-off that defines each. Tell them to photograph this slide; everything after it is detail hung on these four hooks.
 - The organizing axis is *how do you get the distribution*: integrate it exactly (GP), approximate the integral (MC Dropout/VI), get disagreement empirically (ensembles), or just have the network output the distribution's parameters (MDN). Say that axis out loud — it makes the taxonomy memorable instead of a list.
-- Foreshadow honestly: "Three of these four give you a bar that is only valid *if the model is right*. We will add a fifth thing at the end — conformal — that wraps any of them and is valid even if it isn't."
+- Foreshadow honestly: "All four give you a bar that is only valid *if the model is right*. The calibration section at the end is the audit that asks whether the bar can actually be trusted — no method is exempt from it."
 :::
 
 ## Roadmap of today's 90 min
@@ -318,16 +322,27 @@ $$
 
 ## Empirical Bayes
 
+:::: {.columns}
+:::: {.column width="42%"}
 :::: {.incremental}
 - Instead of fixing hyperparameters (prior variance, noise level), **optimize** them by maximizing the evidence.
 - $\hat{\alpha}, \hat{\sigma}^2 = \arg\max_{\alpha, \sigma^2} \log p(\mathcal{D} | \alpha, \sigma^2)$.
 - This is a principled alternative to cross-validation for hyperparameter selection.
 - Also called **type-II maximum likelihood**.
+- Example →: RBF-basis regression, prior $\mathbf{w} \sim \mathcal{N}(\mathbf{0}, \alpha^{-1}\mathbf{I})$. The evidence curve (d) picks the $\alpha$ of fit (b) — using **all** the data, no validation set.
+::::
+::::
+
+:::: {.column width="58%"}
+![Empirical Bayes selecting the prior precision $\alpha$: (a) $\alpha$ too small — wiggly, chases noise; (b) evidence-optimal $\alpha$ — tracks the true function; (c) $\alpha$ too large — oversmoothed toward the prior; (d) log evidence over $\ln\alpha$ peaks at fit (b). 25 noisy samples of $\sin(2\pi x)$, 12 RBF basis functions.](images/empirical_bayes_alpha_selection.png){width=100%}
+::::
 ::::
 
 ::: {.notes}
 - Name the level shift clearly: ordinary MLE fits parameters; empirical Bayes does MLE one floor up — it fits the *hyperparameters* by maximizing the evidence, with $\theta$ already integrated out. "Type-II ML" is just that one-sentence idea; the jargon hides how simple it is.
-- This is the slide that makes GPs *practical*, so flag the forward link hard: "Remember this — in 20 minutes 'learn the GP length scale by maximizing the marginal likelihood' is literally this slide. The evidence section is not abstract; it is the GP's training algorithm."
+- Walk the figure as a story, panel by panel: (a) tiny $\alpha$ = broad prior = the model buys every wiggle the noise sells; (c) huge $\alpha$ = prior strangles the weights = the fit collapses toward zero; (b) the evidence's choice, found by sliding along curve (d) to its peak. The punchline: nobody held out data — panel (d) is computed from the same 25 points being fit. The Occam argument from three slides ago is what makes that legal: the evidence already charges for complexity.
+- Note $\alpha$ is the same $\alpha$ as in the effective-parameters formula $\gamma = \sum_i \lambda_i/(\lambda_i + \alpha)$ two slides back — the knob the evidence is turning is exactly the one that decides how many parameters the data is allowed to pay for. Two slides, one machine.
+- This is the slide that makes GPs *practical*, so flag the forward link hard: "Remember this — in 20 minutes 'learn the GP length scale by maximizing the marginal likelihood' is literally this slide, with $\alpha$ swapped for $(\ell, \sigma_f, \sigma_n)$. The evidence section is not abstract; it is the GP's training algorithm."
 - Honest caveat: empirical Bayes can over-fit the hyperparameters when data is scarce (you used the data to pick the prior). Usually mild, occasionally not — worth one sentence so they don't treat it as free.
 :::
 
@@ -381,6 +396,62 @@ graph LR
 - The sentence that makes it click: "index the Gaussian by a continuous input instead of an integer." A 3-vector Gaussian has a 3×3 covariance *matrix*; a GP has a covariance *function* $k(\mathbf{x},\mathbf{x}')$ that returns the entry for any pair of inputs, including ones you haven't picked yet. Same object, continuous index.
 - Define "nonparametric" honestly so it isn't a buzzword: not *no* parameters — the effective capacity grows with the data because the model keeps all training points around. Contrast with a fixed-width NN whose capacity is frozen at design time. This is also the seed of the $O(N^3)$ cost later — flag that the same property that makes it flexible makes it expensive.
 - Keep this slide short; it is the bridge between "what is a GP" and "so we must choose $m$ and $k$" — the next three slides.
+:::
+
+## From weight space to function space
+
+:::: {.columns}
+:::: {.column width="55%"}
+:::: {.incremental}
+- Any linear-in-parameters model with a Gaussian prior on the weights **is** a GP:
+
+$$
+f(\mathbf{x}) = \mathbf{w}^\top \boldsymbol{\phi}(\mathbf{x}), \quad \mathbf{w} \sim \mathcal{N}(\mathbf{u}, \mathbf{S}) \;\Rightarrow\; f \sim \mathcal{GP}(m, k)
+$$
+
+$$
+m(\mathbf{x}) = \mathbf{u}^\top \boldsymbol{\phi}(\mathbf{x}), \qquad k(\mathbf{x}, \mathbf{x}') = \boldsymbol{\phi}(\mathbf{x})^\top \mathbf{S} \, \boldsymbol{\phi}(\mathbf{x}')
+$$
+
+- Example: $f(x) = w_0 + w_1 x$ with $w_0, w_1 \sim \mathcal{N}(0,1)$ gives $m(x) = 0$, $k(x,x') = 1 + xx'$.
+- Bayesian linear regression (Unit's prerequisite!) **is** a GP with the linear kernel.
+::::
+::::
+
+:::: {.column width="45%"}
+![Sequential Bayesian learning of $f(x) = w_0 + w_1 x$: weight-space posterior (left) and the corresponding sampled functions (right) as observations arrive. [@bishop2006pattern, Fig. 3.7]](images/bayesian_sequential_learning.png){width=80%}
+::::
+::::
+
+::: {.notes}
+- This slide earns the GP its place in a *foundations* course: it is not a new exotic model but the function-space view of the Bayesian linear regression they already know. Derive the linear example live in two lines — $m(x) = \mathbb{E}[w_0 + w_1 x] = 0$; $k(x,x') = \mathbb{E}[(w_0 + w_1 x)(w_0 + w_1 x')] = 1 + xx'$ — it is thirty seconds of algebra and it demystifies the whole kernel concept: *a kernel is what a prior over weights looks like from function space*.
+- Now the Bishop figure is in its rightful home: the left column is the posterior contracting in *weight* space, the right column is the same contraction seen in *function* space. Same information, two coordinate systems. The GP's proposition is that the right column is the one you can reason about — "smooth, slowly varying, periodic" are statements about functions, not about $w_{17}$.
+- The punchline to say explicitly: since $\boldsymbol{\phi}$ can be *any* basis — polynomials, Fourier modes, radial bumps — this construction covers a huge model class. The next slide pushes it to infinitely many basis functions and gets the RBF kernel.
+:::
+
+## The RBF kernel: infinitely many basis functions
+
+:::: {.incremental}
+- Place $J$ Gaussian bumps $\phi_i(x) = \exp\left(-\frac{(x - c_i)^2}{2\ell^2}\right)$ at centers $c_i$, with $w_i \sim \mathcal{N}\!\left(0, \frac{\sigma^2}{J}\right)$:
+
+$$
+k(x, x') = \frac{\sigma^2}{J} \sum_{i=1}^{J} \phi_i(x)\,\phi_i(x')
+$$
+
+- Let $J \to \infty$ with centers spread over the whole real line — the sum becomes an integral:
+
+$$
+k(x,x') = \int_{-\infty}^{\infty} \phi_c(x)\,\phi_c(x')\, dc \;\propto\; \exp\!\left(-\frac{(x-x')^2}{2(\sqrt{2}\ell)^2}\right)
+$$
+
+- **The RBF kernel is a model with infinitely many basis functions — evaluated with finite computation.**
+- A GP with an RBF kernel is a **universal approximator**, yet does not overfit: complexity is controlled by the marginal likelihood, not the parameter count.
+::::
+
+::: {.notes}
+- This is the "infinite parameters, finite compute" claim from two slides ago, now *derived* instead of asserted — the kernel trick in its cleanest form. Walk the limit slowly: each basis function is a bump of width $\ell$; as $J\to\infty$ the weighted sum becomes a Riemann integral; the Gaussian-times-Gaussian integral evaluates in closed form to… a Gaussian in $(x - x')$. The RBF kernel *is* the covariance of infinitely many radial bumps.
+- Connect to the effective-parameters slide: infinitely many nominal parameters, yet $\gamma$ — the number the data actually pays for — stays finite and modest. That is why an RBF-GP does not overfit despite infinite capacity: the evidence machinery from the first half of the lecture is doing the complexity control automatically. Two blocks of the lecture just clicked together; point at it.
+- One-sentence bridge for the deep-learning students: the same construction applied to a one-hidden-layer network with infinitely many units (via CLT) gives the *neural network kernel* — infinitely wide NNs are GPs. Mention by name only; it reframes the NN-vs-GP debate as "not as distinct as they look" and seeds the deep-kernel-learning pointer in the DSEM course.
 :::
 
 ## Mean function m(x)
@@ -452,14 +523,14 @@ $$
 ::::
 
 :::: {.column width="45%"}
-![Sequential Bayesian learning: prior (row 1) → posterior after 1 obs. (row 2) → 2 obs. (row 3) → 20 obs. (row 4). Left: parameter space. Right: sample functions. [@bishop2006pattern, Fig. 3.7]](images/bayesian_sequential_learning.png){width=100%}
+![Five sample functions drawn from a zero-mean GP prior with RBF kernel — each curve is one complete draw from the distribution over functions.](images/gp-sample-prior-functions.svg){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- This is the slide that makes "distribution over functions" finally tangible — slow down and let them look. Each curve on the right is *one sample* — one entire function drawn from the prior. The spread of the curves at a fixed $x$ *is* the prior uncertainty there. Trace one curve with your hand so they see it as a single draw, not a band.
-- Walk the figure top to bottom as the GP story in one image: row 1 = pure prior, wild disagreement everywhere; each new observation collapses the bundle through that point while leaving the gaps free. By 20 observations the curves agree where data is and fan out where it isn't. This figure *is* "epistemic uncertainty shrinks with data" — call back to the recall slide and the variance decomposition explicitly.
-- This is also the spine the next slide (posterior) and the band slide hang on — tell them "we just did conditioning visually; the next slide does it with the formula."
+- This is the slide that makes "distribution over functions" finally tangible — slow down and let them look. Each curve is *one sample* — one entire function drawn from the prior. The spread of the curves at a fixed $x$ *is* the prior uncertainty there. Trace one curve with your hand so they see it as a single draw, not a band.
+- Ask the room the modeling question the figure poses: "do these look like plausible candidates for *your* signal?" That is what choosing a prior means — you are not fitting anything yet, you are declaring which function families are on the table (how wiggly, what amplitude). If their physical signal is smoother or rougher than these draws, the kernel hyperparameters are wrong *before any data arrives*.
+- This is also the spine the next slide (posterior) hangs on — tell them "conditioning will take exactly this bundle of curves and force it through the observations; the next slide shows that happen."
 :::
 
 ## GP posterior: conditioning on data
@@ -473,11 +544,12 @@ $$
 ::::
 
 :::: {.column width="45%"}
-![GP regression: blue curve = posterior mean, shaded band = 95% credible interval. Band widens away from observations (×).](images/gp_plot.png){width=100%}
+![Sample functions from the GP *posterior*: the prior bundle from the previous slide, now forced through the observations — samples agree at the data and fan out in the gaps.](images/gp-sample-posterior-functions.svg){width=100%}
 ::::
 ::::
 
 ::: {.notes}
+- The figure is the direct sequel to the previous slide — same kind of sample curves, but now every one of them passes (near) the observations. Conditioning didn't replace the prior; it *filtered* it. Say it that way: "these are the survivors of the prior."
 - The structurally beautiful fact to emphasize: conditioning a GP on data gives *another GP*. The family is closed under observation — that is exactly why everything stays in closed form and why GPs are the "exact Bayesian" row of the taxonomy. No approximation enters here.
 - "Passes through (or near)": the *near* is doing real work — it is the $\sigma_n^2$ noise term. With noisy observations the posterior mean should *not* interpolate every point exactly; forcing it through noisy data is overfitting. Tie $\sigma_n^2$ to the aleatory floor from the variance decomposition — same quantity, reappearing.
 - "Reverts to the prior away from data" is the one-sentence summary of honest uncertainty and a verbatim callback to the recall figure. Pause on it, then transition: "Now the formulas that produce exactly this picture — and you will be asked to write them."
@@ -535,14 +607,14 @@ $$
 ::::
 
 :::: {.column width="45%"}
-![GP posterior with $\pm 2\sigma$ band (shaded). The band collapses at observed points and expands in unsampled regions.](images/gp_plot.png){width=100%}
+![Posterior mean with 95% credible band — the sample-function bundle from the previous slide summarized as mean ± 2σ. The band collapses at observed points and expands in unsampled regions.](images/gp-posterior-samples-95.svg){width=100%}
 ::::
 ::::
 
 ::: {.notes}
 - This is the emotional payoff of the entire GP block — let it land. Point at the figure: "*This* is the picture I promised you at the recall slide." The band you drew by hand as 'what good UQ should look like' is now produced automatically by the posterior-variance formula, with no tuning of the shape. Make the closing of that loop explicit.
 - The word "honest" is the one to dwell on and contrast: a plug-in neural net draws a confident line straight through the data gap; the GP fans out and says "I don't know here." For a materials engineer deciding whether to trust an extrapolated composition, that fan-out is the most valuable output the model produces — more than the mean.
-- Numeric caveat worth one sentence: ±2σ ≈ 95% holds *because* the posterior is Gaussian. When we leave GPs for NNs (next block) that clean mapping breaks — which is precisely why we will need calibration and conformal. Plant the motivation here.
+- Numeric caveat worth one sentence: ±2σ ≈ 95% holds *because* the posterior is Gaussian. When we leave GPs for NNs (next block) that clean mapping breaks — which is precisely why we will need calibration. Plant the motivation here.
 :::
 
 ## GP hyperparameter learning
@@ -592,6 +664,59 @@ $$
 - This is the bias–variance trade-off from Unit 8 wearing a GP costume — say that out loud. Short $\ell$ = high variance (chases noise, uncertainty re-inflates between *every* point); long $\ell$ = high bias (smooths real structure away). Students who see it as the *same* trade-off, not a new one, retain it; make the cross-reference explicit.
 - Drive the figure as the warning it is: identical data, three radically different stories. The implication for their exercise and thesis work: a GP's bands are only trustworthy *after* the length scale is fit by the marginal likelihood — a hand-set or badly-initialized $\ell$ produces confidently wrong uncertainty. This is the most common way people misuse GPs in practice.
 - Subtle but examinable observation from panel (b): short $\ell$ doesn't just wiggle — its uncertainty shoots up *between* points because correlation dies off within the gap. The length scale controls the *bands*, not only the mean.
+:::
+
+## Length scale effect: prior and posterior samples
+
+:::: {.columns}
+:::: {.column width="25%"}
+**Short $\ell = 0.1$**  
+Prior
+
+![](images/gp-priorpoint1.svg){width=90%}
+::::
+
+:::: {.column width="25%"}
+**Short $\ell = 0.1$**  
+Posterior
+
+![](images/gp-postpoint1.svg){width=90%}
+::::
+
+:::: {.column width="25%"}
+**Long $\ell = 5$**  
+Prior
+
+![](images/gp-prior5.svg){width=90%}
+::::
+
+:::: {.column width="25%"}
+**Long $\ell = 5$**  
+Posterior
+
+![](images/gp-post5.svg){width=90%}
+::::
+::::
+
+- Top: prior samples. Bottom: posterior samples on the same data.
+- Short $\ell$: function values decorrelate within tiny gaps → wiggly draws, bands re-inflate **between** every pair of points.
+- Long $\ell$: strong long-range correlation → smooth draws, narrow bands — confident even far from data (possibly overconfident).
+
+::: {.notes}
+- This is the previous slide's message shown in the raw material — *sample functions*, not just summary bands. Left column: at $\ell = 0.1$ the prior draws are noise-like, and the posterior draws only agree in a hair-thin neighborhood of each observation; one step away, the data has no opinion. Right column: at $\ell = 5$ every draw is a lazy arc, and a handful of points pins the function down over the entire domain.
+- The dangerous panel is the bottom-right and worth dwelling on: long-$\ell$ confidence far from data is a *prior assumption*, not evidence. The narrow band says "I assumed long-range smoothness," not "I measured this region." If the true signal has short-range structure, this model is confidently wrong — the exact failure mode the calibration section audits later.
+- Practical takeaway to dictate: when a GP's bands look suspiciously tight, check the fitted length scale against domain knowledge *first* — it is the single most common cause of overconfident GPs in practice.
+:::
+
+## Interactive: explore GP kernels and hyperparameters
+
+<iframe src="https://www.infinitecuriosity.org/vizgp/" style="width:100%; height:950px;" frameborder="0" scrolling="yes">
+</iframe>
+
+::: {.notes}
+- Live demo, 3–4 minutes maximum, with one scripted goal: click data points into the canvas, then drag the length scale through its range and watch the posterior band re-inflate between points (short $\ell$) and iron flat (long $\ell$) — the previous two slides, now under the students' control.
+- If time allows, switch the kernel (Matérn vs RBF) on the same data to show the smoothness assumption changing the draws — a 30-second payoff of the "Other kernels" slide.
+- Have the two static sweep slides ready as fallback if the network or the site is down; this slide is enrichment, not load-bearing, and is a safe cut when running behind.
 :::
 
 ## GP: computational cost
@@ -703,7 +828,7 @@ $$
 ::: {.notes}
 - The hook that always lands: dropout was invented as *regularization* — Gal's insight is that *not turning it off at test time* turns it into an (approximate) Bayesian posterior sampler. Same code, one line changed (`model.train()` at inference), uncertainty for free. Students remember the "one-line change" framing.
 - Connect the figure to the Mauna Loa kernel callback from the "Other kernels" slide — same trend+seasonal signal — and to the variance decomposition: the spread across the $T$ passes *is* an estimate of the epistemic term. Make panel (c) the focus: outside the training range the band grows, the honest behavior we demanded of every method.
-- The honest caveat, stated before the next slide makes it precise: MC Dropout's bands are *approximate* and notoriously sensitive to the dropout rate — too low and it is overconfident (panel a). It is the cheap imitation of the GP, not an equal. This is exactly the kind of bar conformal will later be needed to certify.
+- The honest caveat, stated before the next slide makes it precise: MC Dropout's bands are *approximate* and notoriously sensitive to the dropout rate — too low and it is overconfident (panel a). It is the cheap imitation of the GP, not an equal. This is exactly the kind of bar the calibration section will teach them to audit before trusting.
 :::
 
 
@@ -752,43 +877,6 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 
 
 
-<!-- ===== §10b. Conformal prediction (already covered in Unit 7) ===== -->
-
-## Conformal prediction --- already in your toolbox
-
-:::: {.columns}
-:::: {.column width="55%"}
-**Recall from Unit 7.** Split conformal and CQR were introduced as the distribution-free coverage layer of the probabilistic toolbox.
-
-:::: {.incremental}
-- Pick miscoverage $\alpha$. For any exchangeable new $(X, Y)$, the conformal interval $C(X)$ satisfies $\Pr(Y \in C(X)) \geq 1 - \alpha$ — finite-sample, model-agnostic [@angelopoulos_2023_conformal].
-- **Split conformal** (constant-width) is one calibration-set quantile away from any trained predictor.
-- **Conformalized Quantile Regression** (adaptive width) wraps a pinball-loss quantile head with the same finite-sample guarantee [@romano_2019_cqr].
-::::
-::::
-
-:::: {.column width="45%"}
-**Why it shows up here.**
-
-:::: {.incremental}
-- This unit's UQ methods — GPs, MC Dropout, deep ensembles, MDN — all give intervals **conditional on a model being correct**.
-- Conformal **wraps** any of those to inherit a frequentist marginal-coverage stamp, independent of model correctness.
-- See **Unit 7** for the derivation, the 5-line Python recipe, and the exchangeability failure modes.
-::::
-::::
-::::
-
-::: {.fragment}
-> In 2026 practice the default UQ stack for a regression NN is **quantile heads + CQR** on top of whatever this unit's method produced as a point estimate.
-:::
-
-::: {.notes}
-- This block deliberately does not re-derive conformal: Unit 7 already owns it (so that ML-PC u07 / u08 / u11 can assume the audience knows split CP and CQR).
-- The role of this slide in Unit 12 is purely the **composition** message: "any UQ method above + conformal wrapper = coverage guarantee on top of model-conditional uncertainty."
-- Jackknife+ [@barber2021jackknife] is the leave-one-out version — uses all data for both fitting and calibration, slightly more efficient with similar guarantees. Mention by name only.
-- Forward link: §13 PINNs can supply a physics-informed mean prediction; CQR wraps it with coverage. The two compose.
-:::
-
 ## Stochastic enrichment
 
 :::: {.columns}
@@ -810,7 +898,7 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 - Read the figure as sensitivity analysis: uncertainty balloons in the high-$x$ region because the *learned function is steep there*, so the same input jitter produces a bigger output swing. It surfaces where the model is fragile to measurement noise — complementary to, not a substitute for, epistemic methods.
 :::
 
-## Calibration: are uncertainties trustworthy?
+## Calibration: are uncertainties trustworthy? (recall Unit 7)
 
 :::: {.columns}
 :::: {.column width="55%"}
@@ -831,7 +919,7 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 ::: {.notes}
 - This slide is the auditor of the entire lecture — make that its job explicit. Every method so far *produces* an uncertainty number; this is the only tool that asks "is that number *true*?" An uncalibrated ±10 is a lie with a decimal point. A model can have great accuracy and worthless uncertainty.
 - The Guo et al. result is the one to state forcefully because it overturns a default assumption: modern deep nets are *systematically overconfident*, and it got *worse* as networks got more accurate (LeNet → ResNet). Higher accuracy did not buy honesty — it bought louder wrongness. Connect straight to the "overconfident is the dangerous failure mode" moral from slide 3.
-- Operational definition for the exam, dictate it: "well-calibrated ⇔ the 90% interval contains the truth 90% of the time, empirically, on held-out data." The reliability diagram is just that statement plotted; the pink gap is the overconfidence. This is also the empirical reason conformal exists — it *constructs* calibration by design rather than hoping for it.
+- Operational definition for the exam, dictate it: "well-calibrated ⇔ the 90% interval contains the truth 90% of the time, empirically, on held-out data." The reliability diagram is just that statement plotted; the pink gap is the overconfidence.
 :::
 
 ## Recalibration methods
@@ -843,7 +931,7 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 
 ::: {.notes}
 - The reassuring engineering message: you do not retrain to fix calibration. These are cheap *post-hoc* patches fit on a small held-out set, and temperature scaling — a *single scalar* $T$ — fixes most of the overconfidence in the previous slide's figure. One number, one validation pass. Lead with that; it is the practical takeaway.
-- Sharpen the contrast with conformal so the toolbox is coherent: recalibration *adjusts* the model's stated probabilities and works *on average* but carries no guarantee; conformal *constructs* an interval with a finite-sample coverage proof. Recalibration is "make the existing number more honest"; conformal is "wrap it in a number you can prove." Say which you'd reach for in a regulated setting (conformal).
+- State the honest limitation plainly: recalibration *adjusts* the model's stated probabilities and works *on average* on the calibration distribution — it carries no formal per-prediction guarantee and degrades under distribution shift. "Calibrated" must not be heard as "certified"; for a regulated setting, the calibration audit is evidence, not a proof.
 - "Does not change the model" is the deployment selling point: certified weights stay frozen, calibration is a thin wrapper — exactly what a safety/QA process wants. One sentence, then move to the synthesis table.
 :::
 
@@ -858,14 +946,10 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 | MC Dropout | Approx. Bayesian | $T \times$ inference | Good | Any |
 | Deep ensemble | Frequentist | $M \times$ training | Very good | Any |
 | MDN | Direct | 1× training | Requires tuning | Any |
-| Conformal / CQR | Distribution-free wrapper | 1 calibration pass ($\sim 10^3$ pts) | **Guaranteed** (finite-sample, marginal) | Any (model-agnostic) |
-
-- Only Conformal / CQR is **distribution-free** *and* **model-agnostic** — it wraps any row above to inherit a coverage guarantee [@angelopoulos_2023_conformal].
 
 ::: {.notes}
 - This is the synthesis slide — the one to photograph and the one the exam tests. Don't read it; *use* it to rehearse the decision logic. Walk one column at a time and tie each cell back to the slide that earned it (GP's $O(N^3)$ to the cost slide, ensemble's $M\times$ to the ensemble slide, "good but rate-sensitive" to MC Dropout).
-- The structural punchline, said explicitly: the first four rows are *alternatives* — pick one. The last row is *orthogonal* — it composes with any of them. "GP for the mean + conformal for the certified bar" is a valid, recommended stack; the rows are not all mutually exclusive. Make sure that distinction is unambiguous before the exam.
-- The single most important word in the table is "Guaranteed," and it carries an asterisk you must voice: marginal coverage under exchangeability, *not* conditional, and it fails under distribution shift (callback to Unit 7's failure modes). A guarantee whose assumptions you can't state is not a guarantee — hold them to that.
+- The caveat to voice on the whole Calibration column: every one of these bars is only as honest as the model behind it — none carries a formal guarantee. That is exactly why the calibration audit (previous slides) is not optional: it is the only check that the numbers in this column mean what they claim on *your* data.
 :::
 
 ## Checkpoint: choosing a UQ method
@@ -874,12 +958,12 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 - **Large dataset, budget for training**: deep ensemble.
 - **Large dataset, need cheap inference**: MC Dropout.
 - **Multi-modal outputs**: Mixture-Density Network.
-- **Need a coverage guarantee (regulated / safety-critical)**: wrap your favourite predictor with Conformal Prediction (CQR for adaptive widths).
+- **Safety-critical decision**: whichever method you choose, *audit its calibration* on held-out data before trusting the bars.
 
 ::: {.notes}
 - Run this as rapid-fire scenarios, not a slide to read: pose each situation as a one-liner ("50 tensile tests, need honest bars for a design review — go"), let the room answer, then reveal. This is the format their exam question will take, so rehearse the *reasoning*, not the memorized pairs.
 - Push past the lookup answer to the *why*: "small data → GP" is right *because* GPs are data-efficient and exact and $N$ is small enough that $O(N^3)$ doesn't bite — all three conditions, recited. A student who says "GP" without the reason hasn't learned the unit.
-- The decisive professional habit to leave them with: the last bullet is not mutually exclusive with the others. The mature answer to almost any safety-critical question is "*method X for the estimate, conformal on top for the certified guarantee.*" Composition, not selection. That sentence is the thesis of the whole second half of the unit.
+- The decisive professional habit to leave them with: the last bullet applies *on top of* whichever method the scenario picked — choosing a method and verifying its calibration are two separate steps, and skipping the second is how overconfident models reach production. That habit is the thesis of the whole second half of the unit.
 :::
 
 ## Materials example: GP for composition-property mapping
@@ -893,7 +977,7 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 ::::
 
 :::: {.column width="50%"}
-![GP regression: blue curve = posterior mean, shaded 95% CI narrows at training points and widens in unexplored regions — guiding next experiments.](images/gp_plot.png){width=100%}
+![GP point predictions with 95% credible set: the band narrows at training points and widens in unexplored regions — exactly the signal that guides the next experiment.](images/gp-point-predictions.svg){width=100%}
 ::::
 ::::
 
@@ -908,61 +992,59 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 :::: {.columns}
 :::: {.column width="50%"}
 - **Goal**: map the composition-property landscape with minimum experiments.
-- **Strategy**: train GP, identify input with highest uncertainty, synthesize and test it.
+- **Strategy**: train GP, identify input with highest posterior variance, synthesize and test it.
 - **Iterate**: retrain GP, select next experiment, repeat.
-- This is **Bayesian optimization** applied to materials discovery.
+- This uncertainty-driven loop is **active learning** — the goal is an accurate map of the *whole* function.
 ::::
 
 :::: {.column width="50%"}
-::: {.card}
-**[PLACEHOLDER: Active Learning animation/sequence]**
-- Panel 1: Initial GP with high uncertainty
-- Panel 2: Selection of point with max variance
-- Panel 3: Updated GP with reduced uncertainty after adding point
-:::
+![Active learning with a GP surrogate: iterations 0 → 4 → 8. Each round queries the point of maximum posterior variance; the band collapses where data is added and the loop attacks the widest remaining gap.](images/active_learning_iter0.png){width=40%}
+
+![](images/active_learning_iter4.png){width=40%}
+
+![](images/active_learning_iter8.png){width=40%}
 ::::
 ::::
 
 ::: {.notes}
 - This is the intellectual peak of the unit — the moment the variance formula becomes an *action*. Recall the boxed result from the GP-posterior slide: the predictive variance depends only on *where* you sample, not on $\mathbf{y}$. So you can compute the variance at an unseen composition *before synthesizing it* — and deliberately go make the most informative experiment. Say this slowly; it is the deepest idea in the lecture.
-- Name the closed loop and its name: train GP → pick argmax-variance point → run the experiment → retrain → repeat. That is Bayesian optimization / active learning, and it is *the* modern paradigm for autonomous materials discovery and self-driving labs. Give them the term so they recognize it in the literature and the ML-PC course.
-- Be honest about the slide state: this is a placeholder, so *narrate the animation by hand* — "watch the band collapse where we add a point and stay wide elsewhere; the algorithm always attacks the widest gap." (Self-note: build this 3-panel sequence — it is the unit's signature figure and currently missing. Logged for the assets backlog.)
+- Walk the three panels top to bottom as the animation: initial GP with huge bands → the loop queries the widest gap → by iteration 8 the band has collapsed nearly everywhere. "Watch the band collapse where we add a point and stay wide elsewhere; the algorithm always attacks the widest gap."
+- Name the loop precisely and *don't* call it Bayesian optimization yet: max-variance selection is **active learning** (uncertainty sampling) — pure exploration, aimed at learning the whole function. When the goal is instead *finding the best composition*, exploration must be traded against exploitation — that is Bayesian optimization, next slide. Students (and papers) conflate the two constantly; this unit doesn't.
 :::
 
-
-<!-- ===== §12. Materials example: MDN for multi-phase prediction ===== -->
-
-## Materials example: MDN for multi-phase prediction
+## From active learning to Bayesian optimization
 
 :::: {.columns}
-:::: {.column width="50%"}
-- Some alloy compositions can yield different crystallographic phases depending on processing.
-- A standard NN predicts the average — meaningless for bimodal distributions.
-- An MDN with 2 Gaussian components correctly captures both possible phases and their probabilities.
+:::: {.column width="55%"}
+:::: {.incremental}
+- **Active learning**: map the function accurately → acquire at max **variance** (pure exploration).
+- **Bayesian optimization**: find the *maximum* with fewest experiments → acquisition must balance **exploitation** (high mean) against **exploration** (high variance).
+- **Expected Improvement** over the best value $f^+$ observed so far:
+
+$$
+\mathrm{EI}(\mathbf{x}) = \left(\mu(\mathbf{x}) - f^+ - \epsilon\right)\Phi(Z) + \sigma(\mathbf{x})\,\phi(Z), \quad Z = \frac{\mu(\mathbf{x}) - f^+ - \epsilon}{\sigma(\mathbf{x})}
+$$
+
+- $\epsilon$ dials exploration ↔ exploitation. Alternatives: probability of improvement, UCB $\mu + \beta\sigma$, Thompson sampling.
+::::
 ::::
 
-:::: {.column width="50%"}
-![Process corridor: probability matrix $\mathbf{P}$ over time captures the full conditional distribution $P(x|t_j)$ — a structured uncertainty band around a time-evolving signal. [@neuer2024machine, Fig. 6.12]](images/process_corridor.png){width=100%}
+:::: {.column width="45%" .fragment}
+- Both loops are the engine of **self-driving labs** and autonomous microscopy.
+- Same GP machinery, different acquisition function — the acquisition *is* the experimental strategy.
+- Deep dive with iteration-by-iteration visualizations: Data Science for EM, Units 6–7.
 ::::
 ::::
 
 ::: {.notes}
-- This is the payoff of the MDN slides in their language — keep hammering the "average is a lie" point because it is counterintuitive and important: the mean of {phase A = 300 MPa, phase B = 600 MPa} is 450 MPa, a value that *describes no real specimen you could ever make*. A confident single-number model here is not slightly wrong, it is categorically wrong.
-- Read the process-corridor figure as the time-series cousin of the idea: instead of one curve through a manufacturing process, the model outputs a *probability band* $P(x\mid t_j)$ at every timestep — the full conditional distribution as the process evolves. Tie it to QA: a part is acceptable if it stays inside the corridor, not if it matches a single nominal trajectory. This is structured UQ doing real factory work.
-- Forward/backward stitch: this is the same one-to-many physics as the earlier MDN slide, now with a real Neuer Ch. 6.4 example — and it is the bridge to Unit 13's claim that *physics constraints can collapse spurious modes*.
+- The one distinction to leave the room with: active learning asks "where do I know *least*?", Bayesian optimization asks "where is the *best* candidate likely hiding?" — and the entire difference is the acquisition function. The GP underneath is identical; you swap one formula and get a different scientific instrument.
+- Read EI's two terms as the trade-off made explicit: the first term is large where the *mean* already beats the incumbent $f^+$ (exploitation); the second is large where $\sigma$ is big (exploration). $\Phi$ and $\phi$ are just the Gaussian CDF/PDF of the standardized improvement — no new machinery, everything comes from the GP posterior of this lecture.
+- Don't derive EI — state it and interpret it. If a student wants the derivation and the ε-sweep animations (what happens with too much exploration), point them at the DSEM course units 6–7, which walk PI/EI/Thompson iteration by iteration on the same kind of 1-D toy problem.
+- Close the loop to the unit thesis: the acquisition function is uncertainty *acted upon*. A model that cannot say "I don't know here" cannot run this loop at all — honest UQ is not a reporting nicety, it is the prerequisite for autonomous experimentation.
 :::
 
-## Physics-informed uncertainty reduction (preview of Unit 13)
 
-- Embedding physical constraints (conservation laws, symmetries) reduces epistemic uncertainty.
-- The model is forced to respect known physics → fewer plausible functions → tighter uncertainty.
-- This is equivalent to a more informative prior in the Bayesian framework.
-
-::: {.notes}
-- The unifying sentence that should make the whole unit click shut: the third bullet. "Add physics" and "use a more informative prior" are *the same operation* viewed from two cultures — constraint-engineering vs Bayesian modeling. Both shrink the space of plausible functions, and from the variance decomposition, a smaller function space ⇒ smaller epistemic term. Everything connects: priors, kernels, constraints, the variance split. Say it as the closing synthesis.
-- Make it concrete: a GP whose kernel or mean enforces a known monotonic or conservation relation simply *cannot* draw functions that violate it — so the posterior bands are tighter *without a single extra experiment*. Information from theory substitutes for information from data. For an expensive-experiment field, that is the highest-leverage idea in the course.
-- Keep it a teaser, not a lecture — one sentence of forward promise: "Unit 13 is entirely about how to *build* these constraints into the model. Today's takeaway is just *why* it tightens uncertainty: it is an informative prior by another name."
-:::
+ 
 
 ## Lecture-essential vs exercise content split
 
@@ -1006,7 +1088,7 @@ effect of using an ensemble of 5 networks respectively. [@lakshminarayanan2017si
 ::: {.notes}
 - This is the contract from the learning-outcomes slide, closed. Read each statement and, in one breath, name the slide it came from — students should *see* the lecture replay as a 10-beat spine. If a statement doesn't trigger recognition, that is their personalized revision list; tell them to self-audit live.
 - Flag the three that are *derivation* questions, not recall: #2 (write the law-of-total-variance split and name each term), #3 (the evidence integral + the Occam argument), #5 (reproduce both boxed GP posterior formulas). The other seven are explain-in-two-sentences. Make the format expectation explicit so revision is targeted.
-- The one-sentence thesis to end on, said slowly: "A prediction without a defensible uncertainty is not an engineering result. This unit gave you the principled version (GP), the scalable versions (dropout, ensembles, MDN), the auditor (calibration), and the certifier (conformal). Knowing *which* to deploy for a given decision is the actual skill." Then hand to the exercise.
+- The one-sentence thesis to end on, said slowly: "A prediction without a defensible uncertainty is not an engineering result. This unit gave you the principled version (GP), the scalable versions (dropout, ensembles, MDN), and the auditor (calibration). Knowing *which* to deploy for a given decision is the actual skill." Then hand to the exercise.
 :::
 
 <!-- BEGIN prev-next -->

@@ -74,8 +74,8 @@ units 7–13, `unitNN` is delivered in week `NN+1`.
 - unit08_inverse_problems -> Week 9: Inverse problems and process maps
 - unit09_characterization_signals -> Week 10: ML for characterization signals
 - unit10_transformers_for_materials -> Week 11: Transformers for materials characterization (ViT, Flash Attention, Mamba) — promoted from the former Week 9 companion deck unit09b
-- unit11_uncertainty_gp -> Week 12: Uncertainty-aware regression & Gaussian Processes
-- unit12_pinns -> Week 13: Physics-informed and constrained ML
+- unit11_pinns -> Week 12: Physics-informed and constrained ML
+- unit12_uncertainty_gp -> Week 13: Uncertainty-aware regression & Gaussian Processes
 - unit13_reflection -> Week 14: Integration, limits, and reflection
 - Deleted 2026-05-19: unit07_generalization_robustness (backup: /tmp/unit07_generalization_robustness_backup_2026-05-19.tar.gz). See REALIGNMENT_2026-05-19.md.
 - Archived 2026-05-19: unit10_automation (RL/automation lecture, skipped this course) moved to `_archive/unit10_automation/` — Quarto-excluded, kept in git history. See REALIGNMENT_2026-05-19_b.md.

@@ -43,7 +43,7 @@
 
 9. **Slide 9: Physics as a Regularizer**
    - We don't just want ANY cause; we want one that obeys the laws of physics.
-   - Integration with Unit 13 (PINNs).
+   - Integration with Unit 11 (PINNs).
 
 10. **Slide 10: Tikhonov Regularization**
     - $\min_{\mathbf{w}} \| \mathbf{y} - f(\mathbf{x}) \|^2 + \lambda \| \Gamma \mathbf{x} \|^2$.
@@ -187,7 +187,7 @@
     - Data quality is paramount.
 
 48. **Slide 48: Integration: Unit 9-13 Feedback Loop**
-    - Inversion (Unit 9) $\to$ Physics (Unit 13) $\to$ Uncertainty (Unit 12).
+    - Inversion (Unit 9) $\to$ Physics (Unit 11) $\to$ Uncertainty (Unit 12).
 
 49. **Slide 49: Take-Home Messages**
     - Inverse problems are the key to process design.

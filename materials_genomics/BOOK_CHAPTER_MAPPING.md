@@ -16,18 +16,7 @@ see `REALIGNMENT_2026-05-09.md`.
 - Strang, *Computational Science and Engineering*, Ch. 6 (FDM/FEM
   intuition)
 
-## Unit 6 — Graph-based crystal representations (Week 6)
-- Neuer 4.5.1 / 4.5.3 / 4.5.4 (neuron / activations / training)
-- McClarren Ch. 8 (neural surrogates for physical systems)
-- Sandfeld 2.2 (materials data structures, domain constraints)
-- Xie & Grossman 2018 — CGCNN
-- Chen *et al.* 2019 — MEGNet
-- Choudhary *et al.* 2021 — ALIGNN
-- Batatia *et al.* 2022 — MACE
-- Brief recap of classical descriptors: Ward *et al.* 2016 (Magpie),
-  Ong *et al.* 2013 (matminer)
-
-## Unit 7 — Local atomic environments & universal MLIPs (Week 8)
+## Unit 6 — Local atomic environments & universal MLIPs (Week 6)
 - Sandfeld 2.2 (materials feature context)
 - Neuer 6.2, 6.3 (domain knowledge in preprocessing / embedded
   expressions)
@@ -39,6 +28,17 @@ see `REALIGNMENT_2026-05-09.md`.
 - Deng *et al.* 2023 — CHGNet
 - Yang *et al.* 2024 — MatterSim (universal MLIP)
 - Neumann *et al.* 2024 — ORB
+
+## Unit 7 — Graph-based crystal representations (Week 8)
+- Neuer 4.5.1 / 4.5.3 / 4.5.4 (neuron / activations / training)
+- McClarren Ch. 8 (neural surrogates for physical systems)
+- Sandfeld 2.2 (materials data structures, domain constraints)
+- Xie & Grossman 2018 — CGCNN
+- Chen *et al.* 2019 — MEGNet
+- Choudhary *et al.* 2021 — ALIGNN
+- Batatia *et al.* 2022 — MACE
+- Brief recap of classical descriptors: Ward *et al.* 2016 (Magpie),
+  Ong *et al.* 2013 (matminer)
 
 ## Unit 8 — Regression & generalization in materials data (Week 9)
 - Neuer 4.2.2 (regression), 4.5.9 (overfitting / CV)
@@ -79,7 +79,7 @@ see `REALIGNMENT_2026-05-09.md`.
 - Merchant *et al.* 2023 — GNoME (Nature, DeepMind)
 - Materials Project / Alexandria / ICSD / OQMD release notes
 
-## Unit 13 — Uncertainty-aware discovery & GPs (Week 13)
+## Unit 13 — Uncertainty-aware discovery & GPs (Week 13 — lecture cancelled 07.07.2026; core folded into Week 14, deck kept as optional reference)
 - Neuer 2.2, 6.4 (uncertainty classes + stochastic methods)
 - McClarren Ch. 3 (error and uncertainty)
 - Murphy Ch. 15 (Gaussian process perspective)

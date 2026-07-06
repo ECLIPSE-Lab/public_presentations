@@ -49,7 +49,7 @@ Central link index for lecture decks and units.
 - **Unit 09: Neural Networks for Materials Properties** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/09_neural_networks_for_materials_properties/01_intro.html) · [Source](./materials_genomics/09_neural_networks_for_materials_properties/01_intro.qmd)
 - **Unit 10: Representation Learning and Feature Discovery** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/10_representation_learning_and_feature_discovery/01_intro.html) · [Source](./materials_genomics/10_representation_learning_and_feature_discovery/01_intro.qmd)
 - **Unit 12: Generative Models & Inverse Design** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/12_generative_models_and_inverse_design/01_intro.html) · [Source](./materials_genomics/12_generative_models_and_inverse_design/01_intro.qmd)
-- **Unit 13: Uncertainty-Aware Discovery & Gaussian Processes** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/13_uncertainty_aware_discovery_and_gaussian_processes/01_intro.html) · [Source](./materials_genomics/13_uncertainty_aware_discovery_and_gaussian_processes/01_intro.qmd)
+- **Unit 13: Uncertainty-Aware Discovery & Gaussian Processes (optional reference — lecture cancelled, core folded into Unit 14)** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/13_uncertainty_aware_discovery_and_gaussian_processes/01_intro.html) · [Source](./materials_genomics/13_uncertainty_aware_discovery_and_gaussian_processes/01_intro.qmd)
 - **Unit 14: Physical Constraints, Trust, and Integration Outlook** — [Slides](https://pelzlab.science/public_presentations/materials_genomics/14_constraints_trust_and_integration_outlook/01_intro.html) · [Source](./materials_genomics/14_constraints_trust_and_integration_outlook/01_intro.qmd)
 <!-- END units:materials_genomics -->
 
@@ -66,8 +66,8 @@ Central link index for lecture decks and units.
 - **Unit 08: Inverse problems and process maps** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit08_inverse_problems/09_inverse_problems.html) · [Source](./ml_for_characterization_and_processing/unit08_inverse_problems/09_inverse_problems.qmd)
 - **Unit 09: ML for characterization signals** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit09_characterization_signals/10_characterization_signals.html) · [Source](./ml_for_characterization_and_processing/unit09_characterization_signals/10_characterization_signals.qmd)
 - **Unit 10: Transformers for materials characterization (ViT, Flash Attention, Mamba)** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit10_transformers_for_materials/transformers_for_materials.html) · [Source](./ml_for_characterization_and_processing/unit10_transformers_for_materials/transformers_for_materials.qmd)
-- **Unit 11: Uncertainty-aware regression & Gaussian Processes** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit11_uncertainty_gp/12_uncertainty_gp.html) · [Source](./ml_for_characterization_and_processing/unit11_uncertainty_gp/12_uncertainty_gp.qmd)
-- **Unit 12: Physics-informed and constrained ML** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit12_pinns/13_pinns.html) · [Source](./ml_for_characterization_and_processing/unit12_pinns/13_pinns.qmd)
+- **Unit 11: Physics-informed and constrained ML** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit11_pinns/12_pinns.html) · [Source](./ml_for_characterization_and_processing/unit11_pinns/12_pinns.qmd)
+- **Unit 12: Uncertainty-aware regression & Gaussian Processes** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit12_uncertainty_gp/13_uncertainty_gp.html) · [Source](./ml_for_characterization_and_processing/unit12_uncertainty_gp/13_uncertainty_gp.qmd)
 - **Unit 13: Integration, limits, and reflection** — [Slides](https://pelzlab.science/public_presentations/ml_for_characterization_and_processing/unit13_reflection/14_reflection.html) · [Source](./ml_for_characterization_and_processing/unit13_reflection/14_reflection.qmd)
 <!-- END units:ml_for_characterization_and_processing -->
 
@@ -75,6 +75,7 @@ Central link index for lecture decks and units.
 
 - **2025 MC** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2025_MC/template.html) · [Source](./conference_talks/2025_MC/template.qmd)
 - **2025 M&M** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2025_MandM/template.html) · [Source](./conference_talks/2025_MandM/template.qmd)
+- **2026 WE-Heraeus Workshop (tutorial)** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2026_WEHeraeus/template.html) · [Source](./conference_talks/2026_WEHeraeus/template.qmd)
 
 ## Maintenance
 
