@@ -30,20 +30,19 @@ format:
 
 <!-- ===== §1. Framing ===== -->
 
-## Title + Unit 13 positioning
+## Unit 13 positioning: recap + the deferred math
 
 ::: {.incremental}
-- Unit 12 showed how to quantify uncertainty. Unit 13 shows how to **reduce** it using physics.
-- Physics-informed ML embeds domain knowledge into the learning process.
-- When data is scarce, physics provides the missing information.
+- You have already **used** PINNs: ML-PC Unit 8 (inverse problems) and Unit 11 (physics-constrained lab patterns) — and MG Unit 14 instantiates them for materials.
+- Today, first half: **consolidate** the PINN core you have seen — loss, collocation, $\lambda$, failure modes.
+- Today, second half: the **mathematics those units deferred here** — exact boundary-condition enforcement (Lagaris), why small data works (Occam/MDL), and physics in the *architecture*.
 :::
 
 ::: {.notes}
-- Open by naming the pivot of the whole second half: Units 9–12 asked *what* the model learns and *how confident* it is; Unit 13 asks how to **inject what we already know** so the model needs less data to learn it at all. Say that reframing before any equation — it is the thesis of the lecture.
-- One-sentence stakes for a materials cohort: every destructive test (a tensile bar, a fractured specimen) costs a sample you can never measure again, while the governing physics — conservation, constitutive laws, symmetry — is *free and exact*. The unit is about not throwing that free information away.
-- Plant the destination: by minute 85 they will be able to write the PINN loss from memory and enforce a boundary condition *exactly* with the Lagaris trick — and also know precisely when this all fails (incorrect physics, stiff/convective PDEs). Promise both the power and the failure modes now.
-- Timing contract: ~10 min framing, ~20 min data enrichment, ~15 min auto-diff + PINN loss, ~15 min Lagaris, ~15 min Occam/MDL + small-data, ~15 min limitations + neural operators. The checkpoint slides are your pace-recovery valves — compress them if behind.
-- Transition: "Why does data cost so much in our field, and why is physics the cheapest data we have? Next slide."
+- Say the structure out loud in the first minute: this is deliberately half recap. The triad has already put PINNs in their hands (ML-PC u8/u11, MG u14); this lecture's job is to consolidate and then deliver the theory those decks explicitly point at ("see MFML W13").
+- Timing contract: ~40 min recap (fast, checkpoint-driven — these slides compress 3–4 old slides each), ~40 min new material (Lagaris, Occam/MDL, architectural constraints), ~10 min exercise + exam summary. If a recap slide sparks no questions, move on — it is a memory refresh, not first contact.
+- For students taking MFML only: the recap half is self-contained — every formula they need is on the slides. They lose the lab anecdotes, not the math.
+- Transition: "Here is the contract for the 90 minutes."
 :::
 
 ## Learning outcomes for Unit 13
@@ -51,137 +50,62 @@ format:
 By the end of this lecture, students can:
 
 ::: {.incremental}
-- explain the PIML philosophy and why physics reduces data requirements,
-- design data enrichment pipelines using physical transformations,
-- formulate the PINN loss $(J = J_{\text{data}} + \lambda J_{\text{physics}})$, 
-- apply the Lagaris substitution to enforce boundary conditions exactly.
+- formulate the PINN loss $(J = J_{\text{data}} + \lambda J_{\text{physics}})$ and explain every term (recap),
+- diagnose the standard PINN failure modes: wrong physics, convection, gradient imbalance (recap),
+- apply the **Lagaris substitution** to enforce boundary conditions exactly (new),
+- explain via Occam/MDL **why** physics constraints reduce data requirements (new),
+- place equivariant NNs, Hamiltonian NNs, and neural operators on the PIML spectrum (new).
 :::
 
 ::: {.notes}
-- Don't read the list — use it as a contract. Tell students each bullet maps to one block of the lecture and to the "10 must-know statements" at the end; the exam surface is fixed and visible from minute one.
-- Flag the two outcomes students underestimate: (1) the PINN loss decomposition $J=J_{\text{data}}+\lambda J_{\text{physics}}$ — they will be asked to write and interpret it from memory; (2) the Lagaris substitution — the single most elegant idea in the unit and a guaranteed exam derivation.
-- Calibrate rigor: foundations-for-engineers. We derive to the point of insight (the residual, the Lagaris trial form), not PDE-theoretic completeness. The test is "can you formulate a physics-constrained training problem," not "can you prove existence-uniqueness."
-- Transition: "Everything here is motivated by one brutal fact about engineering data — let's make it concrete." 
+- Use as a contract, not a read-aloud: the first two bullets are recap — students should already half-own them; the last three are today's genuinely new deliverables and map onto the second half.
+- Flag the two exam anchors now: the PINN loss (write it blind, statement #3) and the Lagaris substitution (guaranteed derivation, statement #6).
+- Transition: "One map organizes everything — the PIML spectrum."
 :::
 
-## The data scarcity problem
-
-::: {.incremental}
-- In materials science, labeled data is expensive: each tensile test destroys a sample.
-- Simulations are slow: one FEM run can take hours.
-- But we know the governing physics: conservation laws, constitutive equations, symmetries.
-- **Key insight**: physics is free information — we should use it.
-:::
-
-::: {.notes}
-- Make the cost visceral with a number students feel: a single fatigue or tensile campaign can be weeks of lab time and a destroyed specimen *per data point*; one high-fidelity FEM/CFD run is hours of compute. Contrast with web ML where data is effectively free — our regime is the opposite, and that changes the right algorithm.
-- The load-bearing claim: physics is information we already paid for with centuries of science. Refusing to use it and instead "learning" conservation of mass from 10,000 noisy samples is the central waste this unit eliminates.
-- Misconception to preempt: "more model capacity fixes small data." No — capacity without constraint *worsens* small-data overfitting (callback to Unit 8 bias–variance). The fix is not a bigger network, it is a *constrained* one.
-- Transition: "So what does it actually mean to put physics *inside* a learning algorithm?" 
-:::
-
-## What is physics-informed machine learning?
+## The PIML spectrum and taxonomy
 
 :::: {.columns}
 :::: {.column width="55%"}
-
-::: {.incremental}
-- Incorporating known physical laws, symmetries, and constraints into the ML model or training process.
-- Not replacing physics with ML — **combining** them.
-- The model is trained on both data **and** physical principles.
-- Result: better predictions with less data, and physically consistent outputs.
-:::
-
+| Approach | Physics enters via | Example |
+|----------|:----------:|:-------:|
+| Data-only | — | Standard NN |
+| **(a)** Data enrichment | Inputs | FFT, derivatives |
+| **(b)** Loss constraint | Objective | PINN |
+| **(c)** Architecture | Function class | Equivariant NN, HNN |
+| **(d)** Hybrid simulation | Solver | Differentiable FEM |
 ::::
 
 :::: {.column width="45%"}
-![Physics-informed learning connects the preceding chapters. [@neuer2024machine]](images/neuer_ch6_fig1_piml_chapter_overview.png){width=100%}
-::::
-::::
-
-::: {.notes}
-- The one definition to land: PIML is **not** ML replacing physics, and **not** physics replacing ML — it is training a model on data *and* physical principles simultaneously. Say "combining, not choosing" and point at the figure: PIML sits between the pure-data and pure-simulation extremes, inheriting from both.
-- Core examinable consequence: the deliverable of PIML is a model that is *physically consistent by construction or by penalty* — its outputs don't violate conservation even on inputs it never saw. That out-of-distribution guarantee is what pure data-driven models cannot give.
-- Materials anchor: a surrogate for stress fields that can output a non-equilibrium state is worthless to a structural engineer no matter how low its test error — physical consistency is a hard requirement, not a nice-to-have.
-- Transition: "There isn't one way to do this — there's a spectrum, from a light touch to full physics. Let's lay it out." 
-:::
-
-
-<!-- ===== §2. The PIML spectrum ===== -->
-
-## The PIML spectrum
-
-:::: {.columns}
-:::: {.column width="60%"}
-| Approach | Physics role | Example |
-|----------|:----------:|:-------:|
-| Data-only | None | Standard NN |
-| Data-enriched | Feature engineering | FFT, derivatives |
-| Physics-constrained loss | Penalty term | PINN |
-| Physics-embedded arch | Structure | Equivariant NN |
-| Pure simulation | Full model | FEM, CFD |
-::::
-
-:::: {.column width="40%"}
 
 ::: {.incremental}
-- **Hybridization**: PIML is not one method but a spectrum.
-- **Trade-off**: More physics usually means harder implementation but less data needed.
-- **Materials Context**: From empirical fit to ab-initio simulations.
+- One axis: **more physics ⇒ less data needed**, but harder implementation.
+- (a)–(b) are recap territory; (c) is today's second half.
+- Physics in the loss is *requested*; physics in the architecture is *guaranteed*.
 :::
 
 ::::
 ::::
 
 ::: {.notes}
-- Walk the table left-to-right as a single axis: *how much physics, how little data*. Data-only → enriched features → loss penalty (PINN) → physics baked into architecture → pure simulation. Every method in the unit is a point on this line; tell them to keep the picture and slot new methods onto it as we go.
-- The examinable trade-off (right column): more physics ⇒ less data needed but harder to implement and less flexible. There is no free lunch — you trade engineering effort and modeling commitment for data efficiency.
-- Materials context to say aloud: empirical Hall–Petch fit (data-only) → Arrhenius-transformed features (enriched) → a PINN enforcing diffusion → an equivariant net respecting crystal symmetry → DFT (pure simulation). Same property, five points on the spectrum.
-- Transition: "Why does adding physics help *at all*, formally? It's the same idea as regularization — let's connect it." 
+- This merges the old spectrum + taxonomy slides — walk the table once, top to bottom: physics enters at the inputs (enrichment), the objective (PINN), the function class (equivariant/Hamiltonian), or the solver (hybrid). Increasing intrusiveness, increasing guarantee.
+- Materials anchor in one breath: empirical Hall–Petch fit → Arrhenius-transformed features → a PINN enforcing diffusion → an equivariant net respecting crystal symmetry → DFT. Same property, five points on the line.
+- The right-column punchline ("requested vs guaranteed") is the thesis of the second half — plant it now, harvest it at the HNN slide.
+- Transition: "Recap block starts here. First: *why* does physics help at all?"
 :::
 
-## Why physics helps: inductive bias
 
-::: {.incremental}
-- Without constraints, a neural network considers **all** possible functions.
-- Physical laws eliminate functions that violate known principles.
-- Fewer plausible models \\(\Rightarrow\\) less data needed to identify the correct one.
-- This is the same principle as regularization (Unit 8), but with **informed** constraints [@neuer2024machine].
-:::
+<!-- ===== §2. RECAP: the PINN core ===== -->
 
-::: {.notes}
-- The conceptual spine of the unit's "why": learning is search over a hypothesis space; an unconstrained network can fit *any* function, so it needs huge data to find the right one. Physics deletes the physically-impossible functions before training starts — a smaller space is identifiable from less data.
-- Put on the board the one-line chain: fewer admissible functions ⇒ lower effective capacity ⇒ less data to pin down ⇒ better generalization. This is literally the Unit 8 bias–variance argument with an *informed* constraint instead of a generic one.
-- Misconception to preempt: students think constraints only *hurt* (raise bias). True — but they slash variance far more in the small-data regime, and unlike L2 they remove only *wrong* functions, so the bias they add is near-zero. Net win exactly when data is scarce.
-- Transition: "Make that 'same as regularization' precise — side by side with the L2 penalty they already know." 
-:::
-
-## Connection to regularization (Unit 8)
-
-::: {.incremental}
-- **L2 regularization**: "prefer small weights" — generic, uninformed.
-- **Physics constraint**: "the output must satisfy \\(\nabla \cdot \mathbf{v} = 0\\)" — specific, informed.
-- Both restrict the hypothesis space, but physics constraints eliminate physically impossible solutions.
-- Physics-informed regularization provides stronger guarantees with less data.
-:::
-
-::: {.notes}
-- Anchor hard in prior knowledge: in Unit 8 (and the MAP slide of Unit 7) a regularizer was "prefer small weights" — a *generic, uninformed* prior. A physics constraint is the *same machinery* with an informed prior: "prefer functions that satisfy $\nabla\cdot\mathbf{v}=0$."
-- The examinable distinction: L2 shrinks parameters with no physical meaning; the physics term eliminates *physically impossible solutions*. Both shrink the hypothesis space; only one encodes truth. Stronger guarantee, less data, for the same optimization cost.
-- Tie to Unit 7 explicitly: recall "every regularizer is a prior" — physics-informed regularization is a prior whose support is the set of physically valid fields. This is the cleanest one-sentence justification of the whole unit; say it twice.
-- Transition: "If physics and data are both just information, there must be a budget that trades them off — here it is." 
-:::
-
-## The statistical balance argument
+## Recap: physics as informed regularization
 
 :::: {.columns}
 :::: {.column width="55%"}
 
 ::: {.incremental}
-- Learning requires information. Information comes from **data** and **prior knowledge**.
-- More physics knowledge \\(\Rightarrow\\) less data needed (and vice versa).
-- The total information budget is shared: \\(\text{data info} + \text{physics info} = \text{learning requirements}\\).
-- This is why PINNs can work with very small datasets [@neuer2024machine].
+- Without constraints, a NN considers **all** functions; physics deletes the impossible ones ⇒ less data to identify the right one.
+- **L2**: "prefer small weights" — generic. **Physics**: "satisfy $\nabla \cdot \mathbf{v} = 0$" — informed. Same machinery (Unit 8), better prior (Unit 7).
+- Information budget: $\text{data info} + \text{physics info} = \text{learning requirement}$ — more physics buys down data needs [@neuer2024machine].
 :::
 
 ::::
@@ -192,84 +116,23 @@ By the end of this lecture, students can:
 ::::
 
 ::: {.notes}
-- The mental model to install: a fixed *information budget* must be met to learn the task; it is paid in two currencies — data and prior knowledge. More physics knowledge directly buys down the data requirement, and vice versa. Point at the curve: it is a downward-sloping iso-information line.
-- Examinable takeaway: this is *why* PINNs work with tiny datasets — the physics residual contributes the bulk of the required information, so a handful of labels suffices. State it as the quantitative version of the previous two slides.
-- Misconception to preempt: the budget is not infinitely substitutable — wrong physics injects *negative* information (later failure-modes slide). The trade-off holds only when the physics is correct; flag that asterisk now so the limitations section lands as a callback, not a surprise.
-- Transition: "Concretely, how do we spend the physics budget? There are four mechanisms — the taxonomy." 
+- Three old slides in one — take it at recap speed (~3 min). The chain to re-say: fewer admissible functions ⇒ lower effective capacity ⇒ less data ⇒ better generalization. It is Unit 8's bias–variance argument with an *informed* constraint, and Unit 7's "every regularizer is a prior" with a physical prior.
+- Point at the figure once: a downward-sloping iso-information line — physics knowledge and data are two currencies paying one bill. This is *why* PINNs work with tiny datasets.
+- Asterisk to plant: the trade only holds when the physics is *correct* — wrong physics injects negative information (failure-mode slide later, exam statement #10).
+- Transition: "Cheapest way to spend the physics budget: transform the inputs."
 :::
 
-
-<!-- ===== §3. Taxonomy of PIML approaches ===== -->
-
-## Taxonomy of PIML approaches
-
-::: {.incremental}
-- **(a) Data enrichment**: add physics-derived features to inputs (preprocessing).
-- **(b) Loss-function constraints**: add PDE/ODE residuals to the training loss (PINNs).
-- **(c) Architectural constraints**: build symmetries into the network structure (equivariant NNs).
-- **(d) Hybrid simulation**: couple NN with physics solver (differentiable simulation).
-:::
-
-::: {.notes}
-- This is the map for the rest of the lecture — have students literally number their notes (a)–(d). (a) enrichment = change the *inputs*; (b) loss constraints = change the *objective* (PINNs); (c) architecture = change the *function class* (equivariant/Hamiltonian); (d) hybrid = change the *solver*. Increasing intrusiveness, increasing guarantee.
-- The examinable framing: these differ in *where* physics enters the pipeline (data → loss → architecture → solver). Ask the room to predict which gives the strongest guarantee (architecture: satisfied by construction) vs. which is easiest to add (enrichment: just preprocessing).
-- Tell them the lecture walks (a)→(b)→(c) in order; (d) is touched at the end via neural operators. Each method they meet should be filed under one of these four letters.
-- Transition: "Here is exactly how the next 90 minutes spend that map." 
-:::
-
-## Roadmap of today's 90 min
-
-::: {.incremental}
-- **10–25 min**: Data enrichment — FFT, wavelets, derivatives, expert knowledge.
-- **25–40 min**: Automatic differentiation for physics constraints.
-- **40–55 min**: PINN loss function — design, collocation, lambda balancing.
-- **55–70 min**: Lagaris substitution — hard boundary condition enforcement.
-- **70–80 min**: Occam's razor, information theory, and small-data advantage.
-- **80–85 min**: Limitations and open challenges.
-:::
-
-::: {.notes}
-- Use this as the pacing scaffold, not content — read it as your contract with the clock. Point out that data enrichment (the easy, immediately-usable win) comes first deliberately: students can apply it Monday without touching their architecture.
-- Flag the two anchors that carry exam weight: the PINN loss block (40–55) and Lagaris (55–70). If you are behind, compress the enrichment examples, never these two.
-- Transition: "We start at the cheap end of the spectrum — enrich the data with physics, no model changes at all." 
-:::
-
-## Data enrichment: the idea
-
-:::: {.columns}
-:::: {.column width="50%"}
-
-::: {.incremental}
-- Transform raw data using known physics to create **additional, more informative** input features.
-- The model receives both raw measurements and physics-derived quantities.
-- No change to the model architecture — just better inputs.
-- This is the simplest form of physics-informed ML [@neuer2024machine].
-:::
-
-::::
-
-:::: {.column width="50%"}
-![Classic network (left) vs FFT-enriched physics-informed network (right). The FT output is concatenated with raw data as additional input. [@neuer2024machine]](images/neuer_ch6_fig3_classic_vs_fft_enriched_network.png){width=100%}
-::::
-::::
-
-::: {.notes}
-- The reframe to deliver: this is the *cheapest* PIML — you never touch the architecture or loss, you only feed the network physics-derived features alongside raw measurements. Lowest effort, surprisingly high payoff; it is where every practitioner should start.
-- Examinable point: the network *could* in principle learn an FFT or a derivative internally, but only with enormous data; handing it the transform is spending physics budget to save data budget — the previous slide's trade-off, made concrete.
-- Materials anchor: raw vibration trace vs. the same trace plus its spectrum and RMS — the enriched input separates "good vs. failing bearing" with a fraction of the samples. Same network, better coordinates.
-- Transition: "The canonical example — Fourier enrichment." 
-:::
-
-## FFT-based enrichment
+## Recap: data enrichment
 
 :::: {.columns}
 :::: {.column width="55%"}
 
 ::: {.incremental}
-- Compute the Fourier spectrum of time-series data.
-- Frequency-domain features capture **periodicity**, **resonance frequencies**, and **harmonic content**.
-- Particularly useful for vibration data, acoustic signals, and cyclic processes.
-- Implementation: `np.fft.fft(signal)` → magnitude and phase spectra as additional features.
+- Add physics-derived features to the inputs; architecture and loss untouched — taxonomy **(a)**.
+- **FFT**: periodicity, resonances (vibration, cyclic processes).
+- **Wavelets**: time-localized frequency — transients, phase transitions.
+- **Derivatives**: $dT/dt$, strain rate — dynamics handed to the model (smooth first: noise amplifies!).
+- **Statistics & dimensionless groups**: moments, percentiles; Reynolds, Arrhenius $1/T$.
 :::
 
 ::::
@@ -280,218 +143,44 @@ By the end of this lecture, students can:
 ::::
 
 ::: {.notes}
-- The point to make physical, not procedural: a time-domain network must learn periodicity from scratch; the FFT *hands* it resonance frequencies and harmonic content, which is exactly the diagnostic physics of rotating/cyclic machinery. You are injecting the right basis (callback to the Fourier-basis slide in Unit 4).
-- Show the figure as the punchline: "good" vs "bad" motor current are nearly indistinguishable in time but trivially separated in frequency — the enrichment moves the data into coordinates where the decision boundary is simple.
-- Practical note to say aloud: feed magnitude (and phase if the task is phase-sensitive) as additional features; do not discard the raw signal — concatenate. `np.fft.fft` is one line; the cost is essentially zero.
-- Transition: "FFT loses *when* things happen — for transients we need time-frequency localization: wavelets." 
+- The whole enrichment block of the old lecture, at recap speed (~4 min). The one idea: the network *could* learn an FFT or a derivative internally, but only with enormous data — handing it the transform spends physics budget to save data budget.
+- Walk the figure: "good" vs "bad" motor current are indistinguishable in time, trivially separated in frequency. Enrichment moves data into coordinates where the decision boundary is simple.
+- Quick oral checkpoint instead of a slide: "cooling curve $T(t)$ — name three enriched features and the physics each injects." Expect $dT/dt$, FFT of fluctuations, peak/percentile statistics, Biot number. Justification is the skill, not the list.
+- Practical caveats in one breath: concatenate, don't replace raw inputs; smooth before differentiating; fit PCA on training data only.
+- Transition: "Now the derivative moves from the data to the model itself — auto-diff."
 :::
 
-
-<!-- ===== §4. Wavelet-based enrichment ===== -->
-
-## Wavelet-based enrichment
+## Recap: auto-diff gives derivatives w.r.t. inputs
 
 ::: {.incremental}
-- Wavelet transforms capture **time-frequency** information simultaneously.
-- Unlike FFT, wavelets localize both time and frequency — useful for **transient** phenomena.
-- Continuous wavelet transform (CWT) or discrete wavelet transform (DWT).
-- Application: detecting phase transitions in temperature-time curves.
-:::
-
-::: {.notes}
-- The one contrast that matters: FFT gives frequency but destroys time; wavelets keep *both* (a time–frequency tiling). So use wavelets exactly when *when* the event happens carries information — cracks, phase transitions, spalls — not steady-state periodicity.
-- Materials anchor: a transient exotherm in a temperature–time curve during a phase transformation is smeared by a global FFT but sharp in a CWT scalogram — the enriched feature localizes the event the metallurgist cares about.
-- Keep it tight (~60 s): CWT for analysis/visualization, DWT for compact features into the model. Don't derive the wavelet — state the trade-off and move; the examinable fact is *FFT vs wavelet = global vs localized frequency content*.
-- Transition: "Derivatives are the simplest physics transform of all — and the bridge to PINNs." 
-:::
-
-## Derivative-based enrichment
-
-::: {.incremental}
-- Compute numerical derivatives of input signals:
-  - First derivative: rates of change (cooling rate, strain rate).
-  - Second derivative: curvature, acceleration.
-- Derivatives encode **dynamics** that raw values do not capture.
-- Can also compute spatial gradients for field data.
-:::
-
-::: {.notes}
-- Frame this as the conceptual bridge to the PINN half of the lecture: derivatives *are* physics — cooling rate, strain rate, acceleration, flux. A model fed $dT/dt$ has the dynamics handed to it instead of inferring them from raw values.
-- Examinable link to plant now: computing $\partial f/\partial x$ of a *signal* by finite differences here is the cheap cousin of computing $\partial f_\theta/\partial x$ of the *network* by auto-diff later (PINN residuals). Say "remember this — in 30 minutes the derivative moves from the data to the model itself."
-- Practical caveat to say aloud: numerical differentiation amplifies noise; smooth or use Savitzky–Golay before differencing, or the "feature" is just amplified measurement noise. This is the classic student bug.
-- Transition: "Sometimes the useful physics is statistical, not differential — distributional enrichment." 
-:::
-
-## Histogram and statistical enrichment
-
-::: {.incremental}
-- Compute histograms, moments, or percentiles of input distributions.
-- Summarize **variability** within a measurement window.
-- Example: instead of raw vibration signal, provide mean, std, skewness, kurtosis, and percentiles.
-- Reduces dimensionality while preserving statistical information.
-:::
-
-::: {.notes}
-- The idea in one line: replace (or augment) a raw window with its *distributional summary* — mean, std, skew, kurtosis, percentiles. You trade time-resolution for a compact, noise-robust description of variability.
-- Examinable judgement call: when does this help vs. hurt? It helps when the *label depends on the distribution shape* (process stability, roughness) and hurts when temporal order matters (then keep the signal or use wavelets). Make students articulate the criterion.
-- Materials anchor: surface-roughness or porosity classification from a profilometry trace — the moments and percentiles are the physically meaningful features; the raw ordering is noise.
-- Transition: "When the raw input is high-dimensional spectra, the physics-aware reducer is PCA." 
-:::
-
-## PCA on spectral data
-
-::: {.incremental}
-- High-dimensional spectra (2000 wavelengths) → PCA → top-\\(k\\) components.
-- Captures **dominant variation patterns** as compact features.
-- The PCA components have physical interpretation (e.g., baseline, peak shape, noise).
-- Combine with raw peak features for a rich input representation.
-:::
-
-::: {.notes}
-- Callback to Unit 2 made physical: PCA components of spectra are not abstract — they often *are* baseline drift, peak shift, peak broadening, noise. You are compressing 2000 wavelengths into a handful of physically interpretable coordinates.
-- Examinable point: this is enrichment *and* dimensionality reduction at once — it spends the "smooth/low-rank structure" prior to shrink the input space, directly easing the small-data problem (tie to Unit 8 capacity).
-- Practical guidance to say aloud: fit PCA on training spectra only (leakage!), keep components by explained variance, and *concatenate* a few raw diagnostic peak heights — the combination beats either alone. This is a recurring exam-style "what would you do" scenario.
-- Transition: "Beyond signal transforms, domain experts carry physics as *named relationships* — formalize that." 
-:::
-
-
-<!-- ===== §5. Expert knowledge objects ===== -->
-
-## Expert knowledge objects
-
-:::: {.columns}
-:::: {.column width="55%"}
-
-::: {.incremental}
-- Domain experts specify transformations based on physical understanding:
-  - **Dimensionless groups** (Reynolds number, Nusselt number).
-  - **Known functional relationships** (Arrhenius equation for temperature dependence).
-  - **Physical units and scaling**.
-- These "expert knowledge objects" are formalized as input transformations [@neuer2024machine].
-:::
-
-::::
-
-:::: {.column width="45%"}
-![Data table linking variables to their recommended physical transformations — a practical implementation of expert knowledge objects. [@neuer2024machine]](images/neuer_ch6_fig5_expert_knowledge_data_table.png){width=100%}
-::::
-::::
-
-::: {.notes}
-- The reframe: an experienced engineer's "use the Reynolds number, not raw velocity and viscosity separately" is *physics-informed feature engineering*. Dimensionless groups, Arrhenius forms, proper scaling — these collapse several raw variables into the one combination that actually governs the response.
-- Examinable insight: a dimensionless group encodes a *similarity law* — it tells the model that only the combination matters, which is a hard symmetry constraint smuggled in through the inputs. Maximum physics for zero architecture change.
-- Materials anchor: Arrhenius temperature dependence — feeding $1/T$ (or $\exp(-Q/RT)$) instead of $T$ linearizes a relationship the network would otherwise need many samples to bend into. Point at the expert-knowledge table figure.
-- Transition: "That ends the enrichment block. Quick design check before we move to loss-based physics." 
-:::
-
-## Checkpoint: data enrichment design
-
-- **Scenario**: Your raw features are temperature vs time for a cooling process.
-- **What enriched features would you add?**
-  - Derivatives: cooling rate \\(dT/dt\\), acceleration \\(d^2T/dt^2\\).
-  - FFT: frequency content (periodic fluctuations).
-  - Statistics: peak temperature, time to reach 50% cooling.
-  - Domain: dimensionless Biot number if geometry is known.
-
-::: {.notes}
-- Run as a 2-minute think–pair–share, not a lecture: give the cooling-curve scenario, have pairs list enriched features and *justify each by the physics it injects*. The justification, not the list, is the learning objective and the exam skill.
-- Steer the discussion to the four families they just saw: derivatives (rate), FFT (periodic disturbance), statistics (summary), dimensionless (Biot/Fourier number if geometry known). A good answer names the physics behind each, not just the transform.
-- Common miss to flag: students propose 20 features and no rationale — remind them every added feature spends data budget on estimation unless it earns its place with physics.
-- Transition: "Now we stop changing the inputs and start changing the objective. To put physics in the loss we need exact derivatives of the network — auto-diff." 
-:::
-
-## Automatic differentiation recap
-
-- Modern frameworks (PyTorch, JAX, TensorFlow) implement **exact** automatic differentiation.
-- Backpropagation (Unit 5) computes \\(\partial L / \partial \boldsymbol{\theta}\\) — derivatives w.r.t. **parameters**.
-- For PINNs, we also need \\(\partial f_{\boldsymbol{\theta}} / \partial \mathbf{x}\\) — derivatives w.r.t. **inputs**.
-- Both are computed by the same auto-diff machinery.
-
-::: {.notes}
-- Reactivate Unit 4/5 (backprop is now self-study): the same reverse-mode machinery that gives $\partial L/\partial\theta$ for training gives $\partial f_\theta/\partial \mathbf{x}$ for free. Backprop was never specific to parameters — it differentiates *any* output w.r.t. *any* input on the graph.
-- The examinable distinction to put on the board: training derivatives are w.r.t. **parameters**; physics residuals need derivatives w.r.t. **inputs** ($x,t$). Same algorithm, different leaf nodes. Students conflate these constantly — separate them explicitly.
-- Key word: **exact**. These are not finite differences — no step-size, no truncation/round-off trade-off. That exactness is precisely what makes evaluating a PDE residual inside the loss trustworthy.
-- Transition: "So we can ask the network for any derivative we like — let's use that to score physics violations." 
-:::
-
-## Using auto-diff for physics constraints
-
-:::: {.columns}
-:::: {.column width="55%"}
-- **Key insight**: auto-diff can compute any derivative of the NN output w.r.t. any input variable.
-- \\(\partial f / \partial t\\), \\(\partial^2 f / \partial \mathbf{x}^2\\), \\(\nabla \cdot f\\) — all available at no extra modeling effort.
-- These derivatives are **exact** (up to floating-point precision), not finite differences.
-- This enables evaluating PDE residuals within the training loop.
-::::
-
-:::: {.column width="45%"}
-![Equation discovery: scatter of pendulum acceleration against candidate dictionary terms. Lasso regression identifies the two true terms (\\(\dot\theta\\), \\(\sin\theta\\)) and zeros out the rest. [@mcclarren2021machine]](images/mcclarren_ch2_fig12_equation_discovery_coefficients.png){width=100%}
-::::
-::::
-
-::: {.notes}
-- The unlock to state plainly: because auto-diff gives exact $\partial_t f_\theta$, $\partial^2_{xx} f_\theta$, $\nabla\cdot f_\theta$ at no modeling cost, *any* differential operator that defines a physical law can be evaluated on the network's own output during training. That single capability is the entire foundation of PINNs.
-- Examinable point: the cost is real — each extra derivative order is another backward pass through the graph; second-order PDEs roughly double it. Mention it now so the "computational cost" limitation later is a callback.
-- The figure (equation discovery) is a useful aside: the same derivative-machinery underlies sparse identification of governing equations — physics *out* of data, the inverse of physics *into* the model. One sentence, then move.
-- Transition: "Start with the gentlest constraint — just ask the function to be smooth." 
-:::
-
-
-<!-- ===== §6. Example: enforcing smoothness ===== -->
-
-## Example: enforcing smoothness
-
-- Add a penalty on the second derivative:
+- Backprop (Unit 5) computes $\partial L / \partial \boldsymbol{\theta}$ — derivatives w.r.t. **parameters**.
+- The same reverse-mode machinery gives $\partial f_{\boldsymbol{\theta}} / \partial \mathbf{x}$ — derivatives w.r.t. **inputs** — **exactly**, no finite differences.
+- So any differential operator can be evaluated on the network output during training:
 
 $$
-J_{\text{smooth}} = \frac{1}{M}\sum_{j=1}^{M}\left(\frac{\partial^2 f_{\boldsymbol{\theta}}}{\partial \mathbf{x}^2}(\mathbf{x}_j)\right)^2
+J_{\text{cons}} = \frac{1}{M}\sum_{j=1}^{M}\left(\frac{\partial \rho_{\boldsymbol{\theta}}}{\partial t} + \nabla \cdot (\rho_{\boldsymbol{\theta}} \mathbf{v})\right)^2 \quad \text{(mass conservation as a penalty)}
 $$
 
-- Encourages smooth predictions without constraining the function form.
-- Computed via two applications of auto-diff: first \\(\partial f/\partial \mathbf{x}\\), then \\(\partial^2 f/\partial \mathbf{x}^2\\).
-
-::: {.notes}
-- Use this as the training-wheels PINN: the "physics" is merely "no wild oscillations," penalizing the squared second derivative. It introduces the residual→penalty pattern with zero PDE baggage so the *mechanism* is clear before the physics gets heavy.
-- Examinable mechanic to show on the board: this needs *two* auto-diff passes (∂f/∂x then ∂²f/∂x²) evaluated at sample points, squared and averaged — exactly the structure every $J_{\text{physics}}$ will have. Name the pattern now.
-- Contrast with Unit 8: a smoothness penalty is still a *generic* prior (like L2) — informative but not physical. It is the hinge between "regularization you know" and "governing equations you're about to meet."
-- Transition: "Swap 'be smooth' for an actual conservation law and nothing about the machinery changes." 
+- The pattern: residual → square → average over sample points. Every physics loss has this shape.
 :::
 
-## Example: conservation law
-
-- Mass conservation: \\(\frac{\partial \rho}{\partial t} + \nabla \cdot (\rho \mathbf{v}) = 0\\).
-- Penalize violation:
-
-$$
-J_{\text{cons}} = \frac{1}{M}\sum_{j=1}^{M}\left(\frac{\partial \rho_{\boldsymbol{\theta}}}{\partial t} + \nabla \cdot (\rho_{\boldsymbol{\theta}} \mathbf{v})\right)^2
-$$
-
-- The model learns to respect mass conservation without explicit conservation in the architecture.
-
 ::: {.notes}
-- The payoff of the previous slide: replace the smoothness operator with the continuity equation residual and the recipe is *identical* — auto-diff the terms, form the residual, square, average. Emphasize: the model now respects mass conservation **without** it being hard-wired into the architecture.
-- Examinable subtlety: this is *soft* enforcement — the law is satisfied only where penalized and only approximately (in proportion to $\lambda$). Plant this; it directly motivates the soft-vs-hard BC discussion and Lagaris later.
-- Materials anchor: a learned density/velocity field for a melt-pool or diffusion process that silently creates or destroys mass is unusable — this term is what keeps a surrogate physically admissible for a process engineer.
-- Transition: "We've been waving at 'add a physics term.' Let's write the actual PINN objective." 
+- The examinable distinction (statement #7): training derivatives are w.r.t. **parameters**; physics residuals need derivatives w.r.t. **inputs** $(x,t)$. Same algorithm, different leaf nodes — students conflate these constantly.
+- The conservation-law example replaces the old smoothness + conservation slides: read the formula as "auto-diff the terms, form the residual, square, average." Note it is *soft* enforcement — satisfied only approximately, where penalized. That tension sets up Lagaris later.
+- Cost note for the limitations callback: each extra derivative order is another backward pass; second-order PDEs roughly double the cost.
+- Transition: "Wrap that pattern in a name — the PINN loss."
 :::
 
-## The PINN loss function
+## Recap: the PINN loss
 
 $$
-J = J_{\text{data}} + \lambda \cdot J_{\text{physics}}
+J = J_{\text{data}} + \lambda \cdot J_{\text{physics}}, \qquad
+J_{\text{data}} = \frac{1}{N}\sum_{i=1}^{N}\|\mathbf{y}_i - f_{\boldsymbol{\theta}}(\mathbf{x}_i)\|^2
 $$
 
 :::: {.columns}
 :::: {.column width="50%"}
-:::: {.incremental}
-**Loss Decomposition:**
 
-- $J_{\text{data}}$: MSE on sparse labeled points.
-- $J_{\text{physics}}$: Residual of the PDE/ODE.
-- $\lambda$: Balancing hyperparameter.
-::::
-
-::: {.fragment}
 ```{mermaid}
 %%| echo: false
 %%| fig-align: center
@@ -505,189 +194,178 @@ graph LR
     Jp --> J["Total Loss J"]
     Jd --> J
 ```
-:::
+
 ::::
 
 :::: {.column width="50%"}
-- **Two sources of information**: observed data and known physics.
-- The composite loss trains the model to fit data **and** satisfy physical laws simultaneously.
-- This is the core formulation of Physics-Informed Neural Networks.
+
+::: {.incremental}
+- $J_{\text{data}}$: MSE on the sparse, noisy labeled points — alone it is a standard, data-starved NN.
+- $J_{\text{physics}}$: PDE/ODE residual — next slide.
+- $\lambda$: the exchange rate between measurements and equations.
+- A PINN is **MAP estimation with a physics prior** (Unit 7).
+:::
+
 ::::
 ::::
 
 ::: {.notes}
-- This is *the* slide of the unit — slow down. Read the decomposition aloud as a sentence: "fit the sparse data **and** satisfy the equation everywhere, with $\lambda$ setting the exchange rate." Have them copy $J=J_{\text{data}}+\lambda J_{\text{physics}}$ verbatim; it is exam statement #3.
-- Walk the mermaid flow as the mental model: inputs → network → prediction → (auto-diff) → residual → physics loss, with prediction also feeding data loss; both sum to $J$. The auto-diff arrow is the conceptual heart — everything upstream of it is an ordinary MLP.
-- Tie both terms to Unit 7: $J_{\text{data}}$ is the Gaussian-noise NLL (MSE, exactly the MLE↔MSE result), and $\lambda J_{\text{physics}}$ is a log-prior — so a PINN is literally MAP estimation with a physics prior. Say this; it unifies the whole course.
-- Transition: "Take the two terms one at a time — first the familiar one, data fidelity." 
+- Still *the* slide of the unit even in recap mode — slow down here. Read the loss as a sentence: "fit the sparse data **and** satisfy the equation everywhere, with $\lambda$ setting the exchange rate." Exam statement #3: write it blind.
+- Walk the mermaid flow once: inputs → network → field → (auto-diff) → residual → physics loss; the field also feeds the data loss. Everything upstream of the auto-diff arrow is an ordinary MLP.
+- The unifying sentence worth saying twice: $J_{\text{data}}$ is the Gaussian NLL, $\lambda J_{\text{physics}}$ is a log-prior — a PINN is literally MAP with a physics prior. It ties Units 7, 8, and 13 together.
+- Transition: "The term that does the real work needs no labels at all."
 :::
 
-## J_data: data fidelity
-
-$$
-J_{\text{data}} = \frac{1}{N}\sum_{i=1}^{N}\|\mathbf{y}_i - f_{\boldsymbol{\theta}}(\mathbf{x}_i)\|^2
-$$
-
-- Standard MSE on labeled observations.
-- Data points are typically sparse and noisy in engineering applications.
-- This term alone would give a standard NN.
-
-::: {.notes}
-- Keep this deliberately short — it is just the MSE they have known since Unit 3, evaluated on the sparse labeled set. The only new emphasis: in our regime $N$ is tiny and noisy, so this term *alone* is hopelessly underdetermined — that's the whole reason the physics term has to exist.
-- Examinable one-liner: "$\lambda=0$ collapses a PINN to a standard, data-starved NN." Use it to make the physics term feel necessary rather than decorative.
-- Transition: "Now the term that does the real work and needs no labels — the physics residual." 
-:::
-
-
-<!-- ===== §7. J_physics: physics residual ===== -->
-
-## J_physics: physics residual
+## Recap: $J_{\text{physics}}$ and collocation points
 
 $$
 J_{\text{physics}} = \frac{1}{M}\sum_{j=1}^{M}\|\mathcal{R}(f_{\boldsymbol{\theta}}, \mathbf{x}_j)\|^2
 $$
 
-- \\(\mathcal{R}\\) is the **residual** of the governing equation (PDE, ODE, conservation law).
-- Evaluated at \\(M\\) **collocation points** sampled across the domain.
-- **No labels needed** for physics loss — just the equation.
-
-::: {.notes}
-- The conceptual jewel of the unit: $J_{\text{physics}}$ needs **no labels** — only the equation. You can evaluate the PDE residual at any point in the domain because the "target" is zero (the equation must hold), so supervision is essentially unlimited and free. Say this twice; it is exam statement #4.
-- Put on the board: $\mathcal{R}(f_\theta,x)$ is the governing equation moved to one side; a perfect solution makes it identically zero, so we minimize its mean square over sampled points. This is the precise meaning of "training on physics."
-- Misconception to preempt: students think $J_{\text{physics}}$ needs the true solution. It does not — that is the entire point and the source of the small-data advantage. Drill the distinction from $J_{\text{data}}$.
-- Transition: "Those sampling points have a name and a role of their own — collocation points." 
+::: {.incremental}
+- $\mathcal{R}$: the governing equation moved to one side — a perfect solution makes it identically zero.
+- Evaluated at $M$ **collocation points**: unlabeled domain locations, sampled uniformly or adaptively.
+- **No labels needed** — the target is zero. Physics supervision is effectively unlimited and free.
+- Collocation points $\neq$ data points: 8 measured hardness values, but 10,000 collocation points across the process window.
 :::
 
-## Collocation points
+::: {.notes}
+- The conceptual jewel, exam statement #4: $J_{\text{physics}}$ needs **no labels** — only the equation. Say it twice; it is the entire source of the small-data advantage.
+- Re-hit the stubborn confusion: collocation points are *unlabeled* residual-check locations; data points need a measured $y$. The materials one-liner (8 hardness values vs 10,000 collocation points) is the memory hook.
+- Trade-off in one breath: more collocation points ⇒ better-enforced physics, higher per-step cost; adaptive/residual-driven placement matters near sharp features (previews the convection failure).
+- Transition: "One knob balances the two terms."
+:::
+
+## Recap: the role of $\lambda$
+
+::: {.incremental}
+- $\lambda = 0$: pure data-driven. $\lambda \to \infty$: NN solves the PDE, data ignored. In between: the negotiated compromise.
+- **Too high**: satisfies physics, ignores noisy data — underfits the measurements.
+- **Too low**: fits data, violates physics — physically inconsistent predictions.
+- The symptom tells you which way to move. Adaptive schemes rescale $\lambda$ from relative gradient magnitudes of the two terms.
+:::
+
+::: {.notes}
+- Recap of two old slides (~2 min). Frame $\lambda$ as the data-vs-prior dial from the information-budget slide, now a tunable scalar — and (Unit 7) the prior-precision knob of a MAP estimate.
+- Misconception re-sweep: bigger $\lambda$ is not "more physics is better" — it is "trust the equation more than the measurements," wrong when the equation is approximate (statement #5).
+- ML-PC callback: unit 11's loss-weighting recipes (non-dimensionalization, log-transform, curriculum, NTK reweighting) are the practical toolbox for exactly this knob — we cover the *root cause* on the gradient-pathology slide shortly.
+- Transition: "What does the network itself look like? Anticlimactically simple."
+:::
+
+## Recap: PINN architecture — Burgers equation
 
 :::: {.columns}
 :::: {.column width="55%"}
-- Points in the domain where the physics residual is evaluated.
-- Typically sampled uniformly or according to an adaptive strategy.
-- More collocation points → better physics enforcement but higher cost.
-- Collocation points do not need observed data — they provide physics supervision for free.
+
+::: {.incremental}
+- A standard MLP; inputs are **coordinates** $(\mathbf{x}, t)$, output is the **field** (temperature, velocity, stress).
+- **Smooth activations** (tanh, swish) — never ReLU: its second derivative is zero almost everywhere, killing the residual.
+- The network represents *one solution* as a continuous function — not a dataset map.
+- Raissi et al.: sharp Burgers shock recovered from **100 data points**, because the PDE supervised everywhere else [@raissi2019physics].
+:::
+
 ::::
 
 :::: {.column width="45%"}
-![Scatter plots of pendulum acceleration against candidate dictionary terms. The true governing equation emerges from sparse data — analogous to evaluating physics residuals at collocation points. [@mcclarren2021machine]](images/mcclarren_ch2_fig11_pendulum_dictionary_scatter.png){width=100%}
+![PINN solution of the Burgers equation. Top: predicted spatio-temporal field with 100 training points (×). Bottom: exact (blue) vs PINN prediction (red) at $t=0.25, 0.50, 0.75$. [@raissi2019physics]](images/raissi2019_fig1_pinn_burgers.png){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- Define crisply: collocation points are *unlabeled* domain locations where the residual is checked — physics supervision for free, decoupled from where you have data. Contrast explicitly with data points (need a measured $y$) — students merge the two.
-- Examinable trade-off: more collocation points ⇒ better-enforced physics but higher per-step cost; placement matters (uniform vs. adaptive/residual-driven sampling near sharp features). This previews the multi-scale/convective failure mode later.
-- Materials anchor: you may have 8 measured hardness values but you can place 10,000 collocation points across the whole process window — the physics fills in everywhere the lab could not reach.
-- Transition: "Everything hinges on one knob balancing the two terms — $\lambda$." 
+- The deliberately anticlimactic point: all the physics lives in the loss, not the architecture. The one hard rule — smooth activations — is the classic fatal student bug; pre-empt it for the exercise now.
+- Let the figure land as the "this actually works" moment: a shock from ~100 points. This is the same figure ML-PC unit 11 gestured at; now they can read every element of it.
+- Transition: "Quick recap check — can you still write the loss for a concrete PDE?"
 :::
 
-## The role of lambda
+## Checkpoint: PINN loss for heat diffusion
 
-- \\(\lambda\\) balances data fit vs physics compliance:
-  - \\(\lambda = 0\\): pure data-driven (standard NN).
-  - \\(\lambda \to \infty\\): pure physics (NN solves the PDE).
-  - Intermediate \\(\lambda\\): compromise between data and physics.
-- The optimal \\(\lambda\\) depends on data quality, physics accuracy, and problem specifics.
+- **Problem**: $\frac{\partial T}{\partial t} = \alpha \frac{\partial^2 T}{\partial \mathbf{x}^2}$ with noisy temperature measurements.
+- **Data loss**: $J_{\text{data}} = \frac{1}{N}\sum_i (T_i^{\text{obs}} - f_{\boldsymbol{\theta}}(\mathbf{x}_i, t_i))^2$.
+- **Physics loss**: $J_{\text{physics}} = \frac{1}{M}\sum_j \left(\frac{\partial f_{\boldsymbol{\theta}}}{\partial t} - \alpha \frac{\partial^2 f_{\boldsymbol{\theta}}}{\partial \mathbf{x}^2}\right)^2$.
+- **Total**: $J = J_{\text{data}} + \lambda \cdot J_{\text{physics}}$.
 
 ::: {.notes}
-- Frame $\lambda$ as an interpolation dial, not just a hyperparameter: $\lambda=0$ is pure data-driven, $\lambda\to\infty$ is the network solving the PDE with data ignored, in between is the negotiated compromise. Draw the two endpoints on the board so the spectrum is concrete.
-- Examinable connection: this is exactly the data-vs-prior trade-off from the statistical-balance slide, now a tunable scalar — and (Unit 7 callback) it is the prior-precision knob of a MAP estimate. Same idea, third appearance; close the loop aloud.
-- Misconception to preempt: bigger $\lambda$ is not "more physics is better" — it is "trust the equation more than the measurements," which is wrong when the equation is approximate. Sets up the next slide.
-- Transition: "So how do you actually choose it — and what goes wrong at the extremes?" 
+- 3-minute recap check: students write all three lines *before* the reveal. The skill: translate "$\partial_t T=\alpha\partial^2_{xx}T$" into a squared residual at collocation points — exactly the exam task.
+- Watch for the two classic errors: forgetting the residual is the PDE moved to one side (zero target), and evaluating $J_{\text{physics}}$ at data points instead of collocation points.
+- If this checkpoint is smooth, the recap is done its job — bank the saved minutes for Lagaris.
+- Transition: "Recap's last stop: what breaks. Two distinct failure categories."
 :::
 
-## Choosing lambda
-
-- **Too high**: model satisfies physics perfectly but ignores noisy data → underfitting data.
-- **Too low**: model fits data well but violates physics → physically inconsistent predictions.
-- **Adaptive strategies**: adjust \\(\lambda\\) during training based on relative magnitudes of \\(J_{\text{data}}\\) and \\(J_{\text{physics}}\\).
-- Cross-validation on held-out data can also guide \\(\lambda\\) selection.
-
-::: {.notes}
-- Give the diagnostic, not a recipe: too high ⇒ the model fits the equation and ignores noisy data (underfits the measurements); too low ⇒ fits data and violates physics. The symptom tells you which way to move $\lambda$ — teach the *feedback loop*, since the optimum is problem-specific.
-- Examinable practice: adaptive schemes rescale $\lambda$ from the *relative gradient magnitudes* of the two terms — foreshadow the Wang et al. gradient-pathology slide where this becomes essential, not optional.
-- Honest caveat to say aloud: cross-validation on held-out data helps but is weak when data is scarce (the whole premise) — $\lambda$ tuning is a genuine open difficulty, not a solved step. Don't oversell.
-- Transition: "Loss settled — what does the network itself look like?" 
-:::
-
-
-<!-- ===== §8. PINN architecture ===== -->
-
-## PINN architecture
+## Recap: failure modes I — wrong or hard physics
 
 :::: {.columns}
 :::: {.column width="55%"}
-- Typically a standard fully-connected NN (MLP) with smooth activations (tanh, swish).
-- **Inputs**: spatial coordinates \\(\mathbf{x}\\) and/or time \\(t\\).
-- **Output**: physical field values (temperature, velocity, stress).
-- Auto-diff is used to compute all required derivatives within the loss function.
-- Figure: predicted Burgers field (top) matches exact solution at three time slices (bottom) — trained with only 100 data points [@raissi2019physics].
+
+::: {.incremental}
+- **Incorrect physics**: the PINN converges to the solution of the equation you gave it — garbage equation ⇒ **confidently wrong** solution.
+- **Convection-dominated PDEs**: error explodes with convection coefficient $\beta$; soft-constraint training cannot learn sharp advecting fronts [@krishnapriyan2021characterizing].
+- **Multi-scale problems** (boundary layers): conflicting gradients. **High-dimensional PDEs**: collocation cost scales exponentially.
+:::
+
 ::::
 
 :::: {.column width="45%"}
-![Raissi et al. (2019) Fig. 1: PINN solution of the Burgers equation. Top: predicted spatio-temporal field with 100 training points (×). Bottom: exact (blue) vs PINN prediction (red) at $t=0.25, 0.50, 0.75$. [@raissi2019physics]](images/raissi2019_fig1_pinn_burgers.png){width=100%}
+![PINN failure on the 1D convection equation: (a) prediction error vs $\beta$; (b) exact solution for $\beta=30$; (c) PINN solution for $\beta=30$ — the sharp advecting front is not learned. [@krishnapriyan2021characterizing]](images/krishnapriyan2021_fig1_convection_failure.png){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- The deliberately anticlimactic point: the network is just an MLP with *smooth* activations (tanh/swish, not ReLU) — all the physics lives in the loss, not the architecture. Stress *why smooth*: you differentiate the network twice for the residual, and ReLU's second derivative is zero almost everywhere — a classic, fatal student bug.
-- Show the Raissi Burgers figure as the "this actually works" moment: a sharp shock recovered from ~100 points because the PDE supervised everywhere else. Let that land before discussing limitations.
-- Examinable framing: inputs are *coordinates* $(\mathbf{x},t)$, output is the *field* — a PINN represents one solution as a continuous function, not a dataset map. This is conceptually different from every prior unit's network; say so.
-- Transition: "Assemble the whole thing on a concrete PDE — quick design check." 
+- Lead with the cardinal sin, exam statement #10: unlike a data model that just fits noise, a PINN *actively converges* to the wrong equation's solution. Authoritative garbage. Say it bluntly.
+- Walk the figure: error vs $\beta$ explodes; panel (c) shows the network simply giving up on the front. Cited, concrete, real — not a footnote.
+- These are *modeling* failures. Keep them mentally separate from the *optimization* failures on the next slide — the exam asks students to name both categories.
+- Transition: "Even with correct physics, the optimization itself fights you."
 :::
 
-## Checkpoint: PINN loss design
+## Recap: failure modes II — optimization pathologies
 
-- **Problem**: Heat diffusion \\(\frac{\partial T}{\partial t} = \alpha \frac{\partial^2 T}{\partial \mathbf{x}^2}\\) with noisy temperature measurements.
-- **Data loss**: \\(J_{\text{data}} = \frac{1}{N}\sum_i (T_i^{\text{obs}} - f_{\boldsymbol{\theta}}(\mathbf{x}_i, t_i))^2\\).
-- **Physics loss**: \\(J_{\text{physics}} = \frac{1}{M}\sum_j \left(\frac{\partial f_{\boldsymbol{\theta}}}{\partial t} - \alpha \frac{\partial^2 f_{\boldsymbol{\theta}}}{\partial \mathbf{x}^2}\right)^2\\).
-- **Total**: \\(J = J_{\text{data}} + \lambda \cdot J_{\text{physics}}\\).
+:::: {.columns}
+:::: {.column width="55%"}
+
+::: {.incremental}
+- **Gradient imbalance**: physics-loss gradients dwarf data/BC gradients by orders of magnitude — SGD effectively ignores the data term [@wang2021understanding].
+- **Spectral bias**: NNs learn low frequencies first; high-frequency PDE features train painfully slowly.
+- **Stiff PDEs**: training instability from very large physics-loss gradients.
+- **Cost**: high-order auto-diff at every collocation point, every step — for forward 3D problems, FEM/CFD often wins. PINNs pay off for **inverse problems and data scarcity** (ML-PC Unit 8).
+:::
+
+::::
+
+:::: {.column width="45%"}
+![Histograms of back-propagated gradients per layer for a PINN solving the Helmholtz equation: data-loss gradients (blue) are orders of magnitude smaller than physics-loss gradients (orange). [@wang2021understanding]](images/wang2021_fig2_gradient_pathology.png){width=100%}
+::::
+::::
 
 ::: {.notes}
-- Worked template, ~3 min: have students write $J_{\text{data}}$, $J_{\text{physics}}$, and $J$ for the heat equation *before* you reveal each line. The skill being assessed is translating "$\partial_t T=\alpha\partial^2_{xx}T$" into a squared residual at collocation points — exactly an exam task.
-- Watch for the two classic errors: forgetting the residual is the PDE moved to one side (sign/zero target), and evaluating $J_{\text{physics}}$ only at data points instead of collocation points. Name both as you check.
-- Transition: "A PDE is meaningless without boundary conditions — and how we enforce them is the next big idea." 
+- The root cause behind ML-PC unit 11's loss-weighting recipes: the Wang figure shows *why* naive $\lambda$ fails — one term's gradients drown the other's. Adaptive balancing is a treatment for a diagnosed disease, not a superstition.
+- Spectral bias connects to their Fourier intuition from Unit 4: networks are low-pass learners; sharp PDE features are exactly what they resist.
+- The honest cost accounting closes the recap: do not leave thinking PINNs replace FEM. They win where classical methods are weak — inverse problems, data assimilation, extreme scarcity. ML-PC unit 8 is the worked treatment of that regime.
+- Transition: "Recap done. Now the first piece of deferred math: making boundary conditions *impossible to violate*."
 :::
 
-## Boundary conditions in PDE problems
 
-- Physical problems require boundary conditions (BCs):
-  - **Dirichlet**: \\(f(\mathbf{x}_{\text{boundary}}) = a\\) (prescribed value).
-  - **Neumann**: \\(\frac{\partial f}{\partial n}(\mathbf{x}_{\text{boundary}}) = b\\) (prescribed gradient).
-- BCs are essential — without them, the PDE has infinitely many solutions.
+<!-- ===== §3. NEW: hard BC enforcement — Lagaris ===== -->
+
+## Boundary conditions and soft enforcement
+
+::: {.incremental}
+- **Dirichlet**: $f(\mathbf{x}_{\text{boundary}}) = a$ (prescribed value). **Neumann**: $\frac{\partial f}{\partial n}(\mathbf{x}_{\text{boundary}}) = b$ (prescribed gradient/flux).
+- Without BCs, the PDE has infinitely many solutions — the PINN converges to a valid but **wrong** field.
+- Soft enforcement: $J = J_{\text{data}} + \lambda_1 J_{\text{physics}} + \lambda_2 J_{\text{BC}}$ with $J_{\text{BC}} = \|f_{\boldsymbol{\theta}}(\mathbf{x}_{\text{boundary}}) - a\|^2$.
+- Price: BCs only **approximately** satisfied, and a second weight $\lambda_2$ to balance — the gradient-pathology risk just doubled.
+:::
 
 ::: {.notes}
-- State the non-negotiable: without BCs a PDE has infinitely many solutions, so a PINN with no BC information will happily converge to a physically valid but *wrong* field. BCs are what make the problem well-posed — not optional decoration.
-- Examinable vocabulary to lock in: Dirichlet = prescribed *value*, Neumann = prescribed *gradient/flux*. Give the materials reading: fixed-temperature wall (Dirichlet) vs. insulated/known-heat-flux wall (Neumann). They will be asked to identify these.
-- Transition: "Two ways to make the network obey BCs — the easy soft way, and the elegant hard way." 
+- Vocabulary to lock in (exam identification task): Dirichlet = prescribed *value* (fixed-temperature wall), Neumann = prescribed *gradient/flux* (insulated wall).
+- Soft = "asked nicely, possibly disobeyed": every added loss term multiplies the tuning surface and the imbalance risk from the previous slide. Frame the pain honestly — it motivates what comes next.
+- Misconception: more loss terms ≠ more control. The opposite, per the Wang slide they just saw.
+- Transition: "What if the BC simply *could not* be violated, by construction? That is Lagaris — the most elegant idea in the unit."
 :::
-
-## Soft BC enforcement
-
-- Add BC violation to the loss:
-
-$$
-J_{\text{BC}} = \|f_{\boldsymbol{\theta}}(\mathbf{x}_{\text{boundary}}) - a\|^2
-$$
-
-- Simple to implement but BCs are only **approximately** satisfied.
-- The total loss becomes: \\(J = J_{\text{data}} + \lambda_1 J_{\text{physics}} + \lambda_2 J_{\text{BC}}\\).
-- Requires tuning additional weight \\(\lambda_2\\).
-
-::: {.notes}
-- The easy option, with its price tag: add a BC-violation penalty as a *third* loss term — trivial to code, but BCs are then only *approximately* met and you have introduced *another* weight $\lambda_2$ to tune on top of $\lambda$. Multi-objective balancing difficulty just doubled.
-- Examinable contrast to set up: soft = "asked nicely, possibly disobeyed"; hard (next slide) = "made structurally impossible to disobey." Frame the upcoming Lagaris trick as the resolution of this slide's pain.
-- Misconception to preempt: students assume more loss terms = more control. The opposite — each added $\lambda$ multiplies the tuning surface and the gradient-imbalance risk (forward link to Wang et al.).
-- Transition: "What if the boundary condition simply could not be violated, by construction? That's Lagaris." 
-:::
-
-
-<!-- ===== §9. Hard BC enforcement: the Lagaris substitution ===== -->
 
 ## Hard BC enforcement: the Lagaris substitution
 
 :::: {.columns}
 :::: {.column width="60%"}
-- Construct the solution so that BCs are satisfied **by construction**:
+- Construct the solution so BCs hold **by construction**:
 
 $$
 f(\mathbf{x}) = A(\mathbf{x}) + B(\mathbf{x}) \cdot \text{NN}(\mathbf{x})
@@ -695,292 +373,141 @@ $$
 
 - $A(\mathbf{x})$ satisfies the BCs.
 - $B(\mathbf{x})$ vanishes at the boundaries.
-- The NN only needs to learn the unknown part.
+- The NN only learns the unknown interior part.
 ::::
 
 :::: {.column width="40%"}
-- **Guaranteed Consistency**: BCs are met even before training starts.
-- **Search Space**: Restricts the model to physically plausible functions.
+- **Guaranteed consistency**: BCs met before training starts — no $J_{\text{BC}}$, no $\lambda_2$.
+- **Smaller search space**: physics moves from the *objective* into the *function class* — taxonomy (b) → (c).
 - **Reference**: @lagaris1998artificial.
 ::::
 ::::
 
 ::: {.notes}
-- The single most elegant idea in the unit — present it as a trick worth memorizing. Write $f(x)=A(x)+B(x)\,\mathrm{NN}(x)$ and read it aloud: $A$ *carries* the boundary values, $B$ *vanishes* on the boundary, so the network can output anything and the BC still holds *exactly*, before training even starts.
-- Examinable consequences (the right column): zero BC loss, zero $\lambda_{\text{BC}}$, and a strictly smaller search space — the NN only learns the *unknown interior deviation*, not the part you already know. This is "spend physics to shrink the hypothesis space" in its purest form (Unit 8 callback).
-- Misconception to preempt: students think $A,B$ must be learned — they are *chosen by hand* from the BCs, the easy part. Show that picking them is algebra, not optimization.
-- Transition: "Make it concrete — pick $A$ and $B$ for a simple initial condition." 
+- Present as a trick worth memorizing (exam statement #6, guaranteed derivation). Read the formula aloud: $A$ *carries* the boundary values, $B$ *vanishes* on the boundary — the network can output anything and the BC still holds exactly.
+- Misconception to kill immediately: $A, B$ are *chosen by hand* from the BCs — algebra, not optimization. The next slide does it live.
+- The meta-principle to state as a design rule: whenever you *can* satisfy a constraint by construction, do — it strictly dominates penalizing it. This is the "requested vs guaranteed" line from the spectrum slide, cashed out.
+- Transition: "Pick $A$ and $B$ for concrete cases."
 :::
 
-## Lagaris substitution: example
+## Lagaris substitution: choosing $A$ and $B$
 
-- **Problem**: $f(\mathbf{0}) = a$, general ODE/PDE on $[0, L]$.
-- **Trial solution**: $f(\mathbf{x}) = a + \mathbf{x} \cdot \text{NN}(\mathbf{x})$.
+- **One-sided**: $f(\mathbf{0}) = a$. Trial: $f(\mathbf{x}) = a + \mathbf{x} \cdot \text{NN}(\mathbf{x})$.
 
 :::: {.incremental}
-- At $\mathbf{x} = \mathbf{0}$: $f(\mathbf{0}) = a + \mathbf{0} \cdot \text{NN}(\mathbf{0}) = a$ ✓ (regardless of NN).
+- At $\mathbf{x} = \mathbf{0}$: $f(\mathbf{0}) = a + \mathbf{0} \cdot \text{NN}(\mathbf{0}) = a$ ✓ — **regardless of the NN**.
 ::::
 
 :::: {.incremental}
-- The NN learns the deviation from the initial condition.
-::::
-
-:::: {.incremental}
-- For $f(\mathbf{0})=a, f(L)=b$: $f(\mathbf{x}) = a + \frac{\mathbf{x}}{L}(b-a) + \mathbf{x}(L-\mathbf{x})\text{NN}(\mathbf{x})$.
+- **Two-sided**: $f(\mathbf{0})=a, f(L)=b$. Trial: $f(\mathbf{x}) = a + \frac{\mathbf{x}}{L}(b-a) + \mathbf{x}(L-\mathbf{x})\,\text{NN}(\mathbf{x})$.
+- The pattern: **boundary-satisfying interpolant + vanishing bump × NN**. The NN learns the *deviation* from the base solution.
 ::::
 
 ::: {.notes}
-- Do this construction live on the board, it is the exam derivation. For $f(0)=a$: trial $f(x)=a+x\,\mathrm{NN}(x)$; substitute $x=0$ and watch the NN term annihilate — $f(0)=a$ *regardless of the network*. That "regardless" is the whole magic; make them feel it.
-- Generalize once: for $f(0)=a,f(L)=b$ show $a+\frac{x}{L}(b-a)+x(L-x)\mathrm{NN}(x)$ and have students verify both endpoints by inspection. The pattern — interpolant + vanishing-bump×NN — is the reusable recipe; name it explicitly.
-- Examinable phrasing: "the NN learns the *deviation* from the boundary-satisfying base solution." That sentence is worth full marks; have them write it.
-- Transition: "Apply the recipe to an actual ODE and compare to the analytical solution." 
+- Do this live on the board — it is the exam derivation. Substitute $x=0$ and watch the NN term annihilate; that "regardless of the network" is the whole magic.
+- Have students verify both endpoints of the two-sided form by inspection. Name the reusable recipe explicitly: interpolant + vanishing-bump×NN.
+- The full-marks phrasing to dictate: "the NN learns the deviation from the boundary-satisfying base solution."
+- Transition: "Run the recipe on an actual ODE against a known analytical answer."
 :::
 
-## Lagaris for ODE: $\mathbf{x}' = \mathbf{x}$, $\mathbf{x}(0) = \mathbf{1}$
+## Lagaris worked example: $x' = x$, $x(0) = 1$
 
 :::: {.columns}
 :::: {.column width="55%"}
-- **Trial solution**: $\mathbf{x}(t) = \mathbf{1} + t \cdot \text{NN}(t)$.
+- **Trial solution**: $x(t) = 1 + t \cdot \text{NN}(t)$ — IC holds by construction.
 
 :::: {.incremental}
-- **IC**: $\mathbf{x}(0) = \mathbf{1}$ ✓.
-::::
-
-:::: {.incremental}
-- **ODE residual**: $\mathcal{R} = \mathbf{x}'(t) - \mathbf{x}(t) = \text{NN}(t) + t \cdot \text{NN}'(t) - \mathbf{1} - t \cdot \text{NN}(t)$.
-::::
-
-:::: {.incremental}
-- Minimize $\sum_j \mathcal{R}(t_j)^2$ over collocation points.
-::::
-
-:::: {.incremental}
-- Exact solution: $\mathbf{x}(t) = e^t \mathbf{1}$. The NN should learn $\text{NN}(t) \approx (e^t - 1)\mathbf{1}/t$.
+- **ODE residual** (product rule via auto-diff): $\mathcal{R} = x'(t) - x(t) = \text{NN}(t) + t \cdot \text{NN}'(t) - 1 - t \cdot \text{NN}(t)$.
+- Minimize $\sum_j \mathcal{R}(t_j)^2$ over collocation points — **no time-stepping**; the network *is* the continuous solution.
+- Exact: $x(t) = e^t$, so $\text{NN}(t) \approx (e^t - 1)/t$ — a bounded, smooth correction.
 ::::
 ::::
 
 :::: {.column width="45%"}
-![Analytical solution \\(e^t\\) (black) vs neural network solution (green) for \\(x'=x\\), \\(x(0)=1\\). The Lagaris substitution guarantees the IC and the NN learns the remaining shape. [@neuer2024machine]](images/neuer_ch6_fig7_lagaris_ode_exp_solution.png){width=100%}
+![Analytical solution $e^t$ (black) vs neural network solution (green) for $x'=x$, $x(0)=1$. The Lagaris substitution guarantees the IC; the NN learns the remaining shape. [@neuer2024machine]](images/neuer_ch6_fig7_lagaris_ode_exp_solution.png){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- The full worked pipeline — the model answer for the exercise. Trial $x(t)=1+t\,\mathrm{NN}(t)$ satisfies $x(0)=1$ by construction; derive the residual $\mathcal{R}=\mathrm{NN}+t\,\mathrm{NN}'-1-t\,\mathrm{NN}$ on the board so they see auto-diff of the trial form in action (product rule on $t\cdot\mathrm{NN}$).
-- Land the figure: the network solution overlays $e^t$ with *no* time-stepping and the IC exact to machine precision — contrast with Euler/RK where the IC is exact but interior error accumulates. Different error structure entirely.
-- Examinable insight: $\mathrm{NN}(t)\approx(e^t-1)/t$ — the network learns a *bounded, smooth* correction, not the fast-growing solution itself. Constraining what must be learned is why this trains so easily on tiny collocation sets.
-- Transition: "Step back — why is hard enforcement systematically better than soft?" 
-:::
-
-## Advantages of hard enforcement
-
-- BCs are **exactly** satisfied — no penalty term, no violation, no tuning.
-- Reduces the search space: the NN only learns the **unknown** part of the solution.
-- Fewer hyperparameters (no \\(\lambda_{\text{BC}}\\)).
-- Often leads to faster convergence and better solutions.
-
-::: {.notes}
-- Summarize as a clean scorecard: BCs *exact* (not penalized), one fewer loss term, one fewer $\lambda$, smaller search space, usually faster and better convergence. Every item is a direct fix to a soft-enforcement pain from two slides ago — present it as the payoff.
-- The examinable meta-point: hard constraints move physics from the *objective* into the *function class* (taxonomy (b)→(c)). Whenever you *can* satisfy a constraint by construction, do — it is strictly dominant over penalizing it. State this as a design principle.
-- Honest caveat: constructing $A,B$ is easy for simple domains, genuinely hard for complex geometries — which is why soft enforcement still exists. Don't oversell; engineers will hit this.
-- Transition: "The same 'NN as the solution' idea generalizes from BCs to integrating ODEs outright." 
-:::
-
-
-<!-- ===== §10. Neural integrators and ODE solvers ===== -->
-
-## Neural integrators and ODE solvers
-
-:::: {.columns}
-:::: {.column width="55%"}
-- Use a NN to parameterize the **solution** of an ODE.
-- Train by minimizing the ODE residual at collocation points.
-- The NN produces a **continuous, differentiable** solution — no time-stepping discretization.
-- Advantage: solution at any point \\(t\\) without marching through time steps.
-::::
-
-:::: {.column width="45%"}
-![NN solution converging to the analytical integral (parabola). Left: early training (loss > 1.5). Right: converged solution (loss < 0.02). [@neuer2024machine]](images/neuer_ch6_fig6_ode_integration_convergence.png){width=100%}
-::::
-::::
-
-::: {.notes}
-- The shift to make explicit: instead of learning a data map, the network *is* the solution of the ODE, found by driving the residual to zero at collocation points — a *mesh-free, continuous, differentiable* solver with no time-stepping.
-- Examinable advantage: query the solution at any $t$ directly — no marching, no accumulated step error, and the derivative is available analytically (it's the same auto-diff). Contrast with classical integrators where output is discrete and differentiating it is awkward.
-- Honest framing (sets up limitations): this is elegant and shines for inverse problems and smooth ODEs, but it is *not* a free replacement for a good stiff solver — flag now, deliver in the limitations block.
-- Transition: "Quick Lagaris design check before we go up to the theory of *why* this generalizes so well." 
+- The model answer for exercise Part B — derive the residual on the board so they see auto-diff of the trial form (product rule on $t\cdot\mathrm{NN}$) in action.
+- Two insights to land: (1) this is a mesh-free, continuous, differentiable ODE solver — query any $t$, no marching, no accumulated step error, IC exact to machine precision; (2) the network learns a *bounded* correction, not the fast-growing solution itself — constraining what must be learned is why it trains on tiny collocation sets.
+- Honest caveat: elegant, but not a replacement for a good stiff solver — the regime argument from the cost slide applies.
+- Transition: "Your turn — a two-sided boundary problem."
 :::
 
 ## Checkpoint: Lagaris design
 
-- **Problem**: \\(f''(\mathbf{x}) = g(\mathbf{x})\\), \\(f(\mathbf{0}) = \mathbf{0}\\), \\(f(\mathbf{1}) = \mathbf{0}\\).
-- **Trial solution**: \\(f(\mathbf{x}) = \mathbf{x}(\mathbf{1}-\mathbf{x}) \cdot \text{NN}(\mathbf{x})\\).
-- Check: \\(f(\mathbf{0}) = \mathbf{0} \cdot \mathbf{1} \cdot \text{NN}(\mathbf{0}) = \mathbf{0}\\) ✓. \\(f(\mathbf{1}) = \mathbf{1} \cdot \mathbf{0} \cdot \text{NN}(\mathbf{1}) = \mathbf{0}\\) ✓.
-- The NN freely shapes the solution in the interior while BCs are guaranteed.
+- **Problem**: $f''(\mathbf{x}) = g(\mathbf{x})$, $f(\mathbf{0}) = \mathbf{0}$, $f(\mathbf{1}) = \mathbf{0}$.
+- **Trial solution**: $f(\mathbf{x}) = \mathbf{x}(\mathbf{1}-\mathbf{x}) \cdot \text{NN}(\mathbf{x})$.
+- Check: $f(\mathbf{0}) = \mathbf{0} \cdot \mathbf{1} \cdot \text{NN}(\mathbf{0}) = \mathbf{0}$ ✓. $f(\mathbf{1}) = \mathbf{1} \cdot \mathbf{0} \cdot \text{NN}(\mathbf{1}) = \mathbf{0}$ ✓.
+- The NN freely shapes the interior while both BCs are guaranteed.
 
 ::: {.notes}
-- 2-minute construction drill: two-sided BC $f(0)=0,f(1)=0$. Have them propose the trial form *before* the reveal; the target answer is $f(x)=x(1-x)\,\mathrm{NN}(x)$ and the skill is choosing a $B(x)$ that vanishes at *both* ends.
-- Make them verify by substitution out loud — $f(0)=0$, $f(1)=0$ each kill a factor regardless of the NN. The verification habit is the exam-defensive skill; reward it over the guess.
-- Transition: "We've seen physics works empirically — now the theory of *why* constrained models generalize: Occam and MDL." 
-:::
-
-## Occam's razor and model selection
-
-- **Occam's razor**: among models that explain the data equally well, prefer the simplest.
-- Physics constraints **simplify** the model by restricting the hypothesis space.
-- A physics-constrained model with 100 parameters may be effectively simpler than an unconstrained model with 10.
-- Connects to the effective number of parameters (Unit 12).
-
-::: {.notes}
-- The theoretical capstone of the "why" thread: among models fitting the data equally well, prefer the simplest — and physics constraints *enforce* simplicity by deleting admissible functions. So a 100-parameter physics-constrained net can be *effectively* simpler than a 10-parameter free one.
-- Sharpen the examinable idea: complexity that matters is not parameter count but the *size of the reachable function set* — exactly the effective-parameters notion from Unit 12. Say "parameter count lies; constrained capacity is the truth," and connect the two units explicitly.
-- Misconception to preempt: students equate "fewer weights" with "simpler." Reframe with the physics-constrained-vs-free example — constraints, not parameter count, set effective complexity.
-- Transition: "Make 'simpler' quantitative — information theory: MDL." 
-:::
-
-## Information-theoretic perspective
-
-- **Minimum Description Length** (MDL): the best model minimizes total description length = model complexity + data residual.
-- Physics priors reduce the model complexity term — less needs to be learned from data.
-- This provides a formal justification for why physics-informed models generalize better.
-
-::: {.notes}
-- Give the one formula as the rigorous version of Occam: total description length = model complexity + residual to describe the data; the best model minimizes the sum. Physics priors shrink the *model-complexity* term — fewer bits must be learned because the equation already specifies them.
-- Examinable payoff sentence: "this is the formal reason physics-informed models generalize better with less data" — it is the MDL restatement of the entire statistical-balance argument. Put it on the board as the unit's theoretical thesis.
-- Keep rigor calibrated: state MDL conceptually (bits saved by the prior), do not derive coding theorems — foundations-for-engineers. One slide, big idea, move.
-- Transition: "Theory says small data should work — here is the empirical proof." 
+- 2-minute drill: students propose the trial form *before* the reveal; the skill is choosing a $B(x)$ vanishing at *both* ends ($A=0$ here since both BCs are zero).
+- Make them verify by substitution out loud — each endpoint kills a factor regardless of the NN. The verification habit is the exam-defensive skill.
+- Honest caveat to close the block: constructing $A, B$ is easy on intervals and boxes, genuinely hard on complex geometries — which is why soft enforcement still exists in practice.
+- Transition: "We now know *how* to constrain. The second piece of deferred math: *why* constrained models generalize — Occam and MDL."
 :::
 
 
-<!-- ===== §11. Small-data advantage of PINNs ===== -->
+<!-- ===== §4. NEW: why small data works ===== -->
 
-## Small-data advantage of PINNs
+## Why small data works: Occam's razor and MDL
+
+::: {.incremental}
+- **Occam**: among models fitting the data equally well, prefer the simplest.
+- The complexity that matters is not parameter count but the **size of the reachable function set** — a physics-constrained net with 100 parameters can be *effectively* simpler than a free one with 10 (effective parameters, Unit 12).
+- **Minimum Description Length**: best model minimizes (model complexity) + (data residual). Physics priors shrink the complexity term — the equation already specifies bits the data no longer must supply.
+- This is the formal reason physics-informed models generalize better with less data.
+:::
+
+::: {.notes}
+- Two old slides merged; ~4 min. The sharpened idea: "parameter count lies; constrained capacity is the truth." Connect explicitly to Unit 12's effective number of parameters.
+- MDL at engineer depth: total description length = model bits + residual bits; the physics prior pre-pays model bits. State it conceptually, no coding theorems.
+- This slide is the theoretical thesis of the unit (exam statement #8) — the statistical-balance figure from the recap is its picture.
+- Transition: "The empirical cash-out."
+:::
+
+## Small-data advantage in practice
 
 :::: {.columns}
 :::: {.column width="55%"}
 
 ::: {.incremental}
-- With only 10 labeled data points, a PINN enforcing the governing ODE can outperform a standard NN trained on 1000 points.
-- The physics residual provides supervision at every collocation point — effectively unlimited "free data."
-- **Physics feature engineering** also exploits domain knowledge: water/binder ratio is a derived physical variable that substantially improves concrete strength prediction.
+- With ~10 labeled points + the governing ODE, a PINN can outperform a standard NN trained on ~1000 points — every collocation point is free, exact supervision.
+- Same logic at the feature level: **water/binder ratio**, a derived physical variable, lifts concrete-strength $R^2$ from 0.800 to 0.834 with zero extra data [@mcclarren2021machine].
+- The right physics — as a residual or as a feature — is worth a pile of samples.
 :::
 
 ::::
 
 :::: {.column width="45%"}
-![Concrete compressive strength vs water/binder ratio (a physics-derived feature) and regression model output. Adding this domain variable improves \\(R^2\\) from 0.800 to 0.834. [@mcclarren2021machine]](images/mcclarren_ch5_fig12_concrete_water_binder_ratio.jpg){width=100%}
+![Concrete compressive strength vs water/binder ratio (a physics-derived feature) and regression model output. Adding this domain variable improves $R^2$ from 0.800 to 0.834. [@mcclarren2021machine]](images/mcclarren_ch5_fig12_concrete_water_binder_ratio.jpg){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- The headline result, stated as a number students will remember: ~10 labeled points + the governing ODE can beat a standard net on ~1000 points. Mechanism: every collocation point is "free, exact data" supplied by the physics — restate $J_{\text{physics}}$ needs no labels.
-- Examinable synthesis: this slide is the empirical cash-out of statistical balance + MDL + Occam — name all three as you say it so the theory blocks pay off rather than feeling abstract.
-- Materials anchor (the figure): water/binder ratio — a *derived physical variable* — lifts concrete-strength $R^2$ from 0.800 to 0.834 with no extra data. The right physics feature is worth a pile of samples; this also closes the loop back to enrichment.
-- Transition: "Data efficiency is one benefit — interpretability is the other." 
+- The headline number students remember: 10 points + physics beats 1000 points without. Name the mechanism once more — $J_{\text{physics}}$ needs no labels.
+- The concrete figure closes the loop back to enrichment: same budget argument, spent at the input side. Occam, MDL, statistical balance, and this slide are one argument in four costumes — say so.
+- Transition: "Last block: go past the loss entirely — physics welded into the architecture."
 :::
 
-## Explainability benefit
 
-:::: {.columns}
-:::: {.column width="55%"}
+<!-- ===== §5. NEW: physics in the architecture ===== -->
+
+## Beyond PINNs: physics in the architecture
 
 ::: {.incremental}
-- Physics-constrained models are more **interpretable**:
-  - The model respects known laws by design — no surprising violations.
-  - $\lambda$ quantifies the data-physics tradeoff.
-  - Residual analysis reveals where the model deviates from physics.
-- **Process corridors**: model the expected probability distribution of a process signal; points outside the corridor flag anomalies.
+- Taxonomy step (b) → (c): physics in the loss is **requested**; physics in the architecture is **guaranteed** — no $\lambda$, no residual, no violation possible.
+- **Neural operators** (DeepONet, FNO): learn maps between *function spaces* — solve a whole PDE family, then answer new instances in one forward pass.
+- **Hamiltonian NNs**: energy conservation by structure.
+- **Equivariant networks**: symmetry by structure.
 :::
-
-::::
-
-:::: {.column width="45%"}
-![2D probability corridor for time series. The shaded band encodes the normal process distribution; measurements outside it (red circles) are flagged as anomalies. [@neuer2024machine]](images/neuer_ch6_fig12_process_corridor.png){width=100%}
-::::
-::::
 
 ::: {.notes}
-- The argument: a physics-constrained model is interpretable *by design* — it cannot produce surprising law-violating outputs, $\lambda$ is a single meaningful trust dial, and the residual map literally shows *where* the model disagrees with physics. Contrast with post-hoc SHAP/saliency on a black box — here interpretability is structural, not bolted on.
-- Materials anchor (the figure): a process corridor — model the normal signal distribution, flag anything outside the band. This is physics-informed anomaly detection and ties forward to Unit 12's UQ/calibration framing; mention the link.
-- Examinable point: residual analysis is a *diagnostic*, not just a loss — high residual regions tell you where your physics or data is wrong. Frame it as a debugging tool engineers will actually use.
-- Transition: "Enough advantages — be honest about where this breaks. Three limitation slides." 
-:::
-
-## Limitations: when PINNs fail
-
-:::: {.columns}
-:::: {.column width="55%"}
-- **Incorrect physics**: if the governing equation is wrong, the PINN converges to a wrong solution.
-- **Multi-scale problems**: features at very different scales (e.g., boundary layers) cause conflicting gradients.
-- **High-dimensional PDEs**: collocation points scale exponentially.
-- **Convection-dominated PDEs**: PINN error increases sharply with the convection coefficient $\beta$ — standard soft-constraint training fails for large $\beta$ [@krishnapriyan2021characterizing].
-::::
-
-:::: {.column width="45%"}
-![Krishnapriyan et al. (2021) Fig. 1: PINN failure on the 1D convection equation. (a) Prediction error vs $\beta$; (b) exact solution for $\beta=30$; (c) PINN solution for $\beta=30$ — the network cannot learn the sharp advecting front. [@krishnapriyan2021characterizing]](images/krishnapriyan2021_fig1_convection_failure.png){width=100%}
-::::
-::::
-
-::: {.notes}
-- Lead with the cardinal sin, exam statement #10: wrong physics ⇒ a *confidently wrong* solution. Unlike a data model that just fits noise, a PINN actively converges to the solution of the equation you gave it — garbage equation in, authoritative garbage out. Say it bluntly.
-- Walk the figure (Krishnapriyan convection): error explodes as the convection coefficient $\beta$ grows — soft-constraint PINNs cannot learn sharp advecting fronts. Concrete, cited evidence that this is a real research limitation, not a footnote.
-- Examinable list to give them: incorrect physics, multi-scale/boundary-layer conflicts, exponential collocation cost in high-D, convection-dominated regimes. They should be able to name failure modes, not just successes — balanced understanding is the mark.
-- Transition: "Even with correct physics, the *optimization* itself fights you." 
-:::
-
-## Limitations: optimization challenges
-
-:::: {.columns}
-:::: {.column width="55%"}
-
-::: {.incremental}
-- Balancing \\(J_{\text{data}}\\) and \\(J_{\text{physics}}\\) is notoriously difficult.
-- **Gradient imbalance**: gradients of $J_{\text{physics}}$ (orange) dominate those of $J_{\text{data}}$ (blue) by orders of magnitude — the network ignores boundary conditions [@wang2021understanding].
-- **Stiff PDEs** cause training instability — physics-loss gradients can be very large.
-- **Spectral bias**: NNs learn low-frequency components first, struggle with high-frequency features.
-- Active area of research: improved architectures, training strategies, and adaptive $\lambda$ [@wang2021understanding].
-:::
-
-::::
-
-:::: {.column width="45%"}
-![Wang et al. (2021) Fig. 2: Back-propagated gradient histograms at each hidden layer for a PINN solving the Helmholtz equation. Gradients from $\nabla_\theta \mathcal{L}_u$ (data, blue) are orders of magnitude smaller than those from $\nabla_\theta \mathcal{L}_r$ (physics, orange) — a root cause of PINN training failure. [@wang2021understanding]](images/wang2021_fig2_gradient_pathology.png){width=100%}
-::::
-::::
-
-::: {.notes}
-- The root cause to teach (Wang et al. figure): the physics-loss gradients can dwarf the data-loss gradients by orders of magnitude, so SGD effectively ignores the data/BC term — a *gradient pathology*, not a modeling error. This is *why* naive $\lambda$ choice fails and adaptive balancing exists.
-- Add spectral bias: networks learn low frequencies first (callback to FFT/Fourier intuition), so high-frequency PDE features train painfully slowly — connects the failure to a property of NNs they already know.
-- Examinable framing: PINN training difficulty is largely an *optimization* problem (loss-balancing, conditioning, stiffness), distinct from the *modeling* failures of the previous slide. Keep the two limitation categories separate in their notes.
-- Transition: "And even when it trains correctly, it may simply be too expensive." 
-:::
-
-
-<!-- ===== §12. Limitations: computational cost ===== -->
-
-## Limitations: computational cost
-
-- Auto-diff through PDE residuals requires computing high-order derivatives — expensive.
-- Each training step evaluates physics at \\(M\\) collocation points — cost scales with domain size.
-- For complex 3D problems, PINNs can be slower than traditional solvers.
-- PINNs are most competitive when data is very scarce or when inverse problems are solved.
-
-::: {.notes}
-- The honest cost accounting: high-order auto-diff through the residual is expensive, and you pay it at *every* collocation point *every* step — for routine forward 3D problems a classical solver often wins outright. Do not let students leave thinking PINNs dominate FEM/CFD.
-- The examinable nuance: PINNs are competitive where classical methods are weak — *inverse* problems (unknown parameters/sources), data assimilation, and extreme data scarcity. Match the tool to the regime; that judgement is the takeaway.
-- Transition: "Loss-based physics has these ceilings — going deeper means baking physics into the *architecture*. The frontier." 
-:::
-
-## Beyond PINNs: architectural constraints
-
-- **Equivariant networks**: build symmetries (rotation, translation) into the architecture.
-- **Hamiltonian NNs**: parameterize the Hamiltonian; dynamics automatically conserve energy.
-- **Neural operators** (DeepONet, FNO): learn mappings between function spaces.
-- These embed physics more deeply than loss-based constraints.
-
-::: {.notes}
-- Frame as the move up the taxonomy: (b) loss penalty → (c) architecture. Physics in the loss is *requested*; physics in the architecture is *guaranteed* — equivariant nets, Hamiltonian nets, neural operators each satisfy a structural property by construction, no $\lambda$.
-- Examinable organizing idea: name the three and what each guarantees — equivariance (symmetry), HNN (energy conservation), neural operators (resolution-independent function→function maps). The next slides are one example of each; tell them the structure.
-- Transition: "First, the most general: networks that map *functions to functions* — neural operators, starting with DeepONet." 
+- The organizing sentence for the last 20 minutes: each of the next three slides guarantees one structural property — function→function maps (operators), energy conservation (HNN), symmetry (equivariance). One example each, then the wrap-up.
+- ML-PC unit 11 name-dropped all of these and deferred the math here — this is the debt being paid.
+- Transition: "Most general first: networks that map functions to functions."
 :::
 
 ## DeepONet: learning operators between function spaces
@@ -990,24 +517,23 @@ $$
 
 ::: {.incremental}
 - Standard NNs map vectors to vectors. **DeepONet** maps *functions* to functions: $G: u \mapsto G(u)$ [@lu2021learning].
-- **Branch net**: encodes the input function $u$ sampled at fixed sensor locations.
-- **Trunk net**: encodes the query location $y$ where the output is evaluated.
-- Output: $G(u)(y) = \sum_k b_k(u) \cdot t_k(y)$ — a learned dot product of branch and trunk embeddings.
-- Application: PDE solution operators (given an initial condition $u$, predict the solution field at any later time).
+- **Branch net** encodes the input function $u$ at fixed sensor locations; **trunk net** encodes the query location $y$.
+- Output: $G(u)(y) = \sum_k b_k(u) \cdot t_k(y)$ — a learned dot product.
+- Once trained, a **new** initial condition is solved by a single forward pass — no per-instance re-optimization, unlike a PINN.
 :::
 
 ::::
 
 :::: {.column width="50%"}
-![Lu et al. (2021) Fig. 1: DeepONet architectures. (A) Network for operator $G$. (B) Training data: input function $u$ at sensors $x_1,\ldots,x_m$, output $G(u)(y)$ at random $y$. (C) Stacked and (D) unstacked variants with branch and trunk networks. [@lu2021learning]](images/lu2021_deeponet_fig1_architecture.png){width=100%}
+![DeepONet architectures: (A) network for operator $G$; (B) training data — input function $u$ at sensors $x_1,\ldots,x_m$, output $G(u)(y)$ at random $y$; (C) stacked and (D) unstacked variants with branch and trunk nets. [@lu2021learning]](images/lu2021_deeponet_fig1_architecture.png){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- The conceptual leap to state clearly: ordinary nets map vectors→vectors; an *operator* net maps functions→functions, e.g. initial condition $u$ → full solution field $G(u)$. Once trained, a *new* IC is solved by a single forward pass — no re-optimization, unlike a PINN.
-- Walk the architecture as a learned bilinear form: branch encodes the input function (sampled at fixed sensors), trunk encodes the query location, output is their dot product $\sum_k b_k(u)\,t_k(y)$. The "sensors + query" split is the examinable structure.
-- Materials anchor: a trained microstructure→stress-field or process-parameter→thermal-history operator gives instant surrogates across a *family* of problems — the industrial reason operator learning matters.
-- Transition: "DeepONet learns the operator in physical space; FNO does it in *Fourier* space — and that changes everything." (next slide already has its own notes)
+- The conceptual leap: initial condition in, full solution field out — the operator, not one solution, is what is learned. Contrast with a PINN, which is re-optimized per problem instance.
+- The examinable structure is the branch/trunk split and the bilinear output $\sum_k b_k(u)\,t_k(y)$.
+- Materials anchor: a trained microstructure→stress-field or process-parameter→thermal-history operator is an instant surrogate across a *family* of problems — the industrial reason operator learning matters.
+- Transition: "Do the same in Fourier space and you get resolution invariance for free."
 :::
 
 ## Fourier Neural Operator (FNO)
@@ -1016,32 +542,25 @@ $$
 :::: {.column width="50%"}
 
 ::: {.incremental}
-- FNO learns PDE solution operators by parameterizing the convolution **in Fourier space** [@li2020fourier].
-- **Spectral convolution**: lift input to higher-dim representation → apply learned weights to low Fourier modes → transform back.
-- Resolution-invariant: trained at one resolution, evaluated at another.
-- State-of-the-art for Navier–Stokes, Darcy flow, and weather prediction.
-- Key advantage over PINN: inference is a single forward pass (no per-instance optimization).
+- FNO parameterizes the operator's convolution **in Fourier space** [@li2020fourier]: lift → learned weights on low Fourier modes → transform back.
+- **Resolution-invariant**: train at one grid, evaluate at another. SOTA for Navier–Stokes, Darcy flow, weather.
+- **PINO** [@li2024pino]: FNO operator + PINN-style physics residual — data-driven operator, physics-enforced.
+- **MeshGraphNets** [@pfaff2021mgn]: message-passing on unstructured meshes where the FFT does not apply — the industrial standard for CFD surrogates.
 :::
 
 ::::
 
 :::: {.column width="50%"}
-![Li et al. (2020) Fig. 2: **Top** — Full FNO architecture: input lifted by $P$, passed through $T$ Fourier layers, projected by $Q$. **Bottom** — One Fourier layer: spectral conv (left branch, keeps low-frequency modes) + local linear transform (right branch), summed and activated. [@li2020fourier]](images/li2020_fno_fig2_fourier_layer.png){width=100%}
+![FNO: **top** — input lifted by $P$, passed through $T$ Fourier layers, projected by $Q$; **bottom** — one Fourier layer: spectral convolution (keeps low-frequency modes) plus a local linear transform $W$, summed and activated. [@li2020fourier]](images/li2020_fno_fig2_fourier_layer.png){width=100%}
 ::::
 ::::
 
-::: {.fragment}
-**Beyond FNO**
-
-- **PINO** [@li2024pino] — pairs FNO's operator output with a PINN-style physics-residual loss. Closes the data-vs-physics trade-off: FNO learns from data, PINN enforces physics; PINO does both.
-- **GNN-based PDE solvers** (MeshGraphNets, [@pfaff2021mgn]) — for unstructured meshes where FNO's regular-grid FFT doesn't apply. Encode the simulation mesh as a graph; message-passing replaces convolution. Currently the standard for industrial CFD / fluid surrogates.
+::: {.notes}
+- Walk the figure once: the spectral path ($\mathcal{F} \to R \to \mathcal{F}^{-1}$) is a global convolution with learned low-mode weights; the $W$ path is local. Truncating to low modes is what buys resolution invariance — and connects to the spectral-bias story: here low frequencies are a *feature*, deliberately exploited.
+- PINO in one sentence bridges the unit's dichotomy: keep the operator's speed, add the residual's physics. GNN solvers are the answer when meshes are unstructured — one sentence each, no derivation.
+- Unifying view: DeepONet, FNO, PINO, MeshGraphNets are all *neural operators* — learned maps between function spaces.
+- Transition: "From function spaces to conservation laws: Hamiltonian networks."
 :::
-
-:::: {.notes}
-- PINO bridges the Unit 13 dichotomy (data-driven operator vs physics-loss): keep both, weighted.
-- GNNs for PDEs is the 2023–2024 industrial story — most production PDE-surrogate work outside academia uses graph-based methods because real engineering meshes aren't structured grids.
-- Unifying view: FNO, PINO, and GNN-PDE solvers are all *neural operators* — learned maps between function spaces, trained end-to-end.
-::::
 
 ## Hamiltonian Neural Networks (HNN)
 
@@ -1049,29 +568,28 @@ $$
 :::: {.column width="50%"}
 
 ::: {.incremental}
-- A vanilla NN predicts the next state of a dynamical system; energy is **not** conserved by construction.
-- **HNN** [@greydanus2019hamiltonian] learns the scalar Hamiltonian $\mathcal{H}(q,p)$; equations of motion follow from:
+- A vanilla NN predicting the next state does **not** conserve energy.
+- **HNN** [@greydanus2019hamiltonian]: learn the scalar Hamiltonian $\mathcal{H}(q,p)$; dynamics follow from
 :::
 
 $$\dot{q} = \frac{\partial \mathcal{H}}{\partial p}, \quad \dot{p} = -\frac{\partial \mathcal{H}}{\partial q}$$
 
 ::: {.incremental}
-- This **guarantees** energy conservation by the structure of the network, not by penalty.
-- Baseline NN spirals inward (violates conservation); HNN stays on the correct orbit.
+- Energy conservation holds **structurally** — exactly, for free, forever. No $\lambda$, no residual.
+- PINN = conservation *softly* via the loss; HNN = conservation *structurally* via the architecture.
 :::
 
 ::::
 
 :::: {.column width="50%"}
-![Greydanus et al. (2019) Fig. 1: Mass-spring system. **Top row**: ideal system and baseline NN prediction (inner spiral — energy loss). **Bottom row**: noisy observations and HNN prediction (correct circular orbit — energy conserved). [@greydanus2019hamiltonian]](images/greydanus2019_hnn_fig1_mass_spring.png){width=100%}
+![Mass-spring system: baseline NN prediction spirals inward (energy loss); the Hamiltonian NN stays on the correct orbit even when trained from noisy observations. [@greydanus2019hamiltonian]](images/greydanus2019_hnn_fig1_mass_spring.png){width=100%}
 ::::
 ::::
 
 ::: {.notes}
-- The cleanest example of "physics by construction": don't penalize energy drift — *predict the Hamiltonian* and obtain dynamics from Hamilton's equations, so symplectic structure and energy conservation hold *exactly*, for free, forever. No $\lambda$, no residual.
-- Land the figure as the proof: a baseline net spirals inward (bleeding energy) while the HNN stays on the true closed orbit *even from noisy data* — structure beats penalty. This is the visual that should stick.
-- Examinable contrast to put on the board: PINN = conservation enforced *softly* via the loss; HNN = conservation enforced *structurally* via the architecture. Same physics, different taxonomy slot ((b) vs (c)); say which is stronger and why.
-- Transition: "Energy was one symmetry — generalize 'build the symmetry in' to *any* group: equivariant networks." 
+- The cleanest example of "requested vs guaranteed" — the contrast to put on the board: same physics (energy conservation), different taxonomy slot, and the architectural version is strictly stronger.
+- Let the figure carry it: baseline spirals inward bleeding energy; HNN stays on the closed orbit even from noisy data. Structure beats penalty.
+- Transition: "Energy is one invariance. Generalize 'build the symmetry in' to any group."
 :::
 
 ## Group-equivariant neural networks
@@ -1080,65 +598,52 @@ $$\dot{q} = \frac{\partial \mathcal{H}}{\partial p}, \quad \dot{p} = -\frac{\par
 :::: {.column width="55%"}
 
 ::: {.incremental}
-- A function $f: X \to Y$ is **equivariant** to a group $G$ if applying a symmetry $g \in G$ before or after $f$ gives the same result [@cohen2016group]:
-:::
-
-$$f(g \cdot x) = g \cdot f(x)$$
-
-::: {.incremental}
-- Standard CNNs are equivariant to **translation**. G-CNNs extend this to rotations, reflections, and other symmetry groups.
-- Applications: molecular property prediction (rotational symmetry of atoms), crystallography, medical image segmentation.
-- **Key benefit**: fewer parameters needed — symmetry-related outputs are tied by the group structure, not learned independently.
+- $f$ is **equivariant** to group $G$ if $f(g \cdot x) = g \cdot f(x)$ [@cohen2016group] — transform the input, the output transforms the same way.
+- CNNs are already the famous case (translation). G-CNNs extend to rotations, reflections, crystal point groups.
+- Molecular and crystal property prediction **must** be rotation/permutation equivariant — energy cannot depend on the lab frame.
+- Symmetry-tied weights ⇒ fewer parameters, less data, and the constraint can **never** be violated.
 :::
 
 ::::
 
 :::: {.column width="45%"}
-![Commutative diagram defining equivariance: applying the group action $g\cdot$ in the input space $X$ then mapping by $f$ gives the same result as mapping first then applying $g\cdot$ in the output space $Y$. (Wikimedia Commons, CC-BY-SA 3.0, David Benbennick 2005)](images/wikimedia_equivariant_commutative_diagram.png){width=70%}
+![Commutative diagram defining equivariance: applying the group action $g\cdot$ then mapping by $f$ equals mapping first, then applying $g\cdot$ in the output space. (Wikimedia Commons, CC-BY-SA 3.0, David Benbennick 2005)](images/wikimedia_equivariant_commutative_diagram.png){width=70%}
 ::::
 ::::
 
 ::: {.notes}
-- Define equivariance physically before the formula: "transform the input, the output transforms the same way" — $f(g\cdot x)=g\cdot f(x)$. A CNN is already the famous case (translation equivariance); G-CNNs extend it to rotations/reflections/crystal groups.
-- Materials anchor that lands with this cohort: molecular and crystal property prediction *must* be rotation/permutation equivariant — energy can't depend on how you orient the lab frame. Building the symmetry in means it is never violated and far fewer parameters/data are needed (symmetry-tied weights). This is the deep reason equivariant nets dominate ML for atoms.
-- Examinable synthesis: this is the architectural extreme of the unit's thesis — maximum physics injected, maximum data saved, zero possibility of violating the constraint. Place it explicitly at the right end of the spectrum slide.
-- Transition: "That's the method arc. Let's separate what's lecture-essential from exercise material." 
+- Define physically before the formula, then point at the diagram: both paths around the square must agree.
+- This is the architectural extreme of the unit's thesis — maximum physics injected, maximum data saved, zero possibility of violation — and the deep reason equivariant nets dominate ML for atoms (ML-PC unit 11's elastic-tensor pattern is the lab instance).
+- Close the arc: we walked the spectrum end to end — enrichment (inputs) → PINN (loss) → HNN/equivariance/operators (architecture). Every method they meet later slots onto this line.
+- Transition: "What you will build in the exercise, then the exam contract."
 :::
 
-## Lecture-essential vs exercise content split
 
-- **Lecture**: PIML philosophy, data enrichment, PINN loss, Lagaris substitution, Occam's razor, limitations.
-- **Exercise**: constrained NN regression (symmetry penalty), PINN for first-order ODE, lambda sweep.
+<!-- ===== §6. Wrap-up ===== -->
+
+## Exercise setup
+
+::: {.incremental}
+- **Part A**: enforce a known symmetry ($f(\mathbf{x}) = f(-\mathbf{x})$) via loss penalty in a regression task — taxonomy (b) on a toy.
+- **Part B**: build a PINN for $\mathbf{x}' = \mathbf{x}$, $\mathbf{x}(0) = \mathbf{1}$ with the Lagaris substitution; compare to $e^t$ — you have the model answer from today.
+- **Part C (bonus)**: add noisy data and sweep $\lambda$ — cause the under- and over-constraining failure modes *on purpose*.
+- Practical heads-up: use a **smooth activation**, or Part B's residual is garbage.
+:::
 
 ::: {.notes}
-- Be explicit about the contract: the lecture owns the *concepts* (PIML philosophy, enrichment, PINN loss, Lagaris, Occam/MDL, limitations); the exercise owns the *implementation*. This slide is a study-guide signpost, not new content — say so and don't dwell.
-- Point at the exam slide forward link: everything in the "lecture-essential" column maps to the 10 must-know statements. Tell them the exercise solidifies but does not extend the examinable set.
-- Transition: "Here's exactly what you'll build in the exercise." 
+- Set expectations, don't teach. Part C's deliverable is the *intuition* for the $\lambda$ failure modes, not a converged number.
+- The lecture owns the concepts (PIML spectrum, PINN loss, Lagaris, Occam/MDL, limitations, architectural constraints); the exercise owns the implementation. The exercise solidifies but does not extend the examinable set.
+- Pre-empt the classic submission bug one last time: ReLU kills the second derivative.
+- Transition: "The exam contract, in ten statements."
 :::
-
-## Exercise setup summary
-
-- **Part A**: enforce a known symmetry (e.g., \\(f(\mathbf{x}) = f(-\mathbf{x})\\)) via loss penalty in a regression task.
-- **Part B**: build a PINN for \\(\mathbf{x}' = \mathbf{x}\\), \\(\mathbf{x}(0) = \mathbf{1}\\) using Lagaris substitution; compare to analytical \\(e^t \mathbf{1}\\).
-- **Part C (Bonus)**: add noisy data points and explore the effect of \\(\lambda\\) on data-physics tradeoff.
-
-::: {.notes}
-- Set expectations, don't teach: Part A (symmetry penalty) instantiates taxonomy (b) on a toy regression; Part B (Lagaris for $x'=x$) is the exact construction we derived live — they have the model answer; Part C (noisy data + $\lambda$ sweep) makes the data–physics trade-off tactile.
-- Tell them the learning goal of Part C explicitly: *feel* the $\lambda$ failure modes from the "Choosing $\lambda$" slide by causing them deliberately — under- and over-constraining on purpose. The intuition is the deliverable, not a converged number.
-- Practical heads-up: use a *smooth* activation (callback) or Part B's residual is garbage — the most common submission bug, pre-empt it now.
-- Transition: "Condense the whole unit into the ten statements you must own for the exam." 
-:::
-
-
-<!-- ===== §13. Exam-aligned summary: 10 must-know statements ===== -->
 
 ## Exam-aligned summary: 10 must-know statements
 
 1. Physics-informed ML embeds domain knowledge to reduce data requirements.
 2. Data enrichment adds physics-derived features (FFT, derivatives) to raw inputs.
-3. The PINN loss is \\(J = J_{\text{data}} + \lambda \cdot J_{\text{physics}}\\).
-4. \\(J_{\text{physics}}\\) is the PDE/ODE residual evaluated at collocation points — no labels needed.
-5. \\(\lambda\\) balances data fidelity against physics compliance.
+3. The PINN loss is $J = J_{\text{data}} + \lambda \cdot J_{\text{physics}}$.
+4. $J_{\text{physics}}$ is the PDE/ODE residual evaluated at collocation points — no labels needed.
+5. $\lambda$ balances data fidelity against physics compliance.
 6. The Lagaris substitution enforces boundary conditions exactly by construction.
 7. Auto-diff computes exact derivatives of NN outputs w.r.t. inputs for physics residuals.
 8. Physics constraints act as informed regularization, reducing the hypothesis space.
@@ -1146,10 +651,10 @@ $$f(g \cdot x) = g \cdot f(x)$$
 10. Incorrect physics in PINNs leads to confidently wrong predictions — always validate.
 
 ::: {.notes}
-- This is the assessment contract — read each statement and name the slide it came from so students can self-audit their notes in real time. If they can defend all ten in a sentence each, they are exam-ready; that is the explicit bar.
-- Stress the three highest-value items: #3 (the PINN loss — write it blind), #6 (Lagaris enforces BCs by construction — derive it), #10 (wrong physics ⇒ confidently wrong — the maturity point). These are the most probable exam targets.
-- Misconception sweep: re-hit the two stubborn ones — collocation ≠ data points (#4), and "more physics/larger $\lambda$" is not automatically better (#5). Last chance to correct them before the exam.
-- Transition: "Reading to bridge into the next unit." 
+- The assessment contract — read each statement and name the slide it came from so students can self-audit in real time. Defend all ten in a sentence each = exam-ready.
+- Highest-value three: #3 (write the loss blind), #6 (derive Lagaris), #10 (the maturity point).
+- Last misconception sweep: collocation ≠ data points (#4); larger $\lambda$ is not automatically better (#5).
+- Transition: "Reading, and the bridge to the final unit."
 :::
 
 <!-- BEGIN prev-next -->
@@ -1176,7 +681,7 @@ $$f(g \cdot x) = g \cdot f(x)$$
 :::
 
 ::: {.notes}
-- Don't just point at the bibliography — assign with intent: Raissi 2019 (the PINN paper, read for the loss formulation and Burgers result) and the Neuer Ch. 6 material (enrichment + Lagaris, matched to this lecture). Krishnapriyan 2021 and Wang 2021 are the "why it fails" reading for students who want depth.
-- Give the forward bridge in one sentence so the next unit isn't a cold start — connect physics-informed *constraints* to the course's closing themes (explainability/limits/trust): a model that respects physics is one input to a trustworthy system, not the whole story.
-- Keep it under a minute — this is a signpost slide; the intellectual work was the previous 50. End on the unit's thesis restated: physics is the cheapest data you will ever have, used wisely and validated always.
+- Assign with intent: Raissi 2019 for the loss formulation and Burgers result; Neuer Ch. 6 for enrichment + Lagaris; Krishnapriyan 2021 and Wang 2021 as the "why it fails" depth reading.
+- Forward bridge in one sentence: a model that respects physics is one input to a trustworthy system, not the whole story — Unit 14 asks whether we can *trust* what we built.
+- End on the unit's thesis: physics is the cheapest data you will ever have — used wisely and validated always.
 :::

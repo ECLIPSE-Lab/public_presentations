@@ -1,0 +1,759 @@
+<!--
+Overflow archive for Unit 14 — slides cut from 01_intro.qmd to make room for the module recap.
+Not rendered (leading underscore). Slides that were MERGED (not dropped) live in condensed form
+in 01_intro.qmd; their full originals are in git history of that file.
+Contents, in original deck order: 02 (MG arc), 05 (why §A2 exists), 14–15 (constraints in
+regression head / generative model), 18–19 (case studies MoS₂ + Ni-Co-Cr), §C (PINNs, slides
+20–23), 25 (sim–exp gap), 30 (silent extrapolation), 37 (other self-driving labs), 41 (minimum
+viable loop), §F (FAIR + model cards, slides 42–44), §G (2026 outlook, slides 45–48), 51 (reading list).
+-->
+
+## 02. The MG Arc in One Slide
+
+::: {.columns}
+::: {.column width="50%"}
+**What we built**
+
+- **U2–U4:** QM/QC postulates, electronic structure, thermo, classical atomistic simulation. The physics substrate.
+- **U6–U7:** local atomic environments, descriptors, and crystal graphs. The representation substrate.
+- **U8–U10:** regression, NN models, learned representations. The predictive substrate.
+:::
+::: {.column width="50%"}
+**Where we ended**
+
+- **U11–U12:** latent spaces and clustering. Discovery vs labelling, manifold geometry.
+- **U13 (lecture cancelled — core folded into §A2 today):** convex hull; Gaussian processes; acquisition functions and Bayesian optimisation; the active-learning loop.
+- **U14 today:** the integration that makes U8–U13 a *system* rather than a pile of notebooks.
+:::
+:::
+
+::: {.notes}
+**Why repeat the arc.** Some students will only have shown up half the weeks. The closing slide of the course needs to say "here is everything you missed if you missed any of it." Five seconds per unit, twelve units, ninety seconds total.
+
+**Connections to draw aloud.** U6 (local atomic environments) and U10 (learned representations) are the two ways to feed structure into U8's regression head. U11's latent space is what U13's GP kernel sits on. U13's BO loop is what §E's autonomous lab calls every iteration. U14 §B's constraints sit between U13's surrogate and the synthesis step. Every unit served the next.
+
+**The honest reading of the arc.** This is *not* a clean story where each unit perfectly enabled the next. There are gaps — most importantly between U13's "we have a calibrated proposal" and U14's "we have a synthesised material." That gap is what §E will spend twenty minutes on.
+
+**The exam-framing version.** The arc is the exam blueprint. A typical exam question takes a piece of one unit and asks how it connects to a piece of another — "given a U13 GP posterior, how does a U14 §B feasibility filter change the acquisition ranking?" Students who understand the arc can answer; students who memorised single units cannot.
+:::
+
+## 05. Why §A2 Exists (Week 13 was cancelled)
+
+::: {.columns}
+::: {.column width="50%"}
+**What happened**
+
+- The Week-13 lecture (uncertainty-aware discovery) was **cancelled**.
+- Its *indispensable* core is folded in here: uncertainty, Gaussian processes, acquisition, the discovery loop.
+- Everything in §B–§E **depends** on this — constraints sit on an *acquisition function*; trust sits on a *posterior*; the autonomous lab runs a *BO loop*.
+:::
+::: {.column width="50%" .fragment}
+**What we keep vs. drop**
+
+- **Keep (today):** aleatoric / epistemic, GP surrogate, EI / UCB / TS, convex-hull-aware BO, the loop, deep ensembles.
+- **Dropped:** database / convex-hull recap (you have it from U4–U5), sparse / multi-fidelity / batch GP detail, conformal prediction.
+- ~12 minutes. A working foundation, not the full unit.
+:::
+:::
+
+::: {.notes}
+**Say it plainly.** "Week 13 did not happen. You did not lose it — the half of it that the rest of today needs is right here, compressed. The half you can read on your own is in the Week-13 deck on the shared drive, which is optional reference."
+
+**Why fold rather than self-study.** There is almost no single textbook that covers materials-specific Bayesian optimisation at the right level; self-study would scatter you across papers. So the core is taught, not assigned.
+
+**Set expectations.** Six slides, one worked intuition each. If you took MFML, you saw the general uncertainty machinery in MFML W13; this is the materials-discovery instantiation.
+:::
+
+## 14. Constraints in the Regression Head
+
+::: {.columns}
+::: {.column width="50%"}
+**Composition simplex via softmax**
+
+- Last layer: $\mathbf{z} \in \mathbb{R}^{|\text{elements}|}$.
+- Output: $x_i = \mathrm{softmax}(\mathbf{z})_i$.
+- Guarantees $x_i \geq 0$, $\sum_i x_i = 1$ — *exactly* on the simplex.
+- Cost: zero. Use it everywhere [@goodfellow2016deep].
+:::
+::: {.column width="50%"}
+**Charge-balance head for ionic compounds**
+
+- Two output heads: cation fractions $\mathbf{c}$, anion fractions $\mathbf{a}$, both simplex.
+- Charge-balance constraint: $\sum_i c_i z_i^{+} + \sum_j a_j z_j^{-} = 0$.
+- Enforce by *projecting* the joint output onto the constraint hyperplane.
+- Or: parameterise only the unconstrained degrees of freedom.
+:::
+:::
+
+::: {.notes}
+**Softmax is the cheapest win in materials ML.** If your composition output is not on a softmax, your composition output is wrong. Vanilla regressors output unnormalised vectors that get hand-normalised post-hoc — and the hand-normalisation step is where bugs live (negative fractions zeroed out, sums of 1.03 silently rescaled). Use softmax. End of discussion.
+
+**The "parameterise only unconstrained DOF" trick.** For a 5-element ionic system with charge balance, you have 5 element fractions but only 4 free parameters (sum = 1) and effectively 3 once charge balance is imposed. You can either parameterise 5 with two projections, or parameterise 3 directly via a clever reparameterisation. The latter is cleaner but harder to design; the former is easier and almost always good enough.
+
+**Equivariant message passing — name them so students recognise them.** NequIP (Batzner 2022), MACE (Batatia 2022), Allegro (Musaelian 2023), eSEN, ORB. These are E(3)-equivariant graph neural networks: rotating / translating / reflecting the input rotates / translates / reflects the output, *exactly*, by construction. They are the architectural-prior gold standard for atomic-system regression in 2026.
+
+**A common student bug.** Outputting fractions on a softmax and then computing a $\sum_i x_i$-related quantity downstream that *also* normalises. Now the gradient signal is muddled. Pick one normalisation point.
+:::
+
+## 15. Constraints in the Generative Model
+
+::: {.columns}
+::: {.column width="50%"}
+**Latent-space projection**
+
+- Sample $z \sim p(z)$.
+- Project $z$ onto the *feasible-decoded* manifold before decoding.
+- Equivalently: train decoder with feasibility-aware reconstruction loss; samples land on $\mathcal{F}$ by construction.
+:::
+::: {.column width="50%"}
+**Discriminator / score-based filter**
+
+- Train a feasibility classifier $f_\phi : \text{candidate} \to [0, 1]$ on stable-vs-unstable Materials Project entries.
+- Reject samples with $f_\phi(x) < \tau$.
+- 2024–2026: **diffusion guidance** with $f_\phi$ as the gradient signal during sampling — fast, modular [@goodfellow2016deep].
+:::
+:::
+
+::: {.notes}
+**The 2024–2026 development to flag.** Diffusion models with classifier guidance changed the field. Instead of training a constrained generative model from scratch (expensive, tied to one constraint), you train an unconstrained diffusion model *once* and add classifier-guidance gradients $\nabla_x \log f_\phi(x)$ during sampling. Switching constraints means switching $f_\phi$, not retraining the diffusion model. This is now the default for most materials generative work in 2026.
+
+**The "feasibility classifier" trap.** $f_\phi$ is itself a learned model. It has its own OOD failure modes. A feasibility classifier trained on Materials Project will reject anything Materials Project would not have selected — including some genuinely novel-but-feasible candidates. The classifier is a useful filter, not an oracle.
+
+**Material-specific generative models in 2026.** CDVAE (Xie 2022), DiffCSP (Jiao 2023), MatterGen (Microsoft, Zeni 2024), GNoME [@merchant2023scaling]. Each handles symmetry / stoichiometry differently — CDVAE uses periodic-boundary-aware decoders, DiffCSP uses fractional-coordinate diffusion, MatterGen uses adjacency-matrix joint diffusion. The constraint-handling architecture is increasingly the differentiating feature.
+
+**Connecting to U11 / U12.** The latent space of U11 is the same object as the diffusion latent here. A "feasible-decoded manifold" is a subset of U11's manifold restricted by the constraint. Visualising it (t-SNE, UMAP from U11) shows where the constraint cuts the space.
+:::
+
+## 18. Case Study 1 — MoS₂ Stoichiometry in a Generative Model
+
+::: {.columns}
+::: {.column width="50%"}
+**Setup**
+
+- VAE trained on transition-metal-dichalcogenide (TMD) compositions.
+- Latent space $z \in \mathbb{R}^{16}$.
+- Decoder outputs (M-fraction, S-fraction, structure features).
+- Sample 1000 candidates.
+:::
+::: {.column width="50%"}
+**Without vs with the simplex head**
+
+- **Vanilla:** $\sim$30% off-stoichiometry (M:S not 1:2 or close).
+- **Two-head + softmax:** M-fraction and S-fraction each on simplex, joint constraint $2c_M = c_S$ enforced via reparameterisation.
+- $\sim$95% physically valid; expressivity preserved.
+- No measurable degradation on reconstruction error.
+:::
+:::
+
+::: {.notes}
+**Why this case study.** TMDs are simple enough to do on the board, important enough that students recognise them (MoS₂, WS₂, MoSe₂ — 2D semiconductor materials, exam-relevant for U11's latent-space examples). The constraint is non-trivial — it's not just "softmax over composition," it's *fixed-stoichiometry-class* compositions (1:2 chalcogenides).
+
+**The reparameterisation trick.** For a fixed M:S = 1:2 ratio, the two-element composition has *one* free parameter (which metal). Parameterise $\theta \in \mathbb{R}^{|\text{metals}|}$ as a softmax over metals; set $c_M = \mathrm{softmax}(\theta) / 3$ and $c_S = 2 c_M$. The constraint is structural, not enforced.
+
+**The "expressivity preserved" claim — said with care.** Adding architectural constraints sometimes degrades expressivity. The check: compare reconstruction loss on a held-out validation set with and without the constraint head, on data that *already satisfies* the constraint. If the constrained model is worse, the parameterisation is wrong. If the two are equal (within noise), the constraint is free.
+
+**The "not measurable degradation" finding generalises.** Across most materials applications I have seen, well-designed architectural constraints cost ≤1% in held-out fit and recover ≥20% in feasibility rate. Never a bad trade.
+
+**Where this kind of system fails.** When the constraint is *uncertain* — e.g. "MoS₂ but with sulfur vacancies that are sometimes 5% and sometimes 10%." A hard 1:2 constraint excludes vacancy-laden samples. Either widen the feasibility set or accept that this is an off-stoichiometry-tolerant problem and use a soft penalty.
+:::
+
+## 19. Case Study 2 — Alloy Composition in a BO Loop
+
+::: {.columns}
+::: {.column width="50%"}
+**Setup**
+
+- U13 BO loop on ternary Ni-Co-Cr alloy hardness.
+- Acquisition: EI on a GP surrogate.
+- Decision variable: composition $(x_{\text{Ni}}, x_{\text{Co}}, x_{\text{Cr}})$.
+:::
+::: {.column width="50%"}
+**Unconstrained vs simplex acquisition**
+
+- **Unconstrained box** $[0, 1]^3$: returns recipes summing to 0.94 or 1.07. Hand-normalisation introduces bias.
+- **Simplex** via reparameterisation $(x_1, x_2)$, $x_3 = 1 - x_1 - x_2$, with $x_i \geq 0$: returns valid recipes; **regret curve unchanged**.
+- *No acquisition cost; large correctness gain.*
+:::
+:::
+
+::: {.fragment}
+> **Generalisable lesson:** parameterise the constraint into the search space, do not impose it via post-hoc rescaling.
+:::
+
+::: {.notes}
+**The "hand-normalisation introduces bias" point.** Two ways to "fix" a recipe summing to 1.07: (a) divide by 1.07, or (b) clip the largest component until the sum is 1. Both change the relative composition. The model's acquisition optimum was at (0.4, 0.4, 0.27); after rescaling it becomes (0.37, 0.37, 0.25). That is a *different recipe*. The model's acquisition logic was based on a point we never synthesised.
+
+**Why the reparameterisation works.** Two free parameters $(x_1, x_2)$ on the 2-simplex (the triangle $x_1 + x_2 \leq 1$, $x_i \geq 0$) is a complete parameterisation of the ternary composition. The third component is bookkeeping. The GP kernel sits on $(x_1, x_2)$, EI is computed there, the optimum is on the simplex by construction.
+
+**Generalisation to higher dimensions.** A $K$-element alloy lives on the $(K-1)$-simplex. Parameterise via a softmax of $(K-1)$ unbounded parameters, or via the stick-breaking construction. Either is fine; pick one and be consistent across the codebase.
+
+**The "regret curve unchanged" finding — the good news.** Imposing the constraint correctly does not slow learning. The BO loop converges at the same rate; it converges to a *valid* optimum. Wins on both axes.
+
+**The bad-day version of this case study.** A real Ni-Co-Cr campaign in our group (years ago, pre-realignment). The first six iterations used unconstrained box acquisition. Three of the proposed recipes were unsynthesisable as written. We lost a week. The constraint-aware version was retrofitted in an afternoon; the rest of the campaign ran cleanly.
+:::
+
+# §C · MFML W14 PINN Recap and Materials Applications {.section}
+
+## 20. PINN in One Slide (MFML W14 reminder)
+
+::: {.columns}
+::: {.column width="50%"}
+**The PINN loss**
+
+$$\mathcal{L}_{\text{PINN}} = \mathcal{L}_{\text{data}} + \lambda_r \|\mathcal{N}[u_\theta]\|^2 + \lambda_b \|\mathcal{B}[u_\theta]\|^2$$
+
+- $u_\theta$: neural network approximating the field $u(x, t)$.
+- $\mathcal{N}[\cdot]$: PDE residual operator.
+- $\mathcal{B}[\cdot]$: boundary / initial condition operator.
+- Backprop through $\mathcal{N}[u_\theta]$ via autograd [@neuer2024machine].
+:::
+::: {.column width="50%"}
+**What PINN gives you**
+
+- A mesh-free, differentiable representation of $u(x, t)$.
+- A natural framework for **inverse problems** (infer parameters of $\mathcal{N}$).
+- **Pointer:** soft-constraint balancing, training stability, NTK reweighting — all MFML W14. Not re-taught here.
+:::
+:::
+
+::: {.notes}
+**Why this slide is *one* slide.** The PINN derivation, training stability tricks, soft-constraint balancing, NTK theory, and the canonical PDE benchmark suite are all twenty slides of MFML W14. Today is materials genomics, not PINN week. The question I am answering today is: what do PINNs do for *materials* that other tools do not?
+
+**The autograd magic in two sentences.** PINN's trick: $\mathcal{N}[u_\theta]$ contains derivatives of $u_\theta$ w.r.t. $x, t$. Compute those via autograd through the network. Then $\|\mathcal{N}[u_\theta]\|^2$ is a normal scalar loss. Backprop. Done.
+
+**The soft-constraint nature of PINN.** $\lambda_r$ and $\lambda_b$ are exactly the soft-penalty $\lambda$ from §B slide 17. PINN training is *the* canonical example of soft-penalty constrained learning. The MFML W14 deck spends a whole section on $\lambda$-balancing because of this — and that section is **not in MG**.
+
+**MFML W14 cross-link, said aloud.** "If you sat through MFML W14 yesterday, you saw the loss landscape of PINNs is dominated by the $\lambda_r / \lambda_b$ ratio, and you saw three adaptive-$\lambda$ schemes (NTK reweighting, gradient-norm balancing, self-adaptive PINN). I assume that. If you did not sit through it, the deck is on the shared drive. Read it tonight if §C confuses you."
+
+**Why PINNs and §B are the same idea.** PINNs are §B's "soft penalty in the loss" applied to a PDE constraint. Stoichiometry is a discrete constraint with a softmax. PDE residuals are a continuous constraint with autograd. Same family, different objects.
+:::
+
+## 21. Inverse-Problem Framing for Materials
+
+::: {.columns}
+::: {.column width="50%"}
+**Forward problem**
+
+- Given parameters $\theta_{\text{phys}}$ (diffusivity, conductivity, viscosity, mobility).
+- Solve the PDE $\mathcal{N}[u; \theta_{\text{phys}}] = 0$.
+- Return $u(x, t)$.
+- Classical PDE solvers do this fast and well.
+:::
+::: {.column width="50%"}
+**Inverse problem (where PINNs shine)**
+
+- Given measurements $\{u(x_i, t_i)\}$.
+- Infer the *unknown* $\theta_{\text{phys}}$.
+- PINN parameterises both $u_\theta(x, t)$ and $\theta_{\text{phys}}$ simultaneously; one optimisation.
+- Output: a consistent field *and* parameters.
+:::
+:::
+
+::: {.notes}
+**Why inverse problems are the PINN sweet spot for materials.** Forward solves are well served by FEM / finite-volume / spectral methods that have been engineered for fifty years. PINNs are typically slower and less accurate as forward solvers. Where they win is when *parameters are unknown* — and you have to jointly fit field and parameters from sparse, noisy measurements. That is the materials-characterisation regime: scattered DIC strain measurements, EBSD grain-boundary motion, in-situ XRD-tracked phase change.
+
+**The data-assimilation interpretation.** PINN inverse problems are continuous-physics data assimilation: blend a sparse measurement field with a known PDE structure to get a consistent picture. Compare to ensemble-Kalman / variational data assimilation in geophysics — same idea, different field.
+
+**Why the consistency matters.** A naïve regression of $u$ from sparse measurements gives you $u$ but no $\theta_{\text{phys}}$. A naïve fit of $\theta_{\text{phys}}$ to a forward solver matched against measurements is iterative and slow. PINN does both at once: $u_\theta$ is constrained to satisfy the PDE *with the inferred $\theta_{\text{phys}}$*, automatically. The output is a self-consistent estimate.
+
+**The honest caveat.** Inverse problems are *ill-posed* — multiple ($u, \theta_{\text{phys}}$) pairs can fit measurements. PINN does not fix that. You still need regularisation (priors on $\theta_{\text{phys}}$), enough measurements, and uncertainty quantification (deep ensembles or Bayesian PINN, MFML W14 has the details).
+:::
+
+## 22. Two Materials Uses Worth Knowing
+
+::: {.columns}
+::: {.column width="50%"}
+**Microstructure homogenisation**
+
+- Heterogeneous strain field measured by digital image correlation (DIC) on a polycrystal.
+- Forward: elasticity PDE with grain-resolved stiffness tensor $C(x)$.
+- Inverse: infer effective $C^{\text{eff}}$ such that the PDE residual is small *and* matches measured strain.
+- PINN naturally enforces compatibility *and* equilibrium.
+:::
+::: {.column width="50%"}
+**Phase-field parameter inference**
+
+- Time-resolved microstructure data (in-situ TEM, 4D-STEM, optical).
+- Phase-field PDE: $\partial_t \phi = -M \delta F / \delta \phi$.
+- Unknowns: mobility $M$, interface energy $\sigma$, double-well height.
+- PINN infers $\{M, \sigma, \dots\}$ that reproduce observed phase-boundary motion.
+:::
+:::
+
+::: {.notes}
+**Why these two examples.** Both are *active research* in 2024–2026, both are materials-genomics-relevant (homogenisation feeds into multiscale property prediction; phase-field underpins synthesis simulation), and both are honest fits for PINN — sparse measurements, known PDE, unknown parameters.
+
+**Microstructure homogenisation — the operational point.** Classical homogenisation requires a representative volume element (RVE) and many forward solves over RVE realisations. PINN can ingest *one* DIC dataset directly and infer effective parameters without an RVE construction. That is faster *and* more grounded in measurement. Caveat: only works if the DIC field is dense enough to constrain the PDE.
+
+**Phase-field parameter inference — the operational point.** Phase-field models have $\sim$3–8 free parameters per phase pair. Calibrating them is laborious. In-situ measurement of phase-boundary motion is now routine (4D-STEM, in-situ TEM). PINN closes the loop between measurement and parameter calibration. This is one of the cleanest "PINN for materials" success stories.
+
+**Forward link to U14 §E.** A calibrated phase-field model becomes part of the autonomous-lab loop: predict synthesis outcome (forward phase-field), select recipe (BO loop), execute (synthesis robot), measure (in-situ characterisation), update (PINN re-calibrates phase-field parameters). PINN is the parameter-update step in the multi-fidelity discovery cycle.
+
+**Where PINN does not fit.** Property prediction without a PDE — most static crystal properties (band gap, formation energy, magnetic moment). For those, U8–U10 surrogates with §B constraints dominate. PINN is the right tool when there *is* a PDE and the parameters are unknown.
+:::
+
+## 23. Why PINNs Are Not the Universal Hammer
+
+::: {.columns}
+::: {.column width="50%"}
+**Where PINNs fit**
+
+- A clean PDE with unknown parameters.
+- Sparse, noisy field measurements.
+- Mesh-free representation desirable.
+- Inverse problems with consistency constraints.
+:::
+::: {.column width="50%"}
+**Where PINNs *do not* fit**
+
+- Most static crystal-property prediction (no PDE) — U8–U10 plus §B.
+- Multi-step synthesis (no closed PDE) — phenomenological surrogate.
+- Catalysis, multi-phase synthesis, alloys with phase changes — PDE either unknown or unreliable.
+- High-stiffness PDEs — PINN training is brittle [@neuer2024machine].
+:::
+:::
+
+::: {.fragment}
+> **Closing rule:** use a PINN where you have a PDE you trust and parameters you do not. Otherwise use a §B-constrained surrogate.
+:::
+
+::: {.notes}
+**Why the field over-claimed PINNs 2018–2022.** The original Raissi/Perdikaris/Karniadakis paper [@raissi2019physics] was a beautiful proof of concept: a single-page formulation that handled forward and inverse PDE problems uniformly. The community ran with it and applied PINNs to *everything*. By 2022, the limitations were clear: training instability, $\lambda$-balancing pain, slower-than-FEM forward solves. The 2023–2026 consensus is *PINNs for inverse problems and parameter-poor regimes; PINNs not for forward solves where FEM works*.
+
+**The "high-stiffness PDE" failure.** PINNs struggle on PDEs with sharp gradients (shocks, boundary layers, fast-time-scale dynamics). The MLP-based $u_\theta$ has spectral bias: it learns low-frequency components first and high-frequency components slowly. Sharp features take very long to fit, or never fit. MFML W14 covers this; do not re-derive.
+
+**The materials-specific honest reading.** For most MG problems, the static-crystal-property regime dominates: predict $E_f$, $E_{\text{hull}}$, band gap, magnetic moment from structure. None of those is naturally a PDE. PINNs do not help. §B's stoichiometry / charge / symmetry constraints help. Choose the right tool.
+
+**When PINNs are the right tool, you know it.** You have an in-situ measurement of a field evolving over time, a PDE whose form you trust, and parameters that are uncertain. That is the situation slide 22 described. Outside it, do not reach for PINN. The lecture slot for §C is short *because* PINN's footprint in MG is narrow.
+
+**Pointer to MFML W14, one last time.** "If you want PINN-as-primary-tool, MFML W14 is your week. If you want PINN-as-occasional-tool inside a materials workflow, today is enough."
+:::
+
+## 25. The Simulation–Experiment Gap
+
+::: {.columns}
+::: {.column width="50%"}
+**Three sources of sim–exp gap**
+
+- **DFT functional bias:** PBE underestimates band gaps by 30–50%; SCAN closer; r²SCAN now standard.
+- **Geometry mismatch:** DFT-relaxed lattice parameters differ from as-synthesised by 1–3%.
+- **Property-definition mismatch:** "stability" in DFT = $E_{\text{hull}} \leq 0$ at 0 K, no entropy. "Stability" in synthesis = "we made it last week."
+:::
+::: {.column width="50%"}
+**Operational consequence**
+
+- A model trained on DFT does not predict measurement.
+- The "MAE 30 meV/atom on Materials Project" headline is *not* the error you see at the bench.
+- Calibrate against experimental ground truth or accept large drift.
+:::
+:::
+
+::: {.notes}
+**The functional-choice gotcha.** A surrogate trained on PBE-derived energies cannot predict SCAN energies (or experiment) without a systematic offset. The offset is *not* constant — it depends on the chemistry family, on whether the system is metallic / semiconducting, on van-der-Waals presence. Cross-functional surrogate use is dangerous unless you have measured the offset for your chemistry.
+
+**The geometry-mismatch gotcha.** DFT relaxation finds the local energy minimum at 0 K, no entropy, vacuum. As-synthesised crystals have thermal vacancies, finite-temperature lattice expansion, possible secondary phases. Lattice parameter differences of 1–3% are routine. For sensitive properties (band structure, magnetic ordering) those few percent matter.
+
+**The property-definition mismatch — the trickiest.** "$E_{\text{hull}} = 0$" predicts thermodynamic stability at 0 K under the convex hull as constructed from MP entries. It does not predict synthesisability — kinetics, available precursors, reaction pathway, vessel constraints. A-Lab's reported false-positive rate on "predicted stable" candidates was non-trivial precisely because $E_{\text{hull}}$ overpromises.
+
+**The experimentalist's heuristic.** "If your DFT screen says yes, your synthesis says yes 30–60% of the time." That is the order of magnitude. Plan capacity accordingly. Multi-fidelity active learning (§G slide 46) is partly designed to cope with this gap.
+
+**Honest closing.** The simulation–experiment gap is the *hardest* part of MG to fix. It is what U14 §E's autonomous lab loop has to navigate every iteration. There is no software fix; there is only careful per-family calibration, OOD detection, and an audit trail.
+:::
+
+## 30. Failure Mode — Silent Extrapolation
+
+::: {.columns}
+::: {.column width="50%"}
+**The trap**
+
+- Surrogate emits *low* variance on a novel chemistry.
+- Reason: the kernel does not represent the chemistry-family difference; "looks like training" in the kernel metric.
+- Ensemble disagreement is also low (all members were trained on the same in-distribution data).
+- All *surrogate-derived* trust signals say "go." All are wrong.
+:::
+::: {.column width="50%"}
+**Mitigation**
+
+- Independent OOD score *not* derived from the surrogate.
+- Conservative refusal: low surrogate variance + high OOD score = refuse.
+- Periodic blind audit: synthesise one or two flagged-OK-but-unusual candidates per month, measure the actual error.
+:::
+:::
+
+::: {.fragment}
+> **The lesson:** trust is a *system* property, not a *model* property. Combine signals.
+:::
+
+::: {.notes}
+**Why this slide is its own slide.** Silent extrapolation is *the* operational nightmare of materials ML in 2026. Loud extrapolation (high variance, "I don't know") the system handles. *Silent* extrapolation (low variance, "trust me," candidate is wrong) the system does not handle without external signals. The whole §D is built around this failure mode.
+
+**Where "blind audit" lives in the loop.** Once a quarter, sample 10 candidates that the surrogate confidently endorsed. Synthesise. Measure. Tabulate predicted-vs-actual. If the error rate is much higher than the surrogate's nominal calibrated coverage, the calibration is broken — re-calibrate, re-train, re-thresholds. This is the maintenance discipline that keeps a long-running loop honest.
+
+**War story (composite, real elements).** A perovskite stability campaign, surrogate trained on iodide-bromide compositions. Halfway through, the lab introduced a chloride-substituted candidate. Surrogate said "stable, narrow CI." Synthesis succeeded. Stability test ran out of spec at week 3. Post-mortem: chlorides were OOD, the surrogate had not seen them, the GP kernel did not distinguish them from bromides at the input level, no OOD score was being checked. After adding a Mahalanobis-on-composition gate, three more would-be-failures were caught before synthesis.
+
+**The "trust is a system property" framing.** A model has uncertainty. A *system* has trust. Trust = surrogate uncertainty + per-family calibration + OOD detection + feasibility filter + audit trail. Models give you signals; systems give you decisions. Always combine.
+:::
+
+## 37. Other 2023–2026 Self-Driving Labs
+
+::: {.columns}
+::: {.column width="50%"}
+**Photochemistry / catalysis**
+
+- Aspuru-Guzik group (Toronto, Vector Institute, then Harvard): self-driving labs for photocatalysts, organic reactions.
+- ChemOS / ChemBO software stack — open source.
+- Successful single-domain demos; cross-domain generalisation open.
+:::
+::: {.column width="50%"}
+**Energy materials, polymers, electrolytes**
+
+- MIT polymer-electrolyte loops.
+- IBM RXN for chemistry → battery and catalyst loops.
+- LBNL battery cycling automation.
+- Each is single-domain, single-platform; recipe portability across labs is *not* yet demonstrated.
+:::
+:::
+
+::: {.notes}
+**The shape of the 2023–2026 landscape.** Roughly a dozen serious autonomous-lab efforts, each in one domain (inorganic synthesis, organic synthesis, polymer chemistry, photochemistry, battery cycling, catalysis). Each has a working closed loop in its domain. None has demonstrated cross-domain transfer — the same loop running unmodified on a different chemistry / material class.
+
+**Aspuru-Guzik's role.** Alán Aspuru-Guzik's group at Toronto / Harvard pioneered much of the self-driving-lab software stack. ChemOS (workflow), ChemBO (Bayesian optimisation), Phoenics (acquisition functions) are open-source and used widely. If you want to build an autonomous lab in 2026, the Aspuru-Guzik stack is the most mature open option.
+
+**Why "single-domain, single-platform" is the honest 2026 caveat.** Each successful loop was tuned to its specific synthesis platform, its specific characterisation, its specific chemistry family. Moving the loop to a different platform requires re-engineering most of slides 33's components. Recipe portability — "this recipe works on platform A *and* platform B" — is the hard problem and is largely unsolved.
+
+**The "vendor lock-in" reality.** A working autonomous lab in 2026 typically depends on one vendor's hardware. If the vendor changes their API, the loop breaks. Cross-vendor portability is in its infancy (SiLA-2 helps; not enough). Plan for multi-month re-integration costs when changing platforms.
+
+**Honest closing on §E's first half.** "These are real systems doing real work. They are also each one human-year of integration effort, and that effort is mostly *not* portable. The 2026 question is: how do we lower the integration cost so that more labs can build loops?"
+:::
+
+## 41. The Minimum Viable Autonomous Loop in 2026
+
+::: {.columns}
+::: {.column width="50%"}
+**What you need**
+
+- One synthesis platform you control end-to-end.
+- One measurement endpoint with a parser you trust.
+- A constrained, calibrated surrogate (§B + §D wrapping a U13 GP).
+- A workflow engine of choice (slide 34).
+- Audit trail per decision (slide 31).
+- A model card + dataset card per loop run (§F).
+:::
+::: {.column width="50%"}
+**What that buys you**
+
+::: {.fragment}
+- A loop that runs nights and weekends.
+- 3–5× throughput over manual screening within its chemistry domain.
+- Reproducible artefacts (logs, model card, run record) for publication.
+- Real research infrastructure — within the constraints of slide 40.
+- A platform to grow on as new chemistry / measurement modalities come online.
+:::
+:::
+:::
+
+::: {.notes}
+**The "minimum viable" framing is deliberate.** Many groups try to build a "complete" autonomous lab — multi-domain, multi-platform, all-the-bells. They fail and burn 2 PhD-years. The minimum-viable build (one platform, one measurement, one chemistry domain) succeeds in 1 PhD-year, produces a working loop, and is the foundation to grow on.
+
+**The "you control end-to-end" requirement matters.** "Control" means: you can read all instrument data programmatically, you can trigger all instrument actions programmatically, you can recover from a failure without a human key-press (or you have explicit human-in-the-loop checkpoints). If any link in the chain requires a human to "click here to continue," the loop is not autonomous; it is semi-automatic. Both are useful; the difference matters for planning.
+
+**The "publication-quality artefacts" point.** A loop that runs but does not produce reviewable artefacts is research debt. Loops that produce a model card per campaign + dataset card per data drop + run-log per cycle are publishable. Loops that produce only "a folder of CSV files" are not. Build the artefact pipeline first; the loop becomes a paper second.
+
+**The "platform to grow on" point.** The minimum-viable build is an investment. Once the workflow engine, the parser, the constraint-aware acquisition stack, and the audit trail exist, adding a *second* measurement modality is days of work, not months. The cost is in the first deployment.
+
+**Forward link to §F.** "What buys you reviewable artefacts" — that is the FAIR / model-card discipline. §F is one section but it is the discipline that makes §E publishable. Without §F, §E is private research; with §F, §E becomes citable infrastructure.
+:::
+
+# §F · Reproducibility and FAIR for Materials ML {.section}
+
+## 42. FAIR for Materials ML Artefacts
+
+::: {.columns}
+::: {.column width="50%"}
+**FAIR principles, applied to ML**
+
+- **F**indable: DOI for code, weights, dataset, run logs.
+- **A**ccessible: public artefact registry (Zenodo, HuggingFace, MaterialsCloud).
+- **I**nteroperable: standard formats (ASE, OPTIMADE, structured JSON for runs).
+- **R**eusable: licence, environment lock, deterministic seed, version-pinned dependencies.
+:::
+::: {.column width="50%"}
+**ML artefacts that need FAIR-ification**
+
+- Training dataset (immutable snapshot).
+- Model weights (versioned).
+- Training script + environment lock.
+- Calibration artefacts (per-family reliability).
+- Run logs from each loop iteration.
+- Model card + dataset card (next slides) [@sandfeld_materials_data_science].
+:::
+:::
+
+::: {.notes}
+**FAIR was originally for data, not for ML.** The 2016 FAIR guidelines [@wilkinson2016fair] targeted research data — datasets, metadata, schemas. Applying them to ML artefacts (models, training scripts, environments) required adaptation that the field has been doing 2020–2026. The materials-ML community is converging on a workable practice, but it is not yet uniform.
+
+**The "DOI per artefact" rule.** Each ML artefact gets its own DOI: the dataset, the trained weights, the training script, the model card. This sounds heavy; it is necessary. Without it, a paper claims "we used model X" and X is irreproducible because the weights were on a graduate student's laptop that has since died.
+
+**Zenodo / HuggingFace / MaterialsCloud — quick orientation.** Zenodo is the general-purpose archive (CERN-hosted, EU-funded, free, DOIs). HuggingFace is the ML-community standard for model weights and datasets. MaterialsCloud is the EPFL-hosted materials-specific archive that integrates with AiiDA workflows. For materials ML in 2026, use Zenodo for one-off papers, HuggingFace for actively-maintained models, MaterialsCloud for AiiDA-driven workflows. None excludes the others.
+
+**The "environment lock" rule.** A model trained with PyTorch 1.10 and CUDA 11.7 may not load with PyTorch 2.4 and CUDA 12.4. Pin the environment (Conda lockfile, Docker image). Without this, "reproducible" decays in months.
+
+**The honest reading.** Most 2024–2026 materials-ML papers *do not* meet the FAIR bar yet. The community is moving in the right direction; reviewers increasingly require it. Plan to submit FAIR-compliant artefacts; budget the time for it.
+:::
+
+## 43. Model Cards for Materials Surrogates
+
+::: {.columns}
+::: {.column width="50%"}
+**Intended use vs out-of-scope**
+
+- **Intended:** which property, which composition range, which chemistry families.
+- **Out-of-scope:** chemistry families absent from training, properties not predicted, environmental conditions not represented.
+- **Performance metrics:** random-split, LOCO, OOD slice — all three.
+
+:::
+::: {.column width="50%"}
+**Trust artefacts**
+
+- Per-family calibration / reliability diagnostics.
+- Known failure modes (one or two named, with mitigation).
+- Reproduction artefact bundle (script + environment + data DOI).
+- Audit-trail format for downstream use [@neuer2024machine].
+:::
+:::
+
+::: {.notes}
+**Model cards as the §D audit trail materialised.** §D slide 31 ended with "the audit trail is the model card." This is that slide. Per loop-run, a model card summarising what model was used, what calibration was applied, what OOD scores were checked, what known failure modes were flagged. Roughly 1–2 pages per run.
+
+**The "intended vs out-of-scope" framing.** Borrowed from the model-cards proposal [@mitchell2019model], adapted for materials. The key move is to *explicitly enumerate* what the model is and is not for. A surrogate trained on transition-metal oxides is not for use on actinides; saying that on the model card prevents misuse downstream.
+
+**The "one or two named failure modes with mitigation" rule.** Every materials surrogate has failure modes. A model card that does not name them is hiding them. Two examples per model is the operational sweet spot — enough to be honest, not so many that the card becomes a complete failure ledger. The mitigation field forces the author to think about what the user should *do* when the failure is encountered.
+
+**The reproduction artefact bundle.** Script (training pipeline), environment lock (Conda / Docker), data DOI (slide 42). Together these allow a user to reproduce the model from scratch. Without all three, "reproducible" is wishful.
+
+**Neuer's framing of model cards in engineering.** [@neuer2024machine] discusses model cards in the context of engineering deployment — useful for the materials reader because the engineering-deployment frame matches the autonomous-lab use case better than the original ML-research frame.
+:::
+
+## 44. What a Reviewable Materials-ML Submission Looks Like in 2026
+
+::: {.columns}
+::: {.column width="50%"}
+**The minimum bundle**
+
+1. Dataset card (provenance, coverage, known biases).
+2. Model card (slide 43).
+3. Training script + environment lock (slide 42).
+4. Random-split + LOCO + OOD numbers (LOCO is the operational one).
+5. Per-family calibration / reliability table per chemistry family (slide 28).
+:::
+::: {.column width="50%"}
+**The story bundle**
+
+::: {.fragment}
+6. One named failure mode + one mitigation, in the paper text.
+7. (If autonomous-lab work) audit-trail summary; loop iterations; one named loop failure with post-mortem.
+8. Code + data DOIs in the paper, not just on a website that may rot.
+:::
+:::
+:::
+
+::: {.fragment}
+> **The reviewer's checklist:** can I reproduce the model from the artefacts? Can I reproduce the numbers? Can I trust the OOD claim? If any answer is "no," the paper needs revision.
+:::
+
+::: {.notes}
+**This slide is the §F summary in operational form.** The preceding §F slides explained the why; this slide is the *what to ship*. Six items, hard line. A submission that misses any of items 1–5 is not at the 2026 bar; a submission that misses 6–8 is at the bar but not a strong example of it.
+
+**Item 5's specific importance.** The per-family reliability table is *the* trust artefact for screening claims. A paper that says "our surrogate is calibrated" without a per-family reliability table is making an unverifiable claim. The table is one figure; it carries enormous evidentiary weight.
+
+**Item 6's specific importance.** "One named failure mode + one mitigation" forces honesty. A model with no named failure modes either has a perfect reviewer-pleasing surface (suspicious) or had the failures suppressed. Naming one and mitigating it shows the model has been *used*, not just trained.
+
+**Item 7's autonomous-lab specific.** §E systems must report loop iterations. How many decisions did the loop make? How many succeeded? How many failed, and why? Without this, "autonomous lab" is a marketing term. With it, the work is a contribution to the operational literature.
+
+**The reviewer-checklist framing.** This is the 2026 reviewer mindset for materials-ML papers. If a student produces a thesis or a paper that meets all four reviewer questions positively, it will pass review at the strongest journals. If it does not, it will be returned for revision regardless of the quality of the underlying science.
+
+**Closing the §F arc.** "FAIR is not a tax on doing science. FAIR is *what makes the science citable in five years*. Without it, your work decays. With it, your work compounds. §G now: where the field is going, given that we have these foundations."
+:::
+
+# §G · 2026 Outlook {.section}
+
+## 45. Foundation MLIPs as the New Substrate
+
+::: {.columns}
+::: {.column width="50%"}
+**The 2024–2026 emergence**
+
+- **MACE-MP-0** [@batatia2024foundation]: equivariant GNN trained on Materials Project relaxation trajectories.
+- **CHGNet** [@deng2023chgnet]: charge-informed GNN for transition-metal chemistry.
+- **ORB** (Orbital Materials, 2024): general-purpose ML potential.
+- **GNoME** [@merchant2023scaling] and follow-ups: large-scale MLIP-driven discovery.
+:::
+::: {.column width="50%"}
+**What they share**
+
+::: {.fragment}
+- Trained on $10^6$–$10^8$ DFT structures.
+- Transferable across most of the periodic table.
+- Replace DFT for relaxation / dynamics in the chemistry space they cover.
+- **≈1000× cheaper than DFT** ($10^4$–$10^6$ structures/GPU-hour) — the discovery bottleneck shifts from compute to **synthesis + measurement**.
+- Open weights; reproducible. The first open-source materials substrate at this scale.
+:::
+:::
+:::
+
+::: {.notes}
+**Why "foundation model" is the right word.** Foundation MLIPs are to materials simulation what GPT-class language models are to text: pretrained at scale, transferable across tasks, fine-tunable, and *cheap to evaluate at inference*. The transition is profound. As recently as 2022, every materials-ML group trained their own potential from scratch; in 2026, most groups *fine-tune a foundation MLIP* on their target chemistry.
+
+**Equivariance as the architectural prior.** MACE, NequIP, Allegro, eSEN, ORB are all E(3)-equivariant. The §B "architectural prior" idea reaches its apotheosis in foundation MLIPs: rotation, translation, reflection, and atom-type permutation invariances are built in. The result is data-efficient training (less data needed for the same accuracy) and physical correctness (no symmetry violations).
+
+**The training data scale.** GNoME [@merchant2023scaling] trained on a custom DFT dataset of $\sim 10^7$ structures generated specifically for the project. MACE-MP-0 [@batatia2024foundation] trained on Materials Project relaxation trajectories (~$10^6$ structures). The scale is far larger than any single group could afford individually; foundation MLIPs are an industrial / large-collaboration product.
+
+**The "open weights" caveat.** MACE-MP-0 is genuinely open. CHGNet is open. ORB is partially open (weights available, training data partially open). GNoME's full training set is partially restricted. The community in 2026 is converging on full openness; some commercial labs lag.
+
+**The bottleneck shift, said aloud.** A foundation MLIP evaluates ~1000× faster than DFT, so the discovery bottleneck moves from energy evaluation to synthesis + measurement — spend the saved compute on more measurement, not more compute (multi-fidelity AL, next slide). The right-column fragment carries this; do not let it pass as a throwaway line — it is the central economic change of 2024–2026.
+:::
+
+## 46. Multi-Fidelity Active Learning
+
+::: {.columns}
+::: {.column width="50%"}
+**Three fidelities in 2026 MG**
+
+- **Cheap:** foundation MLIP inference. ~1 ms / structure.
+- **Medium:** DFT (PBE / SCAN / r²SCAN). ~1 hour / structure.
+- **Expensive:** experiment. Days / measurement.
+:::
+::: {.column width="50%"}
+**Routing the query**
+
+::: {.fragment}
+- Multi-fidelity GP / BO: model the joint over fidelities.
+- For each candidate, compute *expected information gain per cost* at each fidelity.
+- Query the cheapest fidelity that pays.
+- Save expensive measurement for candidates the cheap fidelities cannot resolve.
+:::
+:::
+:::
+
+::: {.fragment}
+> **The right framing is not "DFT or experiment" — it is "spend each budget where it pays" [@murphy2012machine].**
+:::
+
+::: {.notes}
+**The multi-fidelity framework, briefly.** Forrester / Sóbester / Keane [@forrester2007multi] and Lam / Allaire / Willcox [@lam2015multifidelity] and follow-ups developed Bayesian-optimisation algorithms that handle multiple data sources at different costs and accuracies. The basic object is a joint GP over (input, fidelity) pairs; fidelities are coupled via a shared latent. The acquisition function trades off expected-information-gain against query cost.
+
+**The 2026 instantiation.** A candidate composition $x$ has three possible queries: foundation MLIP energy (cheap, possibly biased), DFT energy (medium, more accurate), experimental measurement (expensive, ground truth). The acquisition function compares "expected information gain from MLIP query / cost of MLIP query" to the same ratio for DFT and for experiment. Whichever wins is the next query.
+
+**A typical strategy.** Use foundation MLIP to screen $10^6$ candidates down to $10^3$. Use DFT to refine $10^3$ down to $10^2$. Use experiment to verify $10^2$ down to ~$10$ confirmed leads. Throughput: $10^6$ candidates considered, $\sim 100$ DFT calculations, $\sim 100$ experiments. Pre-foundation-MLIP, this would have been $10^4$ DFT calculations and $\sim 100$ experiments.
+
+**The "calibrate the cheap fidelity against the expensive" requirement.** Foundation MLIP and DFT have systematic offsets vs experiment. Multi-fidelity BO works *only* if the offsets are modelled (typically as a GP discrepancy term between fidelities, fit on a small calibration set of expensive-fidelity measurements). Without this, the cheap fidelity drives the loop in the wrong direction. Calibration is mandatory; budget for it.
+
+**The honest scaling caveat.** Multi-fidelity BO is currently most-tested with two fidelities (one cheap, one expensive). Three-fidelity is research-grade in 2026; it works but the method matters more than the framework. Plan for a research collaboration to deploy at three-fidelity scale.
+:::
+
+## 47. Closing-the-Loop Economics
+
+::: {.columns}
+::: {.column width="50%"}
+**Cost per query in 2026 (order of magnitude)**
+
+- Foundation MLIP: $\sim$ €0.001 per structure (cents to fractions of a cent).
+- DFT calculation: $\sim$ €1 per structure (compute + storage).
+- Experiment: $\sim$ €100–10000 per measurement (consumables, beam time, instrument time, person time).
+:::
+::: {.column width="50%"}
+**The economic logic**
+
+::: {.fragment}
+- Each experiment saved by a calibrated surrogate is worth $\sim$ €100–10000.
+- Each MLIP / DFT calculation costs $\sim$ €0.001–€1.
+- Spending €1000 of compute to save *one* €1000 experiment is even.
+- Spending €1000 of compute to save *ten* €1000 experiments is the loop's economic basis.
+:::
+:::
+:::
+
+::: {.notes}
+**The economic argument is the strongest argument for autonomous labs.** Without it, "autonomous lab" sounds like a marketing term. With it, the cost-benefit is concrete: a 10× experiment-saving rate plus 100× speedup yields a 1000× effective throughput at a similar absolute cost. This is the calculation that funding agencies actually run when evaluating autonomous-lab proposals.
+
+**The cost numbers, anchored.** A single DFT relaxation on a modern HPC cluster costs around 100–1000 CPU-hours; at €0.01–0.1 per CPU-hour, that is €1–€100 per calculation, with €1 being a typical mid-range. A single materials-discovery experiment (synthesis + characterisation + analysis) costs at least €100 in consumables and instrument time at academic rates; for advanced characterisation (synchrotron beam time, in-situ TEM) the number can be €10000 per measurement. Order-of-magnitude reasoning is what matters; exact numbers vary by lab.
+
+**Why this is the killer slide of §G.** It is the only slide that translates the loop's intellectual argument into euros. Funders care about euros. PIs care about euros. Department chairs care about euros. The student who can articulate the loop economics is the student who gets the autonomous-lab grant.
+
+**The "ten-experiment-save" requirement is the bar.** A surrogate with random-quality predictions saves $\sim 0$ experiments (the candidates it endorses are no better than random). A well-calibrated, OOD-aware, constraint-respecting surrogate (everything in U14) saves *many* experiments. The U14 stack is not academic frippery; it is the difference between a loop that costs more than it saves and a loop that pays for itself.
+
+**Forward link.** The final §G slide closes with the honest 2026 status — where the economics already works, and where the loop is not yet self-paying.
+:::
+
+## 48. Where MG Is, Mid-2026
+
+::: {.columns}
+::: {.column width="50%"}
+**Maturity ladder, by component**
+
+- **Substrate (data + foundation MLIPs):** mature.
+- **Modelling (surrogates + UQ):** mature in-domain, fragile OOD.
+- **Loop infrastructure:** working in single domains; portability open.
+- **End-to-end autonomous discovery of *genuinely* novel materials:** open. The next five years.
+:::
+::: {.column width="50%"}
+**Reading the field honestly**
+
+::: {.fragment}
+- The hype is real *for the substrate*; over-stated for the discovery claims.
+- A working materials-ML stack in 2026 is real research infrastructure — within slide 40's caveats.
+- The next five years are the integration / cross-domain era. *Your* career.
+:::
+:::
+:::
+
+::: {.notes}
+**The closing slide of §G is the honest assessment slide.** Slide 40 was the engineering version (what works, what does not). Slide 48 is the maturity-ladder version. Together they answer the question: "is materials genomics a real field in 2026, or is it hype?" Answer: real for the substrate, real-but-narrow for loops, hype-prone for end-to-end discovery claims.
+
+**The "next five years" framing for students.** Most students in this lecture will be doing materials-ML PhDs from 2026 to 2030. The maturity ladder describes their working environment: the substrate is given, the modelling is well-developed, the loop is real but single-domain, the discovery story is open. Their PhDs are about *moving the open items into the working column*. That is genuinely exciting work and genuinely the best time in the field's history to start.
+
+**The hype-cycle interpretation.** Materials genomics in 2026 is on the slope-of-enlightenment portion of the Gartner hype cycle: past peak hype (2022–2023, when "GNoME discovers 380000 materials" dominated the news), past trough of disillusionment (2024 with the A-Lab debate and benchmark-leakage findings), now in productive incremental work. The slope is the right time to enter.
+
+**The honest pitch to the room.** "If you choose to work in MG for your master's thesis or PhD, you are entering a field that has stable foundations, real infrastructure, named open problems, and *no* dominant party — academic groups, industrial labs, and national labs all have working stacks and none has the killer integration. There is room for new contributions. The work is real."
+
+**Forward link to §H.** §H is the course-wrap. We have done the field-wrap; now we close the *course*. Slide 49 zooms back to MG's syllabus arc; slide 50 names the four big skills; slide 51 is the reading list; slide 52 is the exam. Five minutes. Then questions.
+:::
+## 51. Reading List for Going Further
+
+::: {.columns}
+::: {.column width="50%"}
+**The course textbooks**
+
+- [@sandfeld_materials_data_science] — materials data science from the engineering perspective. The most practically useful single book.
+- [@neuer2024machine] Ch6–Ch7 — physics-informed and explainable methods at engineering depth.
+- [@bishop2006pattern] §9 — clustering, EM, foundation for U12.
+- [@murphy2012machine] — for probabilistic depth on UQ and BO.
+- [@goodfellow2016deep] Ch14 — autoencoders, the basis of U10–U12.
+:::
+::: {.column width="50%"}
+**Beyond MG itself**
+
+- **MFML W14** — full PINN tutorial.
+- **MFML Unit 14** (optional reading) — generic explainability and trust.
+- **ML-PC W14** — autonomous characterisation reflection.
+- **2024–2026 review papers** on autonomous labs (Aspuru-Guzik, A-Lab follow-ups, GNoME), MatBench reform, foundation MLIPs.
+- **Open-source stacks:** AiiDA, BoTorch, MACE-MP, HuggingFace Hub for materials.
+:::
+:::
+
+::: {.notes}
+**Reading priorities for *one* book.** [@sandfeld_materials_data_science]. It is the single book in the list closest to MG's actual scope (materials-specific data + ML), and it is engineering-oriented enough to be readable without a PhD in statistics.
+
+**Reading priorities for *two* books.** Add [@neuer2024machine] Ch6–Ch7. Neuer is the right physics-informed-learning reference; it covers the §C territory at appropriate depth without being a PINN tutorial.
+
+**Reading priorities for *three* books.** Add [@goodfellow2016deep] Ch14 for autoencoders and the generative-model architectural foundations underlying U10–U12.
+
+**Reading priorities for *four* books.** Add [@bishop2006pattern] §9 (and §3 / §6 for GPs) for the probabilistic foundations of U13 and the clustering of U12.
+
+**Reading priorities for *five* books.** Add [@murphy2012machine] for the encyclopaedic ML reference. Useful as a desk reference for the rest of one's career; less useful as a sequential read.
+
+**Beyond books.** The 2024–2026 review-paper landscape is the right *next* read after the books. Recommended: a survey on autonomous labs (Aspuru-Guzik group has multiple), the GNoME paper [@merchant2023scaling] and follow-ups, and the MatBench reform papers. The remaining items not yet in ref.bib are the literature one chases via Google Scholar.
+
+**Open-source orientation.** AiiDA / BoTorch / MACE-MP / HuggingFace Hub for materials are the four open-source ecosystems a working materials-ML practitioner uses daily in 2026. None requires payment, all have working tutorials, all have active communities. Use them for the master's thesis.
+:::
+

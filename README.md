@@ -33,6 +33,7 @@ Central link index for lecture decks and units.
 - **Unit 12: Uncertainty in Predictions** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/12_uncertainty_in_predictions/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/12_uncertainty_in_predictions/01_intro.qmd)
 - **Unit 13: Physics-Informed & Constrained Learning** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/13_physics_informed_learning/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/13_physics_informed_learning/01_intro.qmd)
 - **Unit 14: Explainability, Limits, and Scientific Trust** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/14_explainability_limits_trust/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/14_explainability_limits_trust/01_intro.qmd)
+- **Appendix: Algorithm Compendium — Pseudocode Reference** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/15_algorithm_compendium/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/15_algorithm_compendium/01_intro.qmd)
 <!-- END units:mathematical_foundations_of_ai_and_ml -->
 
 ## Materials Genomics

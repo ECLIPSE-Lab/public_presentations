@@ -1,0 +1,553 @@
+---
+title: 'Materials Genomics<br>Side Deck: Algorithm Compendium<br>Pseudocode for Everything You Must Know'
+author:
+- name: Prof. Dr. Philipp Pelz
+  affiliation:
+  - FAU Erlangen-Nürnberg
+bibliography: ref.bib
+execute:
+  eval: false
+format:
+  revealjs:
+    chalkboard: true
+    width: 1920
+    height: 1080
+    template-partials:
+    - title-slide.html
+    css: custom.css
+    theme: custom.scss
+    slide-number: c/t
+    logo: eclipse_logo_small.png
+    background-transition: fade
+    incremental: false
+    menu:
+      side: left
+      loadIcons: true
+    footer: © Philipp Pelz - Materials Genomics
+---
+
+## How to Use This Deck
+
+::: {.columns}
+::: {.column width="50%"}
+**What "must know" means for an algorithm**
+
+1. **Write it** — reproduce the pseudocode skeleton from memory.
+2. **Name the interface** — inputs, outputs, and the expensive line.
+3. **State the correctness condition** — what guarantees it works.
+4. **Name one failure mode and one mitigation** — the exam rubric.
+:::
+::: {.column width="50%"}
+**Sixteen algorithms, five groups**
+
+- **A · Simulate** (U3–U5): SCF, velocity Verlet, Metropolis MC, convex hull.
+- **B · Represent** (U6–U7): PBC neighbour list, descriptors, message passing.
+- **C · Learn & validate** (U8–U10): training loop, LOCO CV, self-supervised pretraining, ensembles + calibration.
+- **D · Decide** (U13/§A2, U14): GP posterior, acquisition, constrained acquisition, trust gate.
+- **E · Generate & close** (U12, U14): diffusion sampling, the autonomous-lab loop.
+:::
+:::
+
+::: {.notes}
+This deck is reference material for exam preparation — every algorithm here appeared in a lecture. Pseudocode is Python-flavoured but deliberately loose: the exam grades structure and correctness conditions, not syntax.
+:::
+
+# A · Simulate (U3–U5) {.section}
+
+## A1 · The SCF Loop — Hartree-Fock / Kohn-Sham DFT (U3)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : geometry {R_a}, basis {phi_mu}, initial density D
+# out: ground-state energy E, orbitals C
+repeat:
+    F = h + J[D] - K[D]        # HF: Coulomb + exact exchange
+    #   KS-DFT: F = h + J[D] + V_xc[rho_D]   (functional!)
+    solve F C = S C eps         # generalised eigenproblem
+    C_occ  = eigenvectors of the N_occ lowest eps
+    D_new  = occupation-weighted C_occ @ C_occ.T
+    if norm(D_new - D) < tol: break
+    D = mix(D, D_new)           # damping / DIIS
+return E(D), C
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** the variational principle — the converged energy is an *upper bound* to the true ground state (HF); KS-DFT inherits the bias of the chosen $V_{\text{xc}}$.
+- **Expensive line:** building $F$ and the eigensolve — $\mathcal{O}(N^3)$–$\mathcal{O}(N^4)$.
+- **Failure mode:** oscillating density, no convergence. **Mitigation:** mixing / DIIS.
+- **Why it matters in MG:** this loop is the *label factory* — every training energy in U8–U14 came out of it, functional bias included (§D sim–exp gap).
+:::
+:::
+
+## A2 · Velocity Verlet — One MD Step (U4)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : positions r, velocities v, masses m,
+#      force field F(r) = -grad E(r), timestep dt
+# out: trajectory samples
+loop over steps:
+    v = v + 0.5 * dt * F / m      # half kick
+    r = r + dt * v                # drift
+    F = -grad_E(r)                # DFT ... or an MLIP (U6/U9)
+    v = v + 0.5 * dt * F / m      # half kick
+    record(r, v)
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** time-reversible and symplectic → long-time energy conservation (no drift), unlike naïve Euler.
+- **Expensive line:** the force call. Replacing DFT forces with an equivariant MLIP is the ~1000× speed-up of slide 15 (main deck).
+- **Failure mode:** $dt$ too large for the fastest vibration (~1 fs scale) → blow-up. **Mitigation:** shrink $dt$; constrain fast modes.
+- **Exam angle:** why forces must be *equivariant* (U7/U9) — they enter this loop as vectors.
+:::
+:::
+
+## A3 · Metropolis Monte Carlo (U5)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : initial config x, energy E(.), temperature T
+# out: samples from the Boltzmann distribution
+loop:
+    x_new  = propose(x)             # move catalogue: swap,
+                                    # displace, volume, ...
+    dE = E(x_new) - E(x)
+    if dE <= 0 or rand() < exp(-dE / (kB*T)):
+        x = x_new                   # accept
+    record(x)                       # ALWAYS record current x,
+                                    # also after a rejection
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** **detailed balance** + ergodicity ⇒ the chain's stationary distribution is Boltzmann. Be able to *derive* the acceptance rule from detailed balance.
+- **Failure mode:** recording only accepted states — biases every average. **Mitigation:** record the current state every step.
+- **Tuning:** step size for ~30–50% acceptance; discard the equilibration phase.
+- **Why it matters in MG:** importance sampling is the ancestor of Thompson sampling and BO exploration (D3).
+:::
+:::
+
+## A4 · Convex Hull and $E_{\text{hull}}$ (U4–U5, §A2)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : set of (composition x_i, formation energy Ef_i),
+#      including elemental references
+# out: stability verdict per candidate
+hull = lower_convex_hull(points)      # composition-energy space
+
+for candidate (x, Ef):
+    E_ref  = hull_energy_at(x)        # best linear combination
+                                      # of hull phases at x
+    E_hull = Ef - E_ref
+    # E_hull <= 0    : on the hull  ("stable" at 0 K)
+    # 0 < E_hull < d : metastable within tolerance d
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** the hull is only as good as the *reference set* — a missing competing phase silently inflates stability (the "incorrect hull" failure of A-Lab Fig. 4).
+- **The caveat, verbatim:** $E_{\text{hull}} \le 0$ is a 0 K, entropy-free DFT statement — **not synthesisability** (slides 17–18, main deck).
+- **Why it matters:** $E_{\text{hull}}$ is the acquisition target — hull-aware BO ranks by expected *hull* improvement, not raw energy.
+:::
+:::
+
+# B · Represent (U6–U7) {.section}
+
+## B1 · PBC-Aware Neighbour List (U6/U7)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : lattice matrix L, fractional coords {f_i}, cutoff r_c
+# out: neighbour list = the crystal graph's edge set
+assert r_c < half_min_cell_width(L)   # else build a supercell
+
+for atom i:
+    for atom j, image n in {-1,0,1}^3:      # periodic images!
+        d = norm(L @ (f_j + n - f_i))
+        if 0 < d <= r_c:
+            neighbours[i].append((j, n, d))
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** *periodic images are not optional* — omitting them disconnects atoms that are bonded across the cell boundary.
+- **Failure mode:** $r_c$ larger than half the cell → missed self-images. **Mitigation:** supercell before listing.
+- **Why it matters:** this edge set *is* the crystal graph of U7 — every GNN in the course (B3) consumes it; every MLIP force (A2) differentiates through it.
+:::
+:::
+
+## B2 · Descriptor Computation (U6)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# Tier 1 -- Magpie (composition only):
+feats = [stat(prop[Z] for Z, frac in formula)
+         for prop in element_tables      # mass, X, radius...
+         for stat in (mean, range, dev)] # fraction-weighted
+
+# Tier 2 -- RDF (structure-aggregated):
+for pair (i, j) with PBC distances d_ij <= r_max:
+    bin d_ij into histogram
+g[k] = count[k] / (N * rho * shell_volume(k))  # normalise
+
+# Tier 3 -- local environments: neighbour list (B1)
+# + invariant functions of {d_ij, angles}, per atom
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **The ladder as a decision tree:** composition-only when no structures + large $n$; RDF / coordination stats when structures exist; local environments when you need per-atom resolution (forces, defects).
+- **Correctness condition:** the invariance discipline — translation, rotation, permutation, PBC. Raw Cartesians violate all four.
+- **Failure mode:** composition-only on polymorphs (diamond = graphite in Magpie). **Mitigation:** climb the ladder.
+:::
+:::
+
+## B3 · Message Passing — the GNN Template (U7/U9)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : crystal graph (B1); node features h_i = embed(Z_i);
+#      edge features e_ij = RBF(d_ij)
+# out: property y (invariant), forces F_i (equivariant)
+for layer t in 1..T:
+    for atom i:
+        m_i = sum over j in N(i) of
+              M_t(h_i, h_j, e_ij)       # message
+        h_i = U_t(h_i, m_i)             # update
+y = R(sum_i h_i)                        # pooling -> invariant
+F_i = -dy/dr_i                          # forces via autograd
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** permutation invariance comes from the *sums*; distance-only features give rotation invariance; equivariant tensors (MACE/NequIP) when directional outputs are needed.
+- **Receptive field:** $T$ layers = $T$-hop chemistry. Too few layers → long-range physics invisible.
+- **Named instantiations:** SchNet (continuous filters, molecular-first), CGCNN (crystal graphs), MACE (equivariant, data-efficient).
+- **Exam angle:** fill in $M_t$/$U_t$ for one named model.
+:::
+:::
+
+# C · Learn & Validate (U8–U10) {.section}
+
+## C1 · Supervised Training with the Three-Set Discipline (U8/U9)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : dataset; GROUP labels (chemistry family / prototype)
+# out: model + an honest error estimate
+train, val, test = group_aware_split(data, by=family)
+                    # NOT row-wise random!  (leakage)
+best = None
+for epoch in 1..max_epochs:
+    for batch in train:
+        theta -= lr * grad(loss(batch))
+    v = evaluate(val)
+    if v < best: best = v; save_checkpoint()
+    elif epochs_since_best > patience: break   # early stop
+report evaluate(test)    # touched ONCE, at the very end
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** the test set is consumed *once*; the validation set drives every choice (early stopping, hyperparameters).
+- **Failure mode:** random row splits with polymorphs / family duplicates → leakage, MAE flattered. **Mitigation:** group-aware splits.
+- **Why it matters:** "defensible split" is a line item in the exam rubric — this loop is where it is enforced.
+:::
+:::
+
+## C2 · Leave-One-Chemistry-Out Cross-Validation (U8)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : dataset with chemistry-family labels
+# out: the OPERATIONAL generalisation estimate
+for family c in families:
+    model_c = train(data where family != c)
+    err[c]  = evaluate(model_c, data where family == c)
+
+report per-family table err        # the trust artefact
+report mean(err)                   # only WITH the table --
+                                   # the mean alone hides
+                                   # the worst family
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **What it estimates:** performance on a chemistry the model has *never seen* — the discovery scenario. Random-split CV estimates interpolation; LOCO estimates extrapolation.
+- **Failure mode:** reporting the mean without the per-family table — one catastrophic family disappears into the average.
+- **Exam stem (recurring):** "random-split MAE 25, LOCO 90 meV/atom — which do you report, and to whom?" Both; LOCO to anyone making a discovery decision.
+:::
+:::
+
+## C3 · Self-Supervised Pretraining (U10)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : LARGE unlabelled crystal database;
+#      small labelled target set
+# out: pretrained encoder -> featurizer / fine-tuned model
+for batch of unlabelled crystals:
+    x_corr = corrupt(x)      # mask atom types | mask edges
+                             # | perturb positions (denoise)
+                             # | augment for contrastive pair
+    loss = reconstruct(x | x_corr)      # or InfoNCE
+    update(encoder)
+
+# downstream:
+z = encoder(x)               # frozen featurizer, OR
+fine_tune(encoder + head, small_labelled_set)
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **The logic:** labels are scarce, structures are not — pretext tasks turn $10^6$ unlabelled crystals into supervision.
+- **The four pretext tasks by name:** atom masking, edge masking, denoising, contrastive pairs.
+- **Why it matters downstream:** the encoder's latent is where §D's OOD nearest-neighbour distance is measured (D4) — the map and the fence come from the same object.
+- **Exam angle:** pick a pretext task for a given data situation and justify.
+:::
+:::
+
+## C4 · Deep Ensembles + Per-Family Calibration (§A2/§D)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : training set; K seeds; per-family calibration sets
+# out: calibrated mu(x), sigma(x)
+models = [train(seed=k) for k in 1..K]      # K ~ 5
+
+mu(x)    = mean_k models[k](x)
+sigma(x) = std_k  models[k](x)     # disagreement =
+                                   # epistemic uncertainty
+for family c:                      # calibrate PER FAMILY
+    s[c] = fit_scale(val_c) s.t. coverage of
+           mu +/- z * s[c] * sigma hits nominal
+predict: route x to its family, apply s[family(x)]
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Correctness condition:** calibration holds *in-distribution, per family* — check with a reliability diagram; never claim a global number.
+- **Failure mode:** *silent extrapolation* — all members trained on the same data agree confidently on OOD points. **Mitigation:** pair $\sigma$ with a surrogate-independent OOD score (D4).
+- **Why ensembles over one network:** disagreement is the most robust cheap epistemic signal at scale; the GP equivalent for large $n$.
+:::
+:::
+
+# D · Decide (U13/§A2, U14) {.section}
+
+## D1 · Gaussian-Process Posterior (§A2)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : training X, y; kernel k(.,.); noise sigma_n
+# out: predictive mu*, sigma* at any candidate x*
+K     = k(X, X) + sigma_n**2 * I
+Lchol = cholesky(K)                 # O(n^3) -- the GP's limit
+alpha = solve(Lchol, y)
+
+mu_star     = k(x_star, X) @ alpha
+sigma2_star = k(x_star, x_star) \
+            - k(x_star, X) @ solve(Lchol, k(X, x_star))
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **The two lines to remember:** posterior mean = similarity-weighted interpolation; posterior variance = prior variance minus what the data explained.
+- **Correctness condition:** $\sigma$ is honest *in the kernel's metric* — if the kernel cannot see a chemistry-family difference, OOD points look in-distribution (§D's core trap).
+- **Kernel choice is modelling:** RBF smooth, Matérn rough, kernel-on-latent when descriptors are poor.
+- **Limit:** $\mathcal{O}(n^3)$ → hand off to ensembles (C4) at scale.
+:::
+:::
+
+## D2 · Acquisition Functions — EI / UCB / TS (§A2)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : posterior mu(x), sigma(x) over a CANDIDATE POOL;
+#      current best y_best        (maximisation convention)
+UCB: alpha(x) = mu(x) + beta * sigma(x)
+
+EI:  z        = (mu(x) - y_best - xi) / sigma(x)
+     alpha(x) = (mu(x) - y_best - xi) * Phi(z) \
+              + sigma(x) * phi(z)     # Phi/phi: normal cdf/pdf
+
+TS:  f_tilde ~ posterior_sample()     # one draw
+     alpha(x) = f_tilde(x)
+
+next_experiment = argmax over pool of alpha(x)
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **What each knob does:** UCB — explicit exploration weight $\beta$; EI — parameter-free default, improvement-weighted; TS — randomised, batches/parallelism for free.
+- **Correctness condition:** all three need a *calibrated* $\sigma$ (C4) — garbage variance in, garbage exploration out.
+- **For minimisation** (e.g. $E_{\text{hull}}$): flip signs consistently.
+- **Exam stem:** two candidates, same $\mu$, different $\sigma$ — trace what each acquisition does.
+:::
+:::
+
+## D3 · Constrained Acquisition — Filter First, Rank Second (§B)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : candidate pool; constraint set (stoichiometry,
+#      charge balance, symmetry, E_hull tolerance)
+# out: next experiment, guaranteed feasible
+F = [x for x in pool if feasible(x)]     # FILTER FIRST
+    # hard checks: integer occupancies, sum ox. states == 0,
+    # space-group consistency, E_hull <= delta
+
+x_next = argmax over F of alpha(x)       # RANK SECOND
+
+# soft variant, when the boundary is fuzzy:
+alpha_soft(x) = alpha(x) - beta * dist(x, F)
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Why the order matters:** rank-then-filter and filter-then-rank return *different* top-10 lists — filtering first is correct.
+- **The placement rule:** soft penalties in the *loss* (training, gradients flow); hard projections at *acquisition* (guarantees); architectural priors when cheap (softmax simplex, equivariance).
+- **Failure mode:** unconstrained generative proposals flooding the pool (Na₂Cl₃). **Mitigation:** this filter — constraints are correctness, not regularisation.
+:::
+:::
+
+## D4 · OOD Scores and the Trust Gate (§D)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : candidate x; encoder latent phi (C3); train stats;
+#      calibrated sigma (C4); thresholds tau at the 95th
+#      percentile of in-distribution validation scores
+s1 = min over i of norm(phi(x) - phi(X_i))   # latent NN dist
+s2 = mahalanobis(x, mean_X, cov_X)           # feature space
+s3 = sigma_ens(x)                            # disagreement
+ood = (s1 > tau1) or (s2 > tau2) or (s3 > tau3)  # OR=cautious
+
+if sigma(x) small and not ood: COMMIT to synthesis
+elif sigma(x) small and ood:   REFUSE -> human review
+                               # silent extrapolation!
+else:                          cheap exploratory measurement
+audit_log(model, calibration, scores, thresholds, decision)
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **Why three scores:** each catches a different miss — the *combination* is the safety, and at least one must be independent of the surrogate.
+- **Threshold recipe:** 95th percentile of in-distribution validation scores → 5% false-positive rate by construction.
+- **The escalation table:** small $\sigma$ + high OOD is the dangerous cell — every surrogate-derived signal says "go" and all are wrong.
+- **The last line is not optional:** the audit trail is the §D deliverable.
+:::
+:::
+
+# E · Generate & Close the Loop (U12, §E) {.section}
+
+## E1 · Diffusion Sampling for Crystal Generation (U12)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : trained denoiser eps_hat(x, t [, condition c]);
+#      optional feasibility classifier f_phi  (guidance)
+# out: candidate crystals (lattice, coords, species)
+x_T ~ Normal(0, I)         # noise over lattice + fractional
+                           # coords + species logits
+for t in T .. 1:
+    eps = eps_hat(x_t, t, c)             # conditioned on
+                                         # target property
+    x_t = denoise_step(x_t, eps)
+    x_t += eta * grad log f_phi(x_t)     # classifier guidance
+                                         # = §B constraint knob
+snap: species -> one-hot; symmetrise lattice   # projection
+validate: DFT relax -> E_hull; score S.U.N.
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **The 2026 pattern:** train the diffusion model *once*, unconstrained; swap constraints by swapping the guidance classifier $f_\phi$ — no retraining.
+- **Named instantiations:** CDVAE, DiffCSP(++), MatterGen — differ in what diffuses jointly and how symmetry enters.
+- **Failure mode:** "novel" samples that are disordered known compounds relabelled (the Leeman critique). **Mitigation:** S.U.N. evaluation with a *disorder-aware* novelty check, then the D3 filter before any ranking.
+:::
+:::
+
+## E2 · The Autonomous-Lab Loop — the Capstone (§E)
+
+::: {.columns}
+::: {.column width="55%"}
+```python
+# in : seed data D; candidate pool (database or E1);
+#      budget; everything above
+model = fit(D); calibrate_per_family(model)         # C4
+while budget_remaining():
+    mu, sigma = model.predict(pool)                 # D1/C4
+    F         = feasibility_filter(pool)            # D3
+    trusted   = [x for x in F if gate(x) == COMMIT] # D4
+    if not trusted:
+        escalate_to_human(); continue
+    x = argmax over trusted of alpha(mu, sigma)     # D2
+    result = synthesise_and_measure(x)   # steps 3-5:
+                                         # days + a furnace
+    D += (x, result)
+    model = refit(D); recalibrate(); update_thresholds()
+    audit_log(everything)                # per decision
+```
+:::
+::: {.column width="45%"}
+**Must know**
+
+- **This one slide is the course.** Every line has a lecture behind it: the surrogate (U8–U10), the posterior (§A2), the filter (§B), the gate (§D), the slow physical step (§E).
+- **The bottleneck:** `synthesise_and_measure` — days per iteration; everything else is seconds. Plan campaigns around *that* line.
+- **Failure modes to name (exam):** synthesis — recipe ambiguity, hardware faults, contamination; measurement — phase-ID overconfidence, calibration drift, operator-time overload.
+- **The honest 2026 verdict:** this loop runs, single-domain, human-supervised — with the audit trail as the artefact that makes it science.
+:::
+:::
+
+## Coverage Map — Algorithm × Unit × Exam Skill
+
+| # | Algorithm | Unit | Feeds skill |
+|---|-----------|------|-------------|
+| A1 | SCF (HF / KS-DFT) | U3 | labels for everything |
+| A2 | Velocity Verlet | U4 | 2 (train a surrogate for forces) |
+| A3 | Metropolis MC | U5 | 3 (sampling logic of exploration) |
+| A4 | Convex hull / $E_{\text{hull}}$ | U4–U5 | 3 (the acquisition target) |
+| B1–B3 | Neighbour list · descriptors · message passing | U6–U7 | 1 (choose a representation) |
+| C1–C2 | Training loop · LOCO CV | U8 | 2 (defensible split) |
+| C3–C4 | SSL pretraining · ensembles + calibration | U10, §D | 2, 3 |
+| D1–D4 | GP · acquisition · constraints · trust gate | §A2, §B, §D | 3 (plan an acquisition) |
+| E1–E2 | Diffusion · autonomous loop | U12, §E | 4 (close the loop) |
+
+::: {.notes}
+The four skills are main-deck slide 34: choose a representation, train a surrogate, plan an acquisition, close the loop. Every exam scenario decomposes into these algorithms — if you can write the pseudocode and state each correctness condition, you can assemble any of the four skills on demand.
+:::
