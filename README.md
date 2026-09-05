@@ -77,6 +77,7 @@ Central link index for lecture decks and units.
 - **2025 MC** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2025_MC/template.html) · [Source](./conference_talks/2025_MC/template.qmd)
 - **2025 M&M** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2025_MandM/template.html) · [Source](./conference_talks/2025_MandM/template.qmd)
 - **2026 WE-Heraeus Workshop (tutorial)** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2026_WEHeraeus/template.html) · [Source](./conference_talks/2026_WEHeraeus/template.qmd)
+- **2026 IMC21 (invited)** — [Slides](https://pelzlab.science/public_presentations/conference_talks/2026_09_imc21/imc21.html) · [Source](./conference_talks/2026_09_imc21/imc21.qmd)
 
 ## Maintenance
 
