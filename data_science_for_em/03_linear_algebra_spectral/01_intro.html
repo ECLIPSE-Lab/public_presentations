@@ -338,7 +338,7 @@
 <ul>
 <li class="fragment"><strong>Why does PCA denoise an EELS spectrum image?</strong> Because the signal lives in a <strong>low-dimensional subspace</strong>, while the noise spreads across all directions.</li>
 <li class="fragment"><strong>Why are PCA components not phases, and what gives us phases?</strong> Non-negativity and mixing constraints: <strong>NMF, MCR-ALS, endmember unmixing</strong>.</li>
-<li class="fragment"><strong>Road map:</strong> geometry &amp; projection · SVD · PCA &amp; scree · PCA denoising · eigen-spectra · <strong>EELS preprocessing pipeline</strong> · <strong>NMF &amp; MCR-ALS</strong> · <strong>unmixing pitfalls</strong> · ill-conditioning · limits.</li>
+<li class="fragment"><strong>Road map:</strong> geometry &amp; projection · SVD &amp; PCA · scree &amp; denoising · <strong>EELS preprocessing &amp; Poisson weighting</strong> · <strong>linear mixing, NMF &amp; MCR-ALS</strong> · <strong>unmixing pitfalls</strong> · ill-conditioning &amp; limits.</li>
 <li class="fragment"><strong>Self-study:</strong> <code>notebooks/week03_pca_nmf_eels.ipynb</code>. Build a 3-phase spectrum image, then compare PCA and NMF against the ground truth.</li>
 </ul>
 <aside class="notes">
@@ -377,6 +377,20 @@
 <li>These outcomes map directly to exam must-know statements (see the must-know slide at the end). Outcomes 4–6 are new this year. They are the practical skills a microscopist needs before trusting any “phase map” produced by software such as HyperSpy.</li>
 <li>The one point to land: outcome 6 is the most important one. Every factorisation produces a picture, and the craft is knowing when the picture is lying.</li>
 <li>Pacing note: do not read the list out loud. Point at 4–6 and say “this is what is new compared to a generic ML course”.</li>
+<li>Timing plan (90 min, lecture path ≈ 85 min incl.&nbsp;~5 min slack for questions):
+<ul>
+<li>0–5 min: recap, today’s question, learning outcomes.</li>
+<li>5–17 min: vectors &amp; projection, data matrix &amp; reshape, projection onto a subspace, least squares = projection.</li>
+<li>17–29 min: SVD (rotate–stretch–rotate, factors), Eckart–Young, PCA as max variance, PCA in NumPy.</li>
+<li>29–40 min: scree plot, choosing K, PCA denoising with k components, why it works, eigen-spectra &amp; score maps.</li>
+<li>40–48 min: EELS preprocessing chain, power-law background &amp; alignment, Poisson weighting.</li>
+<li>48–65 min: linear mixing model, known endmembers &amp; simplex, NMF, multiplicative updates, PCA vs NMF, MCR-ALS.</li>
+<li>65–73 min: pitfall 1 (rotational ambiguity), pitfall 2 (truncation bias), decision table.</li>
+<li>73–78 min: ill-conditioning (κ), limits of linear methods.</li>
+<li>78–85 min: summary, must-know takeaways, Week 4 teaser, self-study/notebook.</li>
+<li>85–90 min: slack for questions.</li>
+</ul></li>
+<li>Backup slides after “Continue” (Potapov weighting paper, deep-mantle NMF case study, covariance matrix, matrices as transformations, ill-conditioning in EM + diagnostic) are for questions only.</li>
 <li>Transition: “Start with the simplest thing: what is a vector?”</li>
 </ul>
 <style type="text/css">
@@ -392,38 +406,8 @@
       }</style></aside>
 <!-- ===== §1. Vectors & matrices as geometry ===== -->
 </section>
-<section id="vectors-arrows-in-space" class="slide level2">
-<h2>Vectors: arrows in space</h2>
-<ul>
-<li class="fragment">A <strong>vector</strong> <span class="math inline">\(\mathbf{x} \in \mathbb{R}^D\)</span> is a point (or arrow) in <span class="math inline">\(D\)</span>-dimensional space.</li>
-<li class="fragment"><strong>In EM:</strong> one EELS spectrum with 200 energy channels is a point in <span class="math inline">\(\mathbb{R}^{200}\)</span>.</li>
-<li class="fragment">The <strong>dot product</strong> <span class="math inline">\(\mathbf{a}^T \mathbf{b} = |\mathbf{a}||\mathbf{b}|\cos\theta\)</span> measures the alignment between two vectors.</li>
-<li class="fragment">Dot product = 0 ⟹ <strong>orthogonal</strong> (90°) — the two vectors carry independent information.</li>
-<li class="fragment"><strong>Norm</strong> <span class="math inline">\(\|\mathbf{a}\| = \sqrt{\mathbf{a}^T\mathbf{a}}\)</span> = the length of the arrow.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Draw two arrows on the board. Ask: what does it mean for two spectra to be “similar”? Answer: their dot product is large (they point in almost the same direction). Two chemically distinct spectra (oxide vs metal) will be nearly orthogonal.</li>
-<li>The one point to land: angle between vectors = degree of similarity. This is the geometric foundation of every clustering and similarity metric we will use in the course.</li>
-<li>Misconception to preempt: “a vector is just a list of numbers.” It is — but it also has a geometric meaning (direction + magnitude) that becomes crucial when we ask “which direction captures the most variance?” Keep both views active.</li>
-<li>EM anchor: the dot product between a measured EELS spectrum and a reference Fe-L edge spectrum is a spectroscopic “match score” — this is the basis of reference-spectrum fitting and spectral unmixing.</li>
-<li>Forward link: the projection of one vector onto another (next slide) is the foundation of PCA and least-squares regression.</li>
-<li>Transition: “How do we project one vector onto another? That is the workhorse operation of this whole week.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="projection-the-core-operation" class="slide level2">
-<h2>Projection: the core operation</h2>
+<section id="vectors-dot-products-and-projection" class="slide level2">
+<h2>Vectors, dot products and projection</h2>
 <div class="columns">
 <div class="column" style="width:55%;">
 <div class="quarto-figure quarto-figure-center">
@@ -434,60 +418,21 @@
 </div>
 </div><div class="column" style="width:45%;">
 <ul>
-<li class="fragment"><strong>Scalar projection</strong> of <span class="math inline">\(\mathbf{b}\)</span> onto unit vector <span class="math inline">\(\hat{\mathbf{a}}\)</span>: <span class="math inline">\(c = \hat{\mathbf{a}}^T \mathbf{b}\)</span>.</li>
-<li class="fragment"><strong>Vector projection</strong>: <span class="math inline">\(\text{proj}_{\mathbf{a}} \mathbf{b} = c \, \hat{\mathbf{a}}\)</span>.</li>
-<li class="fragment">The <strong>residual</strong> <span class="math inline">\(\mathbf{b} - \text{proj}_{\mathbf{a}}\mathbf{b}\)</span> is perpendicular to <span class="math inline">\(\mathbf{a}\)</span>.</li>
-<li class="fragment">This decomposition — “how much lies along <span class="math inline">\(\mathbf{a}\)</span>?” — is what PCA does in every direction.</li>
+<li class="fragment">One EELS spectrum with <span class="math inline">\(D\)</span> channels is a <strong>vector</strong> <span class="math inline">\(\mathbf{x}\in\mathbb{R}^D\)</span>, a point in <span class="math inline">\(D\)</span>-dimensional space.</li>
+<li class="fragment"><strong>Dot product</strong> <span class="math inline">\(\mathbf{a}^T\mathbf{b}=\|\mathbf{a}\|\|\mathbf{b}\|\cos\theta\)</span> measures alignment; <span class="math inline">\(=0\)</span> ⟹ <strong>orthogonal</strong>.</li>
+<li class="fragment"><strong>Projection</strong> onto a unit vector <span class="math inline">\(\hat{\mathbf{a}}\)</span>: <span class="math inline">\(c=\hat{\mathbf{a}}^T\mathbf{b}\)</span>, <span class="math inline">\(\ \text{proj}_{\mathbf{a}}\mathbf{b}=c\,\hat{\mathbf{a}}\)</span>.</li>
+<li class="fragment">The <strong>residual</strong> <span class="math inline">\(\mathbf{b}-c\,\hat{\mathbf{a}}\)</span> is ⊥ <span class="math inline">\(\mathbf{a}\)</span>. “How much lies along <span class="math inline">\(\mathbf{a}\)</span>?” is what PCA asks in every direction.</li>
 </ul>
 </div></div>
 <aside class="notes">
 <ul>
-<li>Work through the picture carefully: the blue arrow is <span class="math inline">\(\mathbf{a}\)</span>, the red arrow is <span class="math inline">\(\mathbf{b}\)</span>, the green arrow is the projection. The orange dashed line is the residual — it meets <span class="math inline">\(\mathbf{a}\)</span> at a right angle.</li>
-<li>The one point to land: projection = “shadow” of <span class="math inline">\(\mathbf{b}\)</span> onto the line of <span class="math inline">\(\mathbf{a}\)</span>. The scalar <span class="math inline">\(c\)</span> tells you how much of <span class="math inline">\(\mathbf{b}\)</span> is “explained” by the direction <span class="math inline">\(\mathbf{a}\)</span>.</li>
-<li>Misconception to preempt: “the projection is the closest point on the line to <span class="math inline">\(\mathbf{b}\)</span>.” This is true and equivalent, but students find the “shadow” intuition more concrete. Use both.</li>
-<li>EM anchor: projecting an EELS spectrum <span class="math inline">\(\mathbf{b}\)</span> onto a reference spectrum <span class="math inline">\(\hat{\mathbf{a}}\)</span> (normalised to unit length) gives the coefficient that tells you “how much Fe-L edge is in this spectrum.” This is spectral unmixing in one formula.</li>
-<li>Forward link: least-squares regression (Week 4) generalises this to projecting onto a multi-dimensional subspace spanned by multiple feature vectors.</li>
-<li>Transition: “Now scale up: what does a matrix do geometrically?”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="matrices-as-geometric-transformations" class="slide level2">
-<h2>Matrices as geometric transformations</h2>
-<div class="columns">
-<div class="column" style="width:55%;">
-<div class="quarto-figure quarto-figure-center">
-<figure>
-<p><img data-src="img/matrix_transform.png" style="width:100.0%"></p>
-<figcaption>A <span class="math inline">\(2\times2\)</span> matrix applied to the unit square: rotates, stretches, and shears — the unit square (blue) becomes a parallelogram (orange).</figcaption>
-</figure>
-</div>
-</div><div class="column" style="width:45%;">
-<ul>
-<li class="fragment">A matrix <span class="math inline">\(\mathbf{A}\)</span> maps every vector <span class="math inline">\(\mathbf{x}\)</span> to a new vector <span class="math inline">\(\mathbf{y} = \mathbf{Ax}\)</span>.</li>
-<li class="fragment">Geometrically: <span class="math inline">\(\mathbf{A}\)</span> <strong>rotates</strong>, <strong>stretches</strong>, and (for non-symmetric <span class="math inline">\(\mathbf{A}\)</span>) <strong>shears</strong> space.</li>
-<li class="fragment"><strong>The data matrix <span class="math inline">\(\mathbf{X} \in \mathbb{R}^{N \times D}\)</span>:</strong> <span class="math inline">\(N\)</span> spectra (rows), each with <span class="math inline">\(D\)</span> energy channels (columns).</li>
-<li class="fragment">One row = one spectrum = one point in <span class="math inline">\(\mathbb{R}^D\)</span>.</li>
-<li class="fragment"><strong>Convention for this week:</strong> observations in rows, features in columns.</li>
-</ul>
-</div></div>
-<aside class="notes">
-<ul>
-<li>The unit-square picture is the classic: take the four corners of the unit square, apply <span class="math inline">\(\mathbf{A}\)</span> to each corner, watch the square become a parallelogram. This encodes the full action of the matrix geometrically.</li>
-<li>The one point to land: a matrix is not just a 2-D spreadsheet — it is a machine that reshapes space. Understanding what kind of reshaping it does (rotation? stretch? compression?) is the key to understanding PCA and SVD.</li>
-<li>Misconception to preempt: “the data matrix has <span class="math inline">\(D\)</span> rows (features) and <span class="math inline">\(N\)</span> columns (observations).” Different fields use different conventions. In this course: observations (spectra, pixels, samples) are <strong>rows</strong>; features (energy channels, pixel values) are <strong>columns</strong>. Always check shape with <code>.shape</code>.</li>
-<li>EM anchor: for an EELS spectrum image of shape (64, 64, 1024), you reshape the first two axes to get the data matrix <span class="math inline">\(\mathbf{X}\)</span> of shape (4096, 1024) — 4096 spectra, each with 1024 energy channels. This is the input to PCA.</li>
-<li>Forward link: the column space of <span class="math inline">\(\mathbf{X}\)</span> (the span of all spectra) is the subspace PCA is searching for a compact basis for.</li>
-<li>Transition: “When we talk about ‘dimensions’ of EM data, what do we mean precisely?”</li>
+<li>Draw two arrows on the board. Ask: what does it mean for two spectra to be “similar”? Answer: their dot product is large (they point in almost the same direction). Two chemically distinct spectra (oxide vs metal) are nearly orthogonal. Norm <span class="math inline">\(\|\mathbf{a}\|=\sqrt{\mathbf{a}^T\mathbf{a}}\)</span> is the length of the arrow.</li>
+<li>Work through the picture: blue arrow <span class="math inline">\(\mathbf{a}\)</span>, red arrow <span class="math inline">\(\mathbf{b}\)</span>, green arrow the projection, orange dashed the residual meeting <span class="math inline">\(\mathbf{a}\)</span> at a right angle.</li>
+<li>The one point to land: projection = the “shadow” of <span class="math inline">\(\mathbf{b}\)</span> on the line of <span class="math inline">\(\mathbf{a}\)</span> = the closest point on that line. The scalar <span class="math inline">\(c\)</span> tells you how much of <span class="math inline">\(\mathbf{b}\)</span> is “explained” by the direction <span class="math inline">\(\mathbf{a}\)</span>.</li>
+<li>Misconception to preempt: “a vector is just a list of numbers.” It is, but it also has a geometric meaning (direction + magnitude) that becomes crucial when we ask “which direction captures the most variance?”</li>
+<li>EM anchor: projecting an EELS spectrum onto a unit-normalised reference Fe-L edge spectrum gives a “match score”, i.e.&nbsp;how much Fe-L edge is in the spectrum. This is reference fitting / spectral unmixing in one formula.</li>
+<li>Forward link: least-squares regression (Week 4) generalises this to projecting onto a subspace spanned by several feature vectors.</li>
+<li>Transition: “Now stack many spectra: the data matrix.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -513,21 +458,22 @@
 </div>
 </div><div class="column" style="width:45%;">
 <ul>
-<li class="fragment">Each EELS spectrum <span class="math inline">\(\mathbf{x}_i \in \mathbb{R}^{1024}\)</span> is a <strong>point</strong> in 1024-D space.</li>
-<li class="fragment">The cloud of <span class="math inline">\(N\)</span> spectra occupies only a tiny corner of that space — most directions are empty.</li>
-<li class="fragment"><strong>Intrinsic dimensionality:</strong> if a sample has <span class="math inline">\(K\)</span> distinct chemical phases, the spectra approximately lie on a <span class="math inline">\(K\)</span>-dimensional subspace.</li>
-<li class="fragment"><strong>Key intuition:</strong> for a two-phase sample, all spectra are linear combinations of two end-members → they lie on a <strong>2-D plane</strong> inside <span class="math inline">\(\mathbb{R}^{1024}\)</span>.</li>
-<li class="fragment">PCA finds and extracts that plane.</li>
+<li class="fragment"><strong>Data matrix</strong> <span class="math inline">\(\mathbf{X}\in\mathbb{R}^{N\times D}\)</span>: one row per pixel spectrum, one column per energy channel (this week’s convention).</li>
+<li class="fragment">Each spectrum is a <strong>point</strong> in <span class="math inline">\(\mathbb{R}^{1024}\)</span>; the cloud occupies only a tiny corner of that space.</li>
+<li class="fragment"><span class="math inline">\(K\)</span> distinct phases ⟹ the spectra lie (approximately) on a <strong><span class="math inline">\(K\)</span>-dimensional subspace</strong>. Two phases → a 2-D plane in <span class="math inline">\(\mathbb{R}^{1024}\)</span>.</li>
+<li class="fragment">PCA finds and extracts that subspace.</li>
 </ul>
 </div></div>
 <aside class="notes">
 <ul>
-<li>Work through the figure in detail. The points are spectra; the two arrows are the first two principal components. PC1 points along the direction where spectra vary most (chemical difference between phases); PC2 points along the second-largest variation.</li>
-<li>The one point to land: a 1024-channel EELS dataset from a two-phase sample is effectively 2-dimensional. We only need 2 numbers per spectrum (the scores on PC1 and PC2) to characterise it completely. The other 1022 dimensions are noise.</li>
-<li>Misconception to preempt: “more channels = more information.” Not necessarily. More channels can mean more noise in dimensions that carry no signal. PCA identifies the low-dimensional signal subspace and discards the noise-dominated directions.</li>
-<li>EM anchor: in a steel sample with austenite and martensite phases, the EELS spectra from each phase are nearly constant within the phase. The data cloud is very thin (one dimension per phase), so K=2 components capture essentially all the signal.</li>
-<li>Forward link: the concept of intrinsic dimensionality reappears in Week 9 (autoencoders) where non-linear dimensionality reduction finds curved, not flat, low-dimensional structures.</li>
-<li>Transition: “How do we find a compact basis for a cloud of points? Start with projection.”</li>
+<li>A matrix <span class="math inline">\(\mathbf{A}\)</span> maps vectors, <span class="math inline">\(\mathbf{y}=\mathbf{Ax}\)</span>: it rotates, stretches (and shears) space. Keep that picture for SVD. (Backup slide “Matrices as geometric transformations” if needed.)</li>
+<li>Work through the figure. The points are spectra; the two arrows are the first two principal components. PC1 points along the direction where spectra vary most (chemical difference between phases); PC2 along the second-largest variation.</li>
+<li>The one point to land: a 1024-channel EELS dataset from a two-phase sample is effectively 2-dimensional. Two numbers per spectrum (scores on PC1 and PC2) characterise it; the other 1022 dimensions are noise.</li>
+<li>Misconception to preempt (1): “the data matrix has <span class="math inline">\(D\)</span> rows (features) and <span class="math inline">\(N\)</span> columns.” Fields differ. In this course observations (spectra, pixels) are <strong>rows</strong>, features (channels) are <strong>columns</strong>. Always check <code>.shape</code>.</li>
+<li>Misconception to preempt (2): “more channels = more information.” More channels can mean more noise in dimensions that carry no signal.</li>
+<li>EM anchor: in a steel sample with austenite and martensite phases, the EELS spectra are nearly constant within each phase; the data cloud is very thin, and K=2 components capture essentially all the signal.</li>
+<li>Forward link: intrinsic dimensionality reappears in Week 9 (autoencoders), where non-linear methods find curved, not flat, low-dimensional structures.</li>
+<li>Transition: “The practical step: how do we get from a datacube to this matrix?”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -543,25 +489,10 @@
 </section>
 <section id="reshaping-em-data-into-a-matrix-the-practical-step" class="slide level2">
 <h2>Reshaping EM data into a matrix: the practical step</h2>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a aria-label="1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
-<span id="cb1-2"><a aria-label="2"></a></span>
-<span id="cb1-3"><a aria-label="3"></a><span class="co"># Simulate loading an EELS spectrum image</span></span>
-<span id="cb1-4"><a aria-label="4"></a><span class="co"># Shape: (ny, nx, energy_channels) = (64, 64, 1024)</span></span>
-<span id="cb1-5"><a aria-label="5"></a>eels_map <span class="op">=</span> np.random.rand(<span class="dv">64</span>, <span class="dv">64</span>, <span class="dv">1024</span>).astype(np.float32)</span>
-<span id="cb1-6"><a aria-label="6"></a></span>
-<span id="cb1-7"><a aria-label="7"></a>ny, nx, ne <span class="op">=</span> eels_map.shape</span>
-<span id="cb1-8"><a aria-label="8"></a><span class="bu">print</span>(<span class="st">"Original shape:"</span>, eels_map.shape)   <span class="co"># (64, 64, 1024)</span></span>
-<span id="cb1-9"><a aria-label="9"></a></span>
-<span id="cb1-10"><a aria-label="10"></a><span class="co"># Reshape: stack all pixels into rows → data matrix</span></span>
-<span id="cb1-11"><a aria-label="11"></a>X <span class="op">=</span> eels_map.reshape(ny <span class="op">*</span> nx, ne)</span>
-<span id="cb1-12"><a aria-label="12"></a><span class="bu">print</span>(<span class="st">"Data matrix shape:"</span>, X.shape)        <span class="co"># (4096, 1024) — N=4096 spectra, D=1024 channels</span></span>
-<span id="cb1-13"><a aria-label="13"></a></span>
-<span id="cb1-14"><a aria-label="14"></a><span class="co"># After PCA: reshape score maps back to spatial image</span></span>
-<span id="cb1-15"><a aria-label="15"></a><span class="co"># (assume K=3 components)</span></span>
-<span id="cb1-16"><a aria-label="16"></a>K <span class="op">=</span> <span class="dv">3</span></span>
-<span id="cb1-17"><a aria-label="17"></a><span class="co"># scores.shape = (4096, 3)  →  reshape to (64, 64, 3)</span></span>
-<span id="cb1-18"><a aria-label="18"></a><span class="co"># score_maps = scores.reshape(ny, nx, K)</span></span>
-<span id="cb1-19"><a aria-label="19"></a><span class="bu">print</span>(<span class="ss">f"Score maps after reshape: (</span><span class="sc">{</span>ny<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>nx<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>K<span class="sc">}</span><span class="ss">) = </span><span class="sc">{</span>ny<span class="op">*</span>nx<span class="op">*</span>K<span class="sc">}</span><span class="ss"> values total"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a aria-label="1"></a>ny, nx, ne <span class="op">=</span> eels_map.shape              <span class="co"># (64, 64, 1024) spectrum image</span></span>
+<span id="cb1-2"><a aria-label="2"></a>X <span class="op">=</span> eels_map.reshape(ny <span class="op">*</span> nx, ne)        <span class="co"># (4096, 1024): rows = pixels, cols = channels</span></span>
+<span id="cb1-3"><a aria-label="3"></a><span class="co"># ... PCA / NMF on X gives per-pixel scores of shape (4096, K) ...</span></span>
+<span id="cb1-4"><a aria-label="4"></a>score_maps <span class="op">=</span> scores.reshape(ny, nx, K)   <span class="co"># back to K images</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="fragment">
 <ul>
 <li><strong>Data layout rule:</strong> observations (pixels, spectra) in <strong>rows</strong>; features (channels) in <strong>columns</strong>.</li>
@@ -569,11 +500,10 @@
 </ul>
 <aside class="notes">
 <ul>
-<li>This is a practical code slide. Walk through it line by line. The reshape from (64, 64, 1024) to (4096, 1024) is the single operation that unlocks PCA for any spectral image.</li>
-<li>The one point to land: the reshape operation does not change the data — it re-indexes it. The first 1024 values in row 0 of X are the spectrum at pixel (0, 0); the next 1024 in row 1 are the spectrum at pixel (0, 1); and so on. No information is lost.</li>
-<li>Misconception to preempt: “I should reshape the matrix as (1024, 4096) because features go in rows.” In NumPy/sklearn, the convention is always observations in rows. Transposing before PCA gives a completely different (and wrong) result — PCA would find directions of maximum variance across energy channels, not across pixels.</li>
-<li>EM anchor: hyperspy’s <code>s.decomposition()</code> does this reshape internally. Understanding it means you can use <code>s.get_decomposition_factors()</code> and <code>s.get_decomposition_loadings()</code> with confidence.</li>
-<li>Forward link: in the notebook, students do exactly this reshape operation before calling <code>np.linalg.svd</code>.</li>
+<li>Walk through it line by line. The reshape from (64, 64, 1024) to (4096, 1024) is the single operation that unlocks PCA (and NMF) for any spectral image. The notebook does exactly this before calling <code>np.linalg.svd</code>.</li>
+<li>The one point to land: the reshape does not change the data — it re-indexes it. Row 0 of X is the spectrum at pixel (0, 0), row 1 the spectrum at pixel (0, 1), and so on. No information is lost.</li>
+<li>Misconception to preempt: “I should reshape as (1024, 4096) because features go in rows.” In NumPy/sklearn observations are always rows. Transposing before PCA finds directions of variance across pixels instead of across channels — a completely different (and wrong) result.</li>
+<li>EM anchor: HyperSpy’s <code>s.decomposition()</code> does this reshape internally. Understanding it means you can use <code>s.get_decomposition_factors()</code> and <code>s.get_decomposition_loadings()</code> with confidence.</li>
 <li>Transition: “Now the core projection geometry.”</li>
 </ul>
 <style type="text/css">
@@ -593,20 +523,21 @@
 <section id="projection-onto-a-subspace" class="slide level2">
 <h2>Projection onto a subspace</h2>
 <ul>
-<li class="fragment">Suppose we want to <strong>approximate</strong> a spectrum <span class="math inline">\(\mathbf{x}\)</span> using only <span class="math inline">\(K\)</span> basis vectors <span class="math inline">\(\{\mathbf{v}_1, \ldots, \mathbf{v}_K\}\)</span>.</li>
-<li class="fragment">The best approximation (minimum reconstruction error) is the <strong>orthogonal projection</strong>: <span class="math display">\[\hat{\mathbf{x}} = \sum_{k=1}^{K} (\mathbf{v}_k^T \mathbf{x})\, \mathbf{v}_k = \mathbf{V}_K \mathbf{V}_K^T \mathbf{x}.\]</span></li>
-<li class="fragment">The coefficients <span class="math inline">\(c_k = \mathbf{v}_k^T \mathbf{x}\)</span> are called <strong>scores</strong> — how much of <span class="math inline">\(\mathbf{x}\)</span> lies along <span class="math inline">\(\mathbf{v}_k\)</span>.</li>
-<li class="fragment"><strong>Residual:</strong> <span class="math inline">\(\mathbf{x} - \hat{\mathbf{x}}\)</span> is orthogonal to every <span class="math inline">\(\mathbf{v}_k\)</span> — it contains whatever the <span class="math inline">\(K\)</span> basis vectors could not explain.</li>
-<li class="fragment">If the basis vectors capture signal, the residual contains noise.</li>
+<li class="fragment">Approximate a spectrum <span class="math inline">\(\mathbf{x}\)</span> with <span class="math inline">\(K\)</span> <strong>orthonormal</strong> basis vectors (<span class="math inline">\(\mathbf{v}_i^T\mathbf{v}_j=\delta_{ij}\)</span>). The best approximation is the <strong>orthogonal projection</strong>: <span class="math display">\[\hat{\mathbf{x}} = \sum_{k=1}^{K} (\mathbf{v}_k^T \mathbf{x})\, \mathbf{v}_k = \mathbf{V}_K \mathbf{V}_K^T \mathbf{x}.\]</span></li>
+<li class="fragment"><strong>Scores</strong> <span class="math inline">\(c_k = \mathbf{v}_k^T \mathbf{x}\)</span>: one dot product each, no matrix inversion (orthonormality makes it trivial).</li>
+<li class="fragment"><strong>Residual</strong> <span class="math inline">\(\mathbf{x} - \hat{\mathbf{x}}\)</span> is ⊥ every <span class="math inline">\(\mathbf{v}_k\)</span>. If the basis captures the signal, the residual is noise.</li>
+<li class="fragment">PCA’s eigenspectra form such a basis, so the scores of different PCs are <strong>uncorrelated</strong>.</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>This is the conceptual heart of both PCA and linear regression. Connect back to the single-vector projection: projecting onto <span class="math inline">\(K\)</span> basis vectors is just doing that operation <span class="math inline">\(K\)</span> times and adding up the results.</li>
-<li>The one point to land: “best approximation in the least-squares sense = orthogonal projection.” This is a theorem (the projection theorem), not a convention. It means PCA reconstruction is optimal in the Frobenius norm sense.</li>
-<li>Misconception to preempt: “I need to choose the basis vectors before projecting.” For projection onto a <strong>given</strong> subspace, yes. For PCA, the algorithm finds the optimal basis vectors from the data. The projection formula is then applied with those learned vectors.</li>
-<li>EM anchor: if we project an EELS spectrum onto a reference Fe-L edge eigenspectrum, the score <span class="math inline">\(c_1\)</span> directly measures the Fe content at that pixel. Low <span class="math inline">\(c_1\)</span> = Fe-poor; high <span class="math inline">\(c_1\)</span> = Fe-rich. The score map is a chemical map.</li>
-<li>Forward link: in Week 4, linear regression is exactly this: approximate a target vector <span class="math inline">\(\mathbf{y}\)</span> by projecting it onto the subspace spanned by the feature matrix columns. The coefficients are the regression weights.</li>
-<li>Transition: “This geometric picture leads directly to least squares with no calculus.”</li>
+<li>This is the conceptual heart of both PCA and linear regression. Projecting onto <span class="math inline">\(K\)</span> orthonormal vectors is just the single-vector projection done <span class="math inline">\(K\)</span> times and added up.</li>
+<li>The one point to land: “best approximation in the least-squares sense = orthogonal projection.” This is a theorem (the projection theorem), not a convention.</li>
+<li>Computational point: with an orthonormal basis, projecting a new spectrum costs K dot products, O(KD). No system solve.</li>
+<li>Misconception to preempt (1): “I need to choose the basis vectors before projecting.” For a given subspace, yes. PCA finds the optimal basis from the data, then applies this formula.</li>
+<li>Misconception to preempt (2): “orthogonal components are physically independent.” PCA scores are decorrelated <em>in this dataset</em>. If Fe and Cr both track thickness, the PCs encode linear combinations of them, and getting back to element maps needs an extra unmixing step (second half of today).</li>
+<li>EM anchor: projecting onto a reference Fe-L eigenspectrum gives a score <span class="math inline">\(c_1\)</span> that tracks the Fe content at that pixel. The score map is a chemical map.</li>
+<li>Forward link: orthonormality is also why the Eckart–Young error is just the sum of discarded <span class="math inline">\(\sigma_k^2\)</span>, with no cross-terms.</li>
+<li>Transition: “The same geometry gives least squares with no calculus.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -649,158 +580,35 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-</section>
-<section id="inner-product-and-orthonormal-bases-the-computational-engine" class="slide level2">
-<h2>Inner product and orthonormal bases: the computational engine</h2>
-<ul>
-<li class="fragment"><strong>Orthonormal basis</strong> <span class="math inline">\(\{\mathbf{v}_1, \ldots, \mathbf{v}_K\}\)</span>: each vector has unit length and all pairs are perpendicular.
-<ul>
-<li class="fragment">Formally: <span class="math inline">\(\mathbf{v}_i^T \mathbf{v}_j = \delta_{ij}\)</span> (= 1 if <span class="math inline">\(i=j\)</span>, else 0).</li>
-</ul></li>
-<li class="fragment"><strong>Computational advantage:</strong> to find the coefficient of <span class="math inline">\(\mathbf{x}\)</span> along <span class="math inline">\(\mathbf{v}_k\)</span>, just compute one dot product: <span class="math inline">\(c_k = \mathbf{v}_k^T \mathbf{x}\)</span>.</li>
-<li class="fragment">No matrix inversion needed — orthonormality makes the “inverse” trivial.</li>
-<li class="fragment"><strong>PCA principal components are orthonormal:</strong> each eigenspectrum has unit norm; different eigenspectra are perpendicular.</li>
-<li class="fragment">This means the scores for different PCs are <strong>uncorrelated</strong> — a crucial property for interpretation.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>The orthonormality condition (<span class="math inline">\(\delta_{ij}\)</span>) explains why PCA computation is cheap: projecting a spectrum onto K principal components requires only K dot products (K matrix-vector multiplies), not a system solve. Once the eigenspectra are known, processing a new spectrum is O(KD) — very fast.</li>
-<li>The one point to land: “uncorrelated PCs” means the score for PC1 carries no information about the score for PC2. If both were large and positively correlated, they would be redundant. Orthogonality guarantees each PC adds truly independent information.</li>
-<li>Misconception to preempt: “orthogonal components must be physically uncorrelated.” PCA components are decorrelated in the data — their scores have zero covariance. But two physical quantities that happen to be decorrelated in <em>this particular</em> dataset are not guaranteed to be uncorrelated in general. PCA does not discover universal physical independence; it discovers statistical independence in the specific dataset.</li>
-<li>EM anchor: in EELS, after PCA, the Fe score map and Cr score map are guaranteed to be uncorrelated (by construction of PCA). If the actual Fe and Cr distributions in the sample are correlated (e.g.&nbsp;both track sample thickness), the PCA components will not directly correspond to Fe and Cr — instead they will encode linear combinations. To get back to element maps, you need an extra unmixing step.</li>
-<li>Forward link: the orthonormality of PCA components is what makes the Eckart–Young theorem work — the reconstruction error is simply the sum of the discarded singular values squared, with no cross-terms.</li>
-<li>Transition: “Three-dimensional intuition helps with the scree plot concept.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="projection-intuition-in-3-d" class="slide level2">
-<h2>Projection intuition in 3-D</h2>
-<ul>
-<li class="fragment">Imagine a cloud of 3-D points (atoms in a grain boundary, spectra from a 3-phase sample).</li>
-<li class="fragment">Most of the <strong>variance</strong> (spread) lies along one principal direction — call it <span class="math inline">\(\mathbf{v}_1\)</span>.</li>
-<li class="fragment">Projecting every point onto <span class="math inline">\(\mathbf{v}_1\)</span> gives a 1-D summary that preserves most information.</li>
-<li class="fragment">Adding <span class="math inline">\(\mathbf{v}_2\)</span> (orthogonal to <span class="math inline">\(\mathbf{v}_1\)</span>) captures the next largest spread, and so on.</li>
-<li class="fragment">PCA finds <span class="math inline">\(\mathbf{v}_1, \mathbf{v}_2, \ldots\)</span> in order of decreasing variance — this is exact.</li>
-<li class="fragment"><strong>Key property:</strong> <span class="math inline">\(K\)</span> projections capture more variance than any other set of <span class="math inline">\(K\)</span> directions — PCA is optimal.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Use a physical analogy: shadow-casting. If you have a 3-D object and shine a light, the shadow on a wall is a 2-D projection. The shadow that shows the most detail corresponds to the best projection direction — the “most informative” shadow. PCA finds exactly that direction, then the second-most informative, and so on.</li>
-<li>The one point to land: PCA projections are optimal in a specific sense — among all possible <span class="math inline">\(K\)</span>-dimensional subspaces, PCA chooses the one that minimises reconstruction error (equivalently, maximises captured variance). This is the Eckart–Young theorem, and it is why PCA is used everywhere.</li>
-<li>Misconception to preempt: “there might be a better set of 2 directions than PC1 and PC2.” There isn’t — the optimality of PCA is a theorem. However, “better” here means “explains more variance,” not “more physically interpretable.” Non-negative Matrix Factorization (NMF) sacrifices optimality for physical interpretability.</li>
-<li>EM anchor: in a 4D-STEM dataset, the 3-D analogy is literal — diffraction patterns vary across a 2-D spatial scan plus a 2-D reciprocal space. PCA collapses the (kx, ky) pattern variability into a few principal components that encode grain orientation or strain.</li>
-<li>Forward link: the next three slides formalise this with SVD, which is the computational engine of PCA.</li>
-<li>Transition: “The mathematical tool behind PCA is SVD. Let me show you its geometry.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
 <!-- ===== §3. SVD as a picture ===== -->
-</section>
-<section id="the-covariance-matrix-where-geometry-meets-statistics" class="slide level2">
-<h2>The covariance matrix: where geometry meets statistics</h2>
-<ul>
-<li class="fragment"><strong>Covariance matrix</strong> of centered data: <span class="math inline">\(\mathbf{S} = \frac{1}{N-1}\tilde{\mathbf{X}}^T\tilde{\mathbf{X}} \in \mathbb{R}^{D \times D}\)</span>.</li>
-<li class="fragment">Entry <span class="math inline">\(S_{ij}\)</span> = covariance between energy channels <span class="math inline">\(i\)</span> and <span class="math inline">\(j\)</span>; <span class="math inline">\(S_{ii}\)</span> = variance of channel <span class="math inline">\(i\)</span>.</li>
-<li class="fragment"><strong>Geometry:</strong> the level set <span class="math inline">\(\mathbf{x}^T\mathbf{S}^{-1}\mathbf{x} = 1\)</span> is an <strong>ellipsoid</strong> whose axes are the eigenvectors of <span class="math inline">\(\mathbf{S}\)</span> with lengths <span class="math inline">\(\propto \sqrt{\lambda_k}\)</span> (eigenvalues).</li>
-<li class="fragment"><strong>PCA = align the coordinate axes with the ellipsoid axes:</strong> rotate to the eigenbasis of <span class="math inline">\(\mathbf{S}\)</span>, where features are uncorrelated.</li>
-<li class="fragment"><strong>In EM:</strong> off-diagonal entries of <span class="math inline">\(\mathbf{S}\)</span> are large when two energy channels always increase or decrease together (e.g.&nbsp;Fe-L23 channels are correlated because they all belong to the same edge).</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>The covariance matrix slide is the bridge between the abstract “directions of maximum variance” idea and the concrete eigenvector calculation. The ellipsoid picture is the geometric key: the long axis of the data ellipsoid is PC1.</li>
-<li>The one point to land: the shape of the covariance ellipsoid is exactly what PCA extracts. A thin, elongated ellipsoid means the data is highly structured and low-dimensional (good for PCA); a spherical ellipsoid means the data is isotropic (PCA helps little — all directions have equal variance).</li>
-<li>Misconception to preempt: “the covariance matrix is <span class="math inline">\(N \times N\)</span>” (number of observations squared). It is <span class="math inline">\(D \times D\)</span> (number of features squared). For EELS data with 1024 channels and 4096 pixels, the covariance matrix is 1024×1024, not 4096×4096. This is why PCA is feasible even for huge numbers of pixels.</li>
-<li>EM anchor: in EELS, correlated energy channels are the norm because each element contributes a characteristic edge shape that spans many channels. The covariance matrix of EELS spectra is block-diagonal, with each block corresponding to an element’s edge region.</li>
-<li>Forward link: SVD of the centered data matrix gives exactly the eigenvectors of <span class="math inline">\(\mathbf{S}\)</span> without ever forming <span class="math inline">\(\mathbf{S}\)</span> explicitly — which is important because forming <span class="math inline">\(\mathbf{S}\)</span> is computationally expensive and can be numerically unstable for large <span class="math inline">\(D\)</span>.</li>
-<li>Transition: “Now the big tool: SVD as a geometric picture.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
 </section>
 <section id="svd-the-rotatestretchrotate-decomposition" class="slide level2">
 <h2>SVD: the rotate–stretch–rotate decomposition</h2>
 <div class="columns">
-<div class="column" style="width:60%;">
+<div class="column" style="width:55%;">
 <div class="quarto-figure quarto-figure-center">
 <figure>
 <p><img data-src="img/svd_rotate_stretch_rotate.png" style="width:100.0%"></p>
 <figcaption>SVD applied to a unit circle: (1) rotate by <span class="math inline">\(\mathbf{V}^T\)</span>, (2) stretch by <span class="math inline">\(\mathbf{\Sigma}\)</span>, (3) rotate by <span class="math inline">\(\mathbf{U}\)</span> — the result is an ellipse.</figcaption>
 </figure>
 </div>
-</div><div class="column" style="width:40%;">
+</div><div class="column" style="width:45%;">
 <ul>
-<li class="fragment">Any matrix <span class="math inline">\(\mathbf{X}\)</span> (data matrix or otherwise) can be written as: <span class="math display">\[\mathbf{X} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T.\]</span></li>
-<li class="fragment"><strong><span class="math inline">\(\mathbf{V}\)</span></strong>: right singular vectors — input rotation (principal directions in feature space).</li>
-<li class="fragment"><strong><span class="math inline">\(\boldsymbol{\Sigma}\)</span></strong>: singular values on the diagonal — how much each direction is stretched.</li>
-<li class="fragment"><strong><span class="math inline">\(\mathbf{U}\)</span></strong>: left singular vectors — output rotation (scores in observation space).</li>
+<li class="fragment">Any matrix: <span class="math inline">\(\mathbf{X} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T\)</span> = rotate, stretch, rotate.</li>
+<li class="fragment"><strong><span class="math inline">\(\mathbf{V}\)</span></strong> (<span class="math inline">\(D\times D\)</span>): columns are <strong>eigenspectra</strong>, directions in channel space.</li>
+<li class="fragment"><strong><span class="math inline">\(\boldsymbol{\Sigma}\)</span></strong>: singular values <span class="math inline">\(\sigma_1\ge\sigma_2\ge\ldots\ge0\)</span>, the <strong>importance</strong> of each direction.</li>
+<li class="fragment"><strong><span class="math inline">\(\mathbf{U}\)</span></strong> (<span class="math inline">\(N\times N\)</span>): how strongly each direction is expressed per pixel → <strong>score maps</strong>.</li>
+<li class="fragment"><span class="math inline">\(\mathbf{X} = \sum_k \sigma_k \, \mathbf{u}_k \mathbf{v}_k^T\)</span>: a sum of rank-1 “spectral images”.</li>
 </ul>
 </div></div>
 <aside class="notes">
 <ul>
-<li>Walk through the four panels in the figure carefully: start with the unit circle (all possible unit-length inputs), apply <span class="math inline">\(\mathbf{V}^T\)</span> (rotate), then <span class="math inline">\(\mathbf{\Sigma}\)</span> (stretch along axes to form an ellipse), then <span class="math inline">\(\mathbf{U}\)</span> (rotate the ellipse). The result is the set of all possible output vectors when the input runs over the unit sphere.</li>
-<li>The one point to land: the singular values in <span class="math inline">\(\boldsymbol{\Sigma}\)</span> are the semi-axes of the output ellipse. A large singular value = a direction the matrix stretches strongly = a direction that carries a lot of information. A small singular value = a direction barely amplified = likely noise.</li>
-<li>Misconception to preempt: “SVD is just eigendecomposition.” Similar idea, but SVD works on any matrix (including rectangular), while eigendecomposition only applies to square matrices. For PCA, the connection is: the right singular vectors of the centered data matrix <span class="math inline">\(\mathbf{X}\)</span> are the eigenvectors of the covariance matrix <span class="math inline">\(\mathbf{X}^T\mathbf{X}/(N-1)\)</span>.</li>
-<li>EM anchor: for the EELS data matrix <span class="math inline">\(\mathbf{X}\)</span> (spectra × energy channels), the first singular value is proportional to the total signal strength; the corresponding left singular vector <span class="math inline">\(\mathbf{u}_1\)</span> shows how that signal varies across pixels; the right singular vector <span class="math inline">\(\mathbf{v}_1\)</span> shows the spectral shape of that variation.</li>
-<li>Forward link: the truncated SVD (keeping only the top <span class="math inline">\(k\)</span> singular values) is exactly the PCA denoising operation we will use in §6.</li>
-<li>Transition: “Let me make the SVD factors more concrete with their specific meanings.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="svd-factors-what-each-part-means" class="slide level2">
-<h2>SVD factors: what each part means</h2>
-<ul>
-<li class="fragment"><span class="math inline">\(\mathbf{X} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T\)</span> for a data matrix <span class="math inline">\(\mathbf{X} \in \mathbb{R}^{N \times D}\)</span> (N spectra, D channels):</li>
-<li class="fragment"><strong><span class="math inline">\(\mathbf{V}\)</span></strong> (<span class="math inline">\(D \times D\)</span>): columns are <strong>eigenspectra</strong> — the “spectral shapes” that make up the data.</li>
-<li class="fragment"><strong><span class="math inline">\(\boldsymbol{\Sigma}\)</span></strong> (<span class="math inline">\(N \times D\)</span>, diagonal): singular values <span class="math inline">\(\sigma_1 \geq \sigma_2 \geq \ldots \geq 0\)</span> — the <strong>importance</strong> of each eigenspectrum.</li>
-<li class="fragment"><strong><span class="math inline">\(\mathbf{U}\)</span></strong> (<span class="math inline">\(N \times N\)</span>): columns are <strong>score maps</strong> — how strongly each eigenspectrum is expressed at each pixel.</li>
-<li class="fragment"><strong>Compact notation:</strong> <span class="math inline">\(\mathbf{X} \approx \sum_{k=1}^{K} \sigma_k \, \mathbf{u}_k \mathbf{v}_k^T\)</span> — a sum of <span class="math inline">\(K\)</span> rank-1 “spectral images.”</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>This is the interpretive slide for EM practitioners. Every quantity has a direct measurement meaning: eigenspectrum = a spectral shape (may resemble an edge minus a background); score map = a chemical map showing where that spectral shape is strong.</li>
-<li>The one point to land: each rank-1 term <span class="math inline">\(\sigma_k \mathbf{u}_k \mathbf{v}_k^T\)</span> is a “snapshot” of one spectral variation mode. The first few terms describe the dominant chemistry; the later terms describe noise fluctuations that look like random patterns in both the score map and the eigenspectrum.</li>
-<li>Misconception to preempt: “the first singular vector is the mean spectrum.” No — PCA first centers the data (subtracts the mean spectrum), then finds the first singular vector of the centered data. The mean spectrum is removed before SVD. After centering, PC1 captures the largest <em>variation</em> around the mean, not the mean itself.</li>
-<li>EM anchor: Trebbia and Bonnet (1990) <span class="citation" data-cites="trebbia1990eels"><a href="#/references" role="doc-biblioref" onclick="">Trebbia, Patrick et al., (1990)</a></span> introduced SVD/PCA analysis to EELS data. Their insight was exactly this: the first few singular vectors correspond to real chemical variations; the rest look like noise. This is now standard in hyperspy’s PCA implementation.</li>
-<li>Forward link: the scree plot (next section) tells you how many rank-1 terms to keep — where the singular values drop from “signal-large” to “noise-small.”</li>
-<li>Transition: “Before the scree plot: the full PCA recipe in two slides.”</li>
+<li>Walk through the panels: unit circle (all unit-length inputs) → <span class="math inline">\(\mathbf{V}^T\)</span> rotates → <span class="math inline">\(\boldsymbol{\Sigma}\)</span> stretches along the axes into an ellipse → <span class="math inline">\(\mathbf{U}\)</span> rotates the ellipse.</li>
+<li>The one point to land: the singular values are the semi-axes of the output ellipse. Large <span class="math inline">\(\sigma\)</span> = strongly stretched direction = lots of information; small <span class="math inline">\(\sigma\)</span> = likely noise. Each rank-1 term <span class="math inline">\(\sigma_k\mathbf{u}_k\mathbf{v}_k^T\)</span> is one “spectral variation mode”: the first few describe the chemistry, later ones look like random patterns in both map and spectrum.</li>
+<li>Misconception to preempt (1): “SVD is just eigendecomposition.” SVD works on any (rectangular) matrix. The link: the right singular vectors of the centered data matrix are the eigenvectors of the covariance matrix <span class="math inline">\(\tilde{\mathbf{X}}^T\tilde{\mathbf{X}}/(N-1)\)</span> (backup slide “The covariance matrix”).</li>
+<li>Misconception to preempt (2): “the first singular vector is the mean spectrum.” Only if you forget to center. PCA subtracts the mean first; PC1 then captures the largest <em>variation</em> around the mean.</li>
+<li>EM anchor: Trebbia and Bonnet (1990) <span class="citation" data-cites="trebbia1990eels"><a href="#/references" role="doc-biblioref" onclick="">Trebbia, Patrick et al., (1990)</a></span> introduced SVD/PCA analysis to EELS: the first few singular vectors are real chemical variations, the rest look like noise. This is now standard in HyperSpy.</li>
+<li>Transition: “What happens if we keep only the top few terms of this sum?”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -848,84 +656,20 @@
 <section id="pca-directions-of-maximum-variance" class="slide level2">
 <h2>PCA: directions of maximum variance</h2>
 <ul>
-<li class="fragment"><strong>PCA</strong> finds the orthonormal directions <span class="math inline">\(\mathbf{v}_1, \mathbf{v}_2, \ldots\)</span> that maximise the <strong>variance of the projected data</strong>.</li>
-<li class="fragment">Mathematically: PC1 maximises <span class="math inline">\(\text{Var}(\mathbf{X}\mathbf{v})\)</span> subject to <span class="math inline">\(\|\mathbf{v}\|=1\)</span>.</li>
-<li class="fragment">Solution: <span class="math inline">\(\mathbf{v}_1\)</span> is the <strong>first right singular vector</strong> of the centered data matrix.</li>
-<li class="fragment">PC2 maximises variance subject to <span class="math inline">\(\mathbf{v}_2 \perp \mathbf{v}_1\)</span> — and so on.</li>
-<li class="fragment"><strong>Equivalently:</strong> PCA diagonalises the covariance matrix <span class="math inline">\(\mathbf{S} = \frac{1}{N-1}\mathbf{X}^T\mathbf{X}\)</span> (after centering).</li>
-<li class="fragment">The eigenvalues <span class="math inline">\(\lambda_k = \sigma_k^2/(N-1)\)</span> are the variances along each principal component.</li>
+<li class="fragment"><strong>PCA</strong> finds orthonormal directions that maximise the variance of the projected data: PC1 maximises <span class="math inline">\(\text{Var}(\tilde{\mathbf{X}}\mathbf{v})\)</span> s.t. <span class="math inline">\(\|\mathbf{v}\|=1\)</span>; PC2 ⊥ PC1, and so on.</li>
+<li class="fragment"><strong>PCA = SVD of the centered data:</strong> <span class="math inline">\(\tilde{\mathbf{X}} = \mathbf{X}-\bar{\mathbf{x}} = \mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^T\)</span>.</li>
+<li class="fragment"><strong>Loadings (eigenspectra):</strong> rows of <span class="math inline">\(\mathbf{V}^T\)</span>. <strong>Scores:</strong> <span class="math inline">\(\mathbf{U}\boldsymbol{\Sigma} = \tilde{\mathbf{X}}\mathbf{V}\)</span> → reshape to score maps.</li>
+<li class="fragment">Equivalently: the eigenvectors of the covariance <span class="math inline">\(\mathbf{S}=\tilde{\mathbf{X}}^T\tilde{\mathbf{X}}/(N-1)\)</span>, i.e.&nbsp;the axes of the data ellipsoid. Variance along PC <span class="math inline">\(k\)</span>: <span class="math inline">\(\lambda_k = \sigma_k^2/(N-1)\)</span>.</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>Connect back to the data-cloud figure from earlier. The long axis of the ellipse is PC1 (maximum spread = maximum variance). The short axis is PC2. SVD finds both simultaneously, plus all higher PCs.</li>
-<li>The one point to land: “PCA = SVD of the centered data matrix.” The centering step is crucial — without it, the first singular vector just points toward the mean spectrum, which is not interesting.</li>
-<li>Misconception to preempt: “PCA maximises variance so it always finds the most physically meaningful directions.” Maximum variance means maximum spread across samples. If the dominant variation is an instrumental artefact (beam drift, brightness drift), PC1 will capture that, not the chemistry. Always interpret PCs in the context of what causes spectral variation in your experiment.</li>
-<li>EM anchor: in EELS of a two-phase steel sample, PC1 typically captures the global intensity variation (due to sample thickness) and PC2 captures the chemical contrast between phases — because the chemical variation is the second-largest source of spectral change after thickness.</li>
-<li>Forward link: the scree plot shows the eigenvalues <span class="math inline">\(\lambda_k\)</span> (or equivalently the singular values <span class="math inline">\(\sigma_k\)</span>) in decreasing order. The drop from signal-eigenvalues to noise-eigenvalues is the elbow. We read that next.</li>
-<li>Transition: “Scores and loadings are the outputs of PCA — let me name them precisely.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="scores-and-loadings-pca-outputs-in-em" class="slide level2">
-<h2>Scores and loadings: PCA outputs in EM</h2>
-<ul>
-<li class="fragment">After centering <span class="math inline">\(\mathbf{X}\)</span> (subtract mean spectrum): <span class="math inline">\(\tilde{\mathbf{X}} = \mathbf{X} - \bar{\mathbf{x}}\mathbf{1}^T\)</span>.</li>
-<li class="fragment"><strong>Loadings (eigenspectra):</strong> rows of <span class="math inline">\(\mathbf{V}^T\)</span> — the spectral shapes of each PC. Shape: (<span class="math inline">\(K \times D\)</span>).</li>
-<li class="fragment"><strong>Scores:</strong> <span class="math inline">\(\mathbf{C} = \tilde{\mathbf{X}} \mathbf{V}_K\)</span> — how strongly each PC is expressed at each pixel. Shape: (<span class="math inline">\(N \times K\)</span>).</li>
-<li class="fragment">Reshape scores back to (ny, nx, K) → <strong>score maps</strong> (chemical images).</li>
-<li class="fragment">Reshape loadings to (K, D) → <strong>eigenspectra</strong> (spectral shapes).</li>
-<li class="fragment"><strong>Reconstruction with <span class="math inline">\(k\)</span> components:</strong> <span class="math inline">\(\hat{\mathbf{X}} = \bar{\mathbf{x}}\mathbf{1}^T + \mathbf{C}\mathbf{V}_K^T\)</span>.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Walk through the full pipeline on the board: (1) form data matrix (N×D); (2) subtract mean; (3) call <code>np.linalg.svd</code>; (4) take first K columns of <span class="math inline">\(\mathbf{V}\)</span> as loadings; (5) project: scores = centered_data @ loadings; (6) reshape scores to image shape; (7) to denoise: reconstruct = mean + scores @ loadings.T. That is the entire algorithm — 7 steps, no black box.</li>
-<li>The one point to land: scores = “where is each PC strong?” (chemical map). Loadings = “what does each PC look like spectrally?” (spectral shape). Together they give a complete interpretation.</li>
-<li>Misconception to preempt: “I need to use a PCA library.” You can, and you should for large data (sklearn’s <code>IncrementalPCA</code>). But understanding that PCA is just SVD of the centered matrix means you can always fall back to <code>np.linalg.svd</code> and build it from scratch — which you will do in the notebook.</li>
-<li>EM anchor: in the notebook, students will build exactly this pipeline on a synthetic EELS line scan. The score maps will clearly show chemical variation; the eigenspectra will show recognisable spectral shapes (an edge profile for PC1, a difference spectrum for PC2).</li>
-<li>Forward link: the scree plot (next section) tells you which K to use before you compute the scores and loadings.</li>
-<li>Transition: “How do you pick K? The scree plot is your guide.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="pca-step-by-step-the-algorithm" class="slide level2">
-<h2>PCA step by step: the algorithm</h2>
-<ol type="1">
-<li class="fragment"><strong>Form the data matrix:</strong> reshape spectral image to <span class="math inline">\((N, D)\)</span> — <span class="math inline">\(N\)</span> pixels, <span class="math inline">\(D\)</span> energy channels.</li>
-<li class="fragment"><strong>Center:</strong> subtract the mean spectrum <span class="math inline">\(\bar{\mathbf{x}}\)</span> from each row.</li>
-<li class="fragment"><strong>SVD:</strong> <code>U, s, Vt = np.linalg.svd(X_centered, full_matrices=False)</code>.</li>
-<li class="fragment"><strong>Choose <span class="math inline">\(k\)</span></strong> from the scree plot (next section).</li>
-<li class="fragment"><strong>Scores:</strong> <code>C = X_centered @ Vt[:k].T</code> — shape <span class="math inline">\((N, k)\)</span>.</li>
-<li class="fragment"><strong>Reconstruct:</strong> <code>X_hat = mean + C @ Vt[:k]</code> — shape <span class="math inline">\((N, D)\)</span>.</li>
-<li class="fragment"><strong>Reshape</strong> back to <span class="math inline">\((n_y, n_x, D)\)</span> for display.</li>
-</ol>
-<aside class="notes">
-<ul>
-<li>This slide bridges theory to practice. Go through each step with the EELS example shapes: (4096, 1024) data matrix → center → SVD → choose k=3 → scores (4096, 3) → reconstruct (4096, 1024) → reshape to (64, 64, 1024).</li>
-<li>The one point to land: the entire PCA denoising pipeline is seven lines of NumPy. There is no magic. Each line maps to a geometric operation we already understand.</li>
-<li>Misconception to preempt: “I should use sklearn PCA because it is faster.” For small data, <code>np.linalg.svd</code> is fine and perfectly transparent. For large EELS datasets (millions of spectra), <code>sklearn.decomposition.IncrementalPCA</code> processes data in chunks. The math is identical.</li>
-<li>EM anchor: hyperspy’s <code>s.decomposition(algorithm='svd')</code> does exactly these seven steps internally. Understanding the steps means you can interpret hyperspy’s output and troubleshoot unexpected PCs.</li>
-<li>Forward link: the notebook asks students to implement steps 1–7 from scratch on a synthetic EELS stack, then compare with <code>sklearn.decomposition.PCA</code>. Both should give identical results.</li>
-<li>Transition: “Now the critical question: how many components do we keep? The scree plot answers this.”</li>
+<li>Connect back to the data-cloud figure. The long axis of the ellipse is PC1 (maximum spread), the short axis PC2. SVD finds all of them at once.</li>
+<li>The one point to land: “PCA = SVD of the centered data matrix.” Without centering, the first singular vector just points toward the mean spectrum.</li>
+<li>Scores = “where is each PC strong?” (chemical map). Loadings = “what does each PC look like spectrally?” Together they give the complete interpretation.</li>
+<li>Misconception to preempt (1): “PCA always finds the physically meaningful directions.” Maximum variance may be an instrumental artefact (thickness, beam drift). In EELS of two-phase steel, PC1 often captures thickness and PC2 the chemical contrast.</li>
+<li>Misconception to preempt (2): “the covariance matrix is N × N.” It is D × D (1024 × 1024 for EELS), which is why PCA is feasible for huge pixel counts — and SVD gives its eigenvectors without ever forming it.</li>
+<li>Naming trap: HyperSpy calls the score maps “loadings” and the eigenspectra “factors”. Always check shapes.</li>
+<li>Transition: “In code, all of this is five lines.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -995,8 +739,6 @@
 <li class="fragment">Plot the <strong>variance explained</strong> <span class="math inline">\(\lambda_k / \sum_k \lambda_k\)</span> (or <span class="math inline">\(\sigma_k^2\)</span>) for each component.</li>
 <li class="fragment"><strong>Signal</strong> components: steeply decreasing — each one captures a large portion of variance.</li>
 <li class="fragment"><strong>Noise</strong> components: flat floor — all roughly equal variance (noise is isotropic).</li>
-<li class="fragment"><strong>Elbow rule:</strong> keep components before the curve flattens.</li>
-<li class="fragment"><strong>Cumulative variance:</strong> keep the smallest <span class="math inline">\(K\)</span> such that <span class="math inline">\(\geq 95\%\)</span> (or <span class="math inline">\(\geq 99\%\)</span>) of variance is explained.</li>
 </ul>
 </div></div>
 <aside class="notes">
@@ -1006,7 +748,7 @@
 <li>Misconception to preempt: “the elbow is always obvious.” For real data with many phases, the elbow can be gradual. In that case, inspect the eigenspectra and score maps for PCs near the elbow — if they look like recognizable spectral features, keep them; if they look like random noise, drop them. The scree plot is a starting point, not a definitive answer.</li>
 <li>EM anchor: for a realistic EELS dataset from a multi-phase oxide with 5 distinct Fe/Cr/Ni environments, the elbow might be at k=6–8, not k=2. Rule of thumb: intrinsic dimensionality ≈ number of distinct chemical environments + 1–2 background components.</li>
 <li>Forward link: the notebook exercise asks students to construct the scree plot for their synthetic EELS stack and justify their choice of k from it. The assert in the notebook checks that choosing the correct k gives lower reconstruction error than an underfitted k=1 model.</li>
-<li>Transition: “The elbow tells you where to cut. Let me show you what truncation does to the data.”</li>
+<li>Transition: “Where exactly do we cut? Three rules and one check.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1020,57 +762,24 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="interpreting-the-scree-plot-signal-vs-noise" class="slide level2">
-<h2>Interpreting the scree plot: signal vs noise</h2>
+<section id="choosing-k-elbow-95-rule-and-parallel-analysis" class="slide level2">
+<h2>Choosing K: elbow, 95 % rule and parallel analysis</h2>
 <ul>
-<li class="fragment"><strong>Above the elbow:</strong> components with large <span class="math inline">\(\sigma_k\)</span> — their eigenspectrum has recognisable physical structure (peaks, edges, background shapes).</li>
-<li class="fragment"><strong>Below the elbow:</strong> components with small <span class="math inline">\(\sigma_k\)</span> — their eigenspectrum looks like random oscillations; score map looks like spatially uncorrelated noise.</li>
-<li class="fragment"><strong>Practical check:</strong> always inspect the eigenspectrum and score map of the last component you keep and the first one you discard.</li>
-<li class="fragment"><strong>Variance explained by noise floor:</strong> for <span class="math inline">\(N\)</span> spectra with <span class="math inline">\(D\)</span> channels, the noise captures roughly <span class="math inline">\(N \cdot D \cdot \sigma_n^2\)</span> total variance. If the noise floor variance per component is uniform, each noise PC explains <span class="math inline">\(\approx \sigma_n^2\)</span>.</li>
-<li class="fragment"><strong>90%/95%/99%:</strong> common thresholds — for EELS denoising, 95% is a reasonable starting point.</li>
+<li class="fragment"><strong>Elbow:</strong> keep the components before the curve reaches the flat noise floor.</li>
+<li class="fragment"><strong>95 % cumulative variance:</strong> the smallest <span class="math inline">\(K\)</span> with <span class="math inline">\(\sum_{k\le K}\lambda_k/\sum_k\lambda_k\ge0.95\)</span>, a reasonable start for denoising.</li>
+<li class="fragment"><strong>Parallel analysis (Horn):</strong> keep <span class="math inline">\(\lambda_k\)</span> larger than those of random data of the same shape.</li>
+<li class="fragment"><strong>Always inspect</strong> the eigenspectrum and score map of the last kept and the first discarded PC: structure = signal, random wiggles = noise.</li>
+<li class="fragment">No universal <span class="math inline">\(K\)</span>: it depends on the question (compression, denoising, rare-phase discovery).</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>The visual inspection check is the most important practical point. Tell students: before trusting a PCA denoising result, always display PC_k_signal (last kept) and PC_(k+1)_noise (first discarded). The former should look like a smooth spectral shape; the latter should look like noise.</li>
-<li>The one point to land: the scree plot is not a black-box oracle — it is a diagnostic. The elbow is a starting point; physical interpretation of the PCs is the final check.</li>
-<li>Misconception to preempt: “keeping 95% of variance is always enough.” This is true for global denoising but not for rare-phase discovery. If a minor phase accounts for only 0.5% of the sample area, its contribution may fall below the 95% threshold. PCA denoising might erase it entirely. Always inspect the residual.</li>
-<li>EM anchor: a commonly encountered case in STEM-EELS is radiation damage: a beam-induced change in one small region creates a new “phase” with a distinct spectrum. Its singular value may be small (because only a few pixels are damaged) but physically critical. PCA denoising would suppress it.</li>
-<li>Forward link: the denoising demonstration (next section) shows quantitatively how reconstruction error decreases with k and plateaus at the noise floor.</li>
-<li>Transition: “Let’s see PCA denoising in action on the synthetic EELS stack.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="choosing-k-the-95-rule-and-parallel-analysis" class="slide level2">
-<h2>Choosing K: the 95% rule and parallel analysis</h2>
-<ul>
-<li class="fragment"><strong>95% cumulative variance rule:</strong> keep the smallest <span class="math inline">\(K\)</span> such that <span class="math inline">\(\sum_{k=1}^K \lambda_k / \sum_k \lambda_k \geq 0.95\)</span>.</li>
-<li class="fragment"><strong>Parallel analysis (Horn’s test):</strong> compare eigenvalues against those from random data with the same shape.
-<ul>
-<li class="fragment">Components with <span class="math inline">\(\lambda_k &gt;\)</span> random <span class="math inline">\(\lambda_k\)</span> are signal; the rest are noise.</li>
-<li class="fragment">More principled than the elbow rule but computationally heavier.</li>
-</ul></li>
-<li class="fragment"><strong>Physical prior:</strong> if you know the sample has 3 phases + a background model → try <span class="math inline">\(K = 4\)</span>.</li>
-<li class="fragment"><strong>Practice:</strong> use the scree plot as a first pass, then inspect eigenspectra near the boundary.</li>
-<li class="fragment">There is no universally correct <span class="math inline">\(K\)</span> — it depends on the science question.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Introduce parallel analysis as a more rigorous alternative without going deep — students should know it exists. The key comparison: parallel analysis replaces the subjective elbow with a statistical threshold (is this eigenvalue larger than what random noise would produce?).</li>
-<li>The one point to land: the “right” K depends on the scientific question. For compression, use 95% variance. For denoising before clustering, use a larger K that includes weak components. For rare-phase detection, keep more components and look at residuals.</li>
-<li>Misconception to preempt: “there is a single correct K that the algorithm should find automatically.” No algorithm can determine K without some criterion; different criteria answer different questions. The criterion is a scientific choice, not a mathematical one.</li>
-<li>EM anchor: in 4D-STEM grain orientation mapping, K might be 10–15 to capture major grain families plus twin variants; in EELS of a simple binary oxide, K=2–4 usually suffices.</li>
-<li>Forward link: the notebook exercise is specifically about justifying K from the scree plot. The assert checks that a reasonable K gives a meaningful reduction in reconstruction error compared to noise-dominated high-K reconstructions.</li>
-<li>Transition: “Now let’s see what truncation actually does to the spectra.”</li>
+<li>The visual inspection check is the most important practical point. Before trusting a PCA denoising result, display the last kept PC (should be a smooth spectral shape, structured score map) and the first discarded PC (should look like noise).</li>
+<li>Parallel analysis replaces the subjective elbow with a statistical threshold: is this eigenvalue larger than what random noise would produce? Students should know it exists; no need to go deep.</li>
+<li>The one point to land: the “right” K depends on the scientific question. For compression, 95 % variance. For denoising before clustering, a larger K. For rare-phase detection, keep more components and look at residuals (pitfall 2 later).</li>
+<li>Misconception to preempt: “keeping 95 % of variance is always enough.” A minor phase covering 0.5 % of the area may fall below the threshold and be erased. Same for beam damage in a few pixels.</li>
+<li>EM anchor: in 4D-STEM grain mapping K might be 10–15; in EELS of a simple binary oxide K=2–4. Rule of thumb: number of distinct chemical environments + 1–2 background components.</li>
+<li>Forward link: the notebook asks students to justify K from the scree plot; its assert checks that the chosen K beats an underfitted K=1.</li>
+<li>Transition: “Let’s see what truncation actually does to the spectra.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1085,48 +794,8 @@
       }</style></aside>
 <!-- ===== §6. PCA denoising of EELS by truncation ===== -->
 </section>
-<section id="pca-denoising-of-eels-the-experiment" class="slide level2">
-<h2>PCA denoising of EELS: the experiment</h2>
-<div class="columns">
-<div class="column" style="width:55%;">
-<div class="quarto-figure quarto-figure-center">
-<figure>
-<p><img data-src="img/eels_stack_noisy_clean.png" style="width:100.0%"></p>
-<figcaption>Synthetic EELS line-scan stack: noisy input (left), three sample spectra (centre, solid=noisy, dashed=clean), and clean ground truth (right).</figcaption>
-</figure>
-</div>
-</div><div class="column" style="width:45%;">
-<ul>
-<li class="fragment"><strong>Setup:</strong> 64-pixel × 300-channel synthetic EELS line scan.</li>
-<li class="fragment"><strong>Two latent components:</strong> Fe-L edge (~710 eV) dominant in the centre; Cr-L edge (~580 eV) dominant at the edges.</li>
-<li class="fragment"><strong>Noise:</strong> Poisson (scale = 500 counts); realistic low-dose EM conditions.</li>
-<li class="fragment"><strong>Goal:</strong> recover the clean spectra from the noisy stack using PCA truncation.</li>
-<li class="fragment"><strong>Signal is low-rank!</strong> Only 2 true latent components → data matrix has rank ≤ 2.</li>
-</ul>
-</div></div>
-<aside class="notes">
-<ul>
-<li>Walk through the figure: the colour map shows intensity as a function of position (x-axis) and energy (y-axis). You can see the Fe edge (bright band around 710 eV) centred in the middle of the scan, and the Cr edge (around 580 eV) brighter at the edges. The noisy spectra look jagged; the clean dashed lines are smooth.</li>
-<li>The one point to land: this synthetic dataset is designed to mimic a real grain-boundary line scan in a steel sample where Fe and Cr vary spatially. The number of true components (K=2) is known, which lets us validate the denoising result against ground truth.</li>
-<li>Misconception to preempt: “I would need a real EELS dataset to learn PCA.” The synthetic dataset is specifically designed so that the results are easy to interpret and the ground truth is known. Real EELS PCA works identically — we just cannot check against ground truth.</li>
-<li>EM anchor: Bosman et al.&nbsp;(2006) showed that multivariate analysis (PCA) of EELS spectrum images recovers both chemical and bonding (ELNES) information from noisy maps <span class="citation" data-cites="bosman2006eels"><a href="#/references" role="doc-biblioref" onclick="">Bosman, M. et al., (2006), doi:<span>10.1016/j.ultramic.2006.04.016</span></a></span>. The same approach is now routine in any EELS mapping experiment.</li>
-<li>Forward link: the notebook builds exactly this synthetic EELS stack and then walks through the PCA denoising pipeline step by step, ending with an exercise asking students to justify K from the scree plot.</li>
-<li>Transition: “Now let’s run PCA and see what k components give what quality of reconstruction.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="pca-denoising-reconstruction-with-k-components" class="slide level2">
-<h2>PCA denoising: reconstruction with k components</h2>
+<section id="pca-denoising-of-eels-reconstruction-with-k-components" class="slide level2">
+<h2>PCA denoising of EELS: reconstruction with k components</h2>
 <div class="columns">
 <div class="column" style="width:60%;">
 <div class="quarto-figure quarto-figure-center">
@@ -1137,21 +806,22 @@
 </div>
 </div><div class="column" style="width:40%;">
 <ul>
-<li class="fragment"><strong>k = 1:</strong> over-denoised — missing the Cr component; systematic error.</li>
-<li class="fragment"><strong>k = 2:</strong> near-perfect — recovers both chemical components; smooth and accurate.</li>
-<li class="fragment"><strong>k = 5:</strong> slightly under-denoised — residual noise from 3 noise components added back in.</li>
-<li class="fragment"><strong>k = 10:</strong> significantly under-denoised — many noise components included.</li>
-<li class="fragment"><strong>Optimal k = 2</strong> matches the scree-plot elbow. Not coincidence — the elbow marks where truncation switches from “removing noise” to “adding noise.”</li>
+<li class="fragment"><strong>Setup:</strong> synthetic 64-pixel × 300-channel EELS line scan, Fe-L and Cr-L components, Poisson noise → true rank 2.</li>
+<li class="fragment"><strong>k = 1:</strong> Cr component missing → systematic error (bias).</li>
+<li class="fragment"><strong>k = 2:</strong> recovers both components, tracks the ground truth.</li>
+<li class="fragment"><strong>k = 5, 10:</strong> noise components added back.</li>
+<li class="fragment">Error vs <span class="math inline">\(k\)</span> is <strong>U-shaped</strong>; its minimum sits at the scree elbow.</li>
 </ul>
 </div></div>
 <aside class="notes">
 <ul>
-<li>This is the payoff slide — walk through each panel carefully. The k=2 reconstruction looks clean and closely tracks the ground truth (green dashed). The k=1 reconstruction is smooth but missing the Cr edge entirely (systematic error = too much truncation). k=5 and k=10 are noisier because we included noise components.</li>
-<li>The one point to land: there is an optimal K. Below the optimal K, you have underfitting (losing real signal). Above the optimal K, you have overfitting (including noise). The scree plot elbow is the visual signal of where the optimum lives.</li>
-<li>Misconception to preempt: “more components = better reconstruction.” No — adding noise-floor components adds their random variation to the reconstruction, degrading it. The reconstruction error vs k plot is U-shaped: decreases to the optimal K, then increases again as noise components are added.</li>
-<li>EM anchor: in hyperspy, after <code>s.decomposition()</code>, the function <code>s.plot_decomposition_results()</code> shows the same comparison. Students can now interpret every panel of that output.</li>
-<li>Forward link: the notebook assert checks that the reconstruction error at k=2 is lower than at k=1 (underfitting) and that adding more components beyond the signal rank increases the error again.</li>
-<li>Transition: “The eigenspectra themselves carry chemical information. Let me show you what they look like.”</li>
+<li>Setup (figure in the notebook, Part A): the Fe-L edge (~710 eV) is dominant in the centre of the scan, the Cr-L edge (~580 eV) at the ends; Poisson noise at scale 500 counts, i.e.&nbsp;realistic low-dose conditions. It mimics a grain-boundary line scan in steel, with known ground truth so we can validate.</li>
+<li>This is the payoff slide. The k=2 reconstruction tracks the ground truth (green dashed). k=1 is smooth but misses the Cr edge (too much truncation). k=5 and k=10 are noisier because noise components were included.</li>
+<li>The one point to land: there is an optimal K. Below it you lose real signal (bias); above it you add noise back. The scree elbow is the visual signal of where the optimum lives.</li>
+<li>Misconception to preempt: “more components = better reconstruction.” No — noise-floor components add their random variation back.</li>
+<li>EM anchor: Bosman et al.&nbsp;(2006) showed that multivariate analysis of EELS spectrum images recovers chemical and bonding (ELNES) information from noisy maps <span class="citation" data-cites="bosman2006eels"><a href="#/references" role="doc-biblioref" onclick="">Bosman, M. et al., (2006), doi:<span>10.1016/j.ultramic.2006.04.016</span></a></span>. In HyperSpy, <code>s.plot_decomposition_results()</code> shows the same comparison.</li>
+<li>Forward link: the notebook assert checks that the error at k=2 is below k=1 and that adding components beyond the signal rank increases it again.</li>
+<li>Transition: “Why does this work so well?”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1172,7 +842,7 @@
 <li class="fragment"><strong>Noise is full-rank:</strong> Poisson noise adds variance in every direction equally — it spreads across all <span class="math inline">\(D\)</span> dimensions.</li>
 <li class="fragment"><strong>After SVD:</strong> the top <span class="math inline">\(K\)</span> singular vectors capture the signal subspace; the remaining <span class="math inline">\(D - K\)</span> directions are dominated by noise.</li>
 <li class="fragment"><strong>Truncation:</strong> project onto the signal subspace (keep top <span class="math inline">\(K\)</span>), discard the orthogonal complement (noise).</li>
-<li class="fragment"><strong>Caveat:</strong> this argument assumes Gaussian noise (noise is isotropic). Poisson noise has signal-dependent variance, so the noise floor is not perfectly flat — PCA denoising is slightly suboptimal for Poisson statistics.</li>
+<li class="fragment"><strong>Caveat:</strong> this assumes isotropic (equal-variance) noise. Poisson noise is signal-dependent, so the floor is not flat — hence <strong>Poisson weighting</strong> (coming up).</li>
 </ul>
 <aside class="notes">
 <ul>
@@ -1181,7 +851,7 @@
 <li>Misconception to preempt: “PCA denoising is the best possible denoising method.” For Gaussian noise, yes (it is optimal in the Eckart–Young sense). For Poisson noise (real EELS), it is approximately optimal for high counts but suboptimal at low counts where the noise variance varies across energy channels. Anscombe transform or Poisson-matched methods can improve on it.</li>
 <li>EM anchor: this is why PCA denoising is so powerful for EELS: EELS spectra from a sample with <span class="math inline">\(K\)</span> phases lie in a <span class="math inline">\(K\)</span>-dimensional subspace regardless of how many energy channels are recorded. The “true dimensionality” is set by the chemistry, not the spectrometer resolution.</li>
 <li>Forward link: Week 9 (autoencoders) removes the “linearity” assumption — autoencoders can find non-linear low-dimensional structure, useful when phase boundaries curve the data manifold rather than keep it flat.</li>
-<li>Transition: “The eigenspectra extracted by PCA are physically interpretable. Let me show you.”</li>
+<li>Transition: “What do the kept components look like?”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1196,8 +866,8 @@
       }</style></aside>
 <!-- ===== §7. Eigen-spectra / eigen-micrographs ===== -->
 </section>
-<section id="eigen-spectra-the-spectral-shapes-of-variation" class="slide level2">
-<h2>Eigen-spectra: the spectral shapes of variation</h2>
+<section id="eigen-spectra-and-score-maps" class="slide level2">
+<h2>Eigen-spectra and score maps</h2>
 <div class="columns">
 <div class="column" style="width:60%;">
 <div class="quarto-figure quarto-figure-center">
@@ -1208,51 +878,19 @@
 </div>
 </div><div class="column" style="width:40%;">
 <ul>
-<li class="fragment"><strong>PC1 eigenspectrum:</strong> the direction of maximum variance — here dominated by the Fe-L edge shape.</li>
-<li class="fragment"><strong>PC2 eigenspectrum:</strong> second direction — captures Cr-L contrast (positive Cr-L, negative Fe-L background).</li>
-<li class="fragment"><strong>PC3+ eigenspectrum:</strong> no recognisable peaks — random noise pattern.</li>
-<li class="fragment">Note: eigenspectra can have negative values (they are basis vectors, not physical spectra).</li>
-<li class="fragment">Physical spectra are reconstructed as: <span class="math inline">\(\hat{\mathbf{x}}_i = \bar{\mathbf{x}} + c_{i1}\mathbf{v}_1 + c_{i2}\mathbf{v}_2\)</span>.</li>
+<li class="fragment"><strong>PC1:</strong> Fe-L variation. <strong>PC2:</strong> Cr-L vs Fe-L contrast (signed). <strong>PC3+:</strong> no structure, noise.</li>
+<li class="fragment">Scores <span class="math inline">\(c_{ik}=\mathbf{v}_k^T(\mathbf{x}_i-\bar{\mathbf{x}})\)</span> reshaped to <span class="math inline">\((n_y,n_x)\)</span> → <strong>score maps</strong> (eigen-micrographs).</li>
+<li class="fragment">Eigenspectra and score maps can be <strong>negative</strong>: basis vectors, not physical spectra or concentrations.</li>
+<li class="fragment">Reconstruction: <span class="math inline">\(\hat{\mathbf{x}}_i = \bar{\mathbf{x}} + c_{i1}\mathbf{v}_1 + c_{i2}\mathbf{v}_2\)</span>.</li>
 </ul>
 </div></div>
 <aside class="notes">
 <ul>
-<li>Walk through each panel: PC1 has a clear peak around 710 eV (Fe-L<span class="math inline">\(_{2,3}\)</span>) — this is the dominant spectral variation across the scan. PC2 has a peak around 580 eV (Cr-L) with an anticorrelation at 710 eV — this is the Cr-vs-Fe chemical contrast. PC3 shows no recognisable structure — it is noise.</li>
-<li>The one point to land: eigenspectra that look like recognisable spectral features (edges, peaks) are signal; those that look like random oscillations are noise. Physical interpretation is part of the analysis.</li>
-<li>Misconception to preempt: “PC1 should look like the average Fe-L spectrum.” No — PC1 is a basis vector for the <em>variation</em>, not the mean. The mean spectrum is removed before PCA. PC1 looks like the spectral shape that varies most across pixels — which in this case is the Fe-L edge because Fe concentration varies most across the scan.</li>
-<li>EM anchor: in a real multi-element STEM-EELS experiment, the eigenspectra often resemble difference spectra between phases (oxide minus metal, high-Fe minus low-Fe). They are not directly interpretable as elemental compositions but can be rotated (e.g., with Varimax rotation) to get closer to physical end-members.</li>
-<li>Forward link: in Week 9, autoencoders replace the eigenspectra with learned non-linear features — but the same physical interpretation goal applies: what material variation does each latent feature capture?</li>
-<li>Transition: “Eigen-micrographs (score maps) complete the picture — but first: why do correlated features cause problems?”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="score-maps-chemical-images-from-pca" class="slide level2">
-<h2>Score maps: chemical images from PCA</h2>
-<ul>
-<li class="fragment">The <strong>score</strong> <span class="math inline">\(c_{ik} = \mathbf{v}_k^T (\mathbf{x}_i - \bar{\mathbf{x}})\)</span> tells how strongly pixel <span class="math inline">\(i\)</span> expresses PC <span class="math inline">\(k\)</span>.</li>
-<li class="fragment">Reshape scores to <span class="math inline">\((n_y, n_x)\)</span> → a <strong>score map</strong> — a chemical image of the sample.</li>
-<li class="fragment"><strong>In our EELS example:</strong> the PC1 score map shows high values (bright) where the Fe-L contribution is strong → Fe-rich region map.</li>
-<li class="fragment">Score maps can be positive or negative (unlike elemental maps which must be ≥ 0).</li>
-<li class="fragment">To get a physically interpretable elemental map: linear unmixing of score maps using known reference spectra.</li>
-<li class="fragment"><strong>Eigen-micrographs</strong> (score maps reshaped to 2-D) are the EM equivalent of eigenfaces in face recognition.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Connect to the 4D-STEM analogy: in 4D-STEM, applying PCA to the diffraction patterns (one per probe position) gives score maps that correspond to grain orientation contrast — bright regions in the PC1 score map are grains oriented strongly along PC1’s diffraction direction. This is the basis of automated grain mapping without manual labelling.</li>
-<li>The one point to land: score maps are the spatial output of PCA and directly give chemical/structural contrast. They are cheap to compute once the eigenspectra are known (just one matrix multiply).</li>
-<li>Misconception to preempt: “I need NMF to get physical elemental maps.” NMF gives non-negative maps (closer to physical concentrations) but at the cost of uniqueness (NMF solutions are not unique) and optimality (NMF is not the best rank-k approximation). PCA + linear unmixing is often more reliable.</li>
-<li>EM anchor: in hyperspy, <code>s.get_decomposition_factors()</code> gives the eigenspectra and <code>s.get_decomposition_loadings()</code> gives the score maps (called “loadings” in hyperspy’s convention). Students who understand the relationship score = projection will never be confused by this naming.</li>
-<li>Forward link: the notebook visualises the score maps for the synthetic EELS stack. Students should see the Fe-rich vs Cr-rich regions clearly delineated in the PC1 and PC2 score maps.</li>
+<li>Walk through each panel: PC1 has a clear peak around 710 eV (Fe-L<span class="math inline">\(_{2,3}\)</span>). PC2 has a peak around 580 eV (Cr-L) with an anticorrelation at 710 eV. PC3 shows no recognisable structure.</li>
+<li>The one point to land: eigenspectra that look like spectral features are signal; random oscillations are noise. And PCA’s output is signed — it is not a phase map. That is exactly the gap the second half of the lecture closes with NMF/MCR.</li>
+<li>Misconception to preempt: “PC1 should look like the average Fe-L spectrum.” No — PC1 is a basis vector for the <em>variation</em>; the mean was removed.</li>
+<li>EM anchor: in real STEM-EELS, eigenspectra often resemble difference spectra between phases (oxide minus metal). Score maps are the EM analogue of eigenfaces. In 4D-STEM, PCA of diffraction patterns gives score maps with grain-orientation contrast.</li>
+<li>HyperSpy: <code>s.get_decomposition_factors()</code> = eigenspectra, <code>s.get_decomposition_loadings()</code> = score maps.</li>
 <li>Transition: “Score maps and eigenspectra come straight out of the SVD — but only if the data going in are clean. Before we unmix anything: preprocessing.”</li>
 </ul>
 <style type="text/css">
@@ -1354,45 +992,7 @@
 <li>Misconception to preempt: “I will just use the Anscombe transform.” That is a valid alternative (the VST from Week 2). It works per entry and does not need a rank-one model of the mean. Keenan–Kotula weighting assumes the mean matrix is approximately rank one (pixel total × mean spectrum), which is a good approximation for most spectrum images.</li>
 <li>EM anchor: HyperSpy’s <code>normalize_poissonian_noise=True</code> implements exactly this scaling. Bosman et al.&nbsp;showed that weighted PCA recovers ELNES bonding information that unweighted PCA loses <span class="citation" data-cites="bosman2006eels"><a href="#/references" role="doc-biblioref" onclick="">Bosman, M. et al., (2006), doi:<span>10.1016/j.ultramic.2006.04.016</span></a></span>.</li>
 <li>Forward link: the NMF version of the same idea is to replace the Frobenius loss with the Poisson (KL) divergence. It comes in a few slides.</li>
-<li>Transition: “What does this look like on real EDS maps?”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="weighting-and-truncation-in-practice" class="slide level2">
-<h2>Weighting and truncation in practice</h2>
-<div class="columns">
-<div class="column" style="width:45%;">
-<div class="quarto-figure quarto-figure-center">
-<figure>
-<p><img data-src="img/potapov_weighted_pca_maps.png" style="width:100.0%"></p>
-<figcaption>STEM-XEDS element maps: raw → filtered → PCA unweighted → PCA weighted → PCA filtered &amp; weighted. Weighting plus the right truncation separates a clean map from a destroyed one. From <span class="citation" data-cites="potapov2019pca">Potapov, Pavel et al. <a href="#/references" role="doc-biblioref" onclick="">(2019), doi:<span>10.1186/s40679-019-0066-0</span></a></span>.</figcaption>
-</figure>
-</div>
-</div><div class="column" style="width:55%;">
-<ul>
-<li class="fragment">EDS counts are even sparser than EELS counts (often &lt; 1 count per channel per pixel). Without weighting, PCA mainly models the bremsstrahlung.</li>
-<li class="fragment"><strong>Potapov &amp; Lubk</strong> derive the optimal truncation rank from the noise statistics. It beats eyeballing the scree elbow <span class="citation" data-cites="potapov2019pca"><a href="#/references" role="doc-biblioref" onclick="">Potapov, Pavel et al., (2019), doi:<span>10.1186/s40679-019-0066-0</span></a></span>.</li>
-<li class="fragment"><strong>Recipe:</strong> weight → PCA → choose <span class="math inline">\(K\)</span> where the eigenvalues leave the noise floor (flat after weighting) → reconstruct → un-weight.</li>
-<li class="fragment"><strong>Record</strong> weighting, <span class="math inline">\(K\)</span> and the software version. Otherwise the map is not reproducible (Week 2 FAIR).</li>
-</ul>
-</div></div>
-<aside class="notes">
-<ul>
-<li>Walk down the columns of the figure: the unweighted PCA row still shows noise-like texture in the minority elements, while the weighted row is clean. The difference comes entirely from the scaling step, since the algorithm is otherwise identical.</li>
-<li>The one point to land: “denoise with PCA” is not one method. It is a family of choices (weighting, K, spatial pre-filtering), and each choice changes the result. Report them.</li>
-<li>Misconception to preempt: “a fixed rule like keep 5 components is fine for all samples.” A facility-wide fixed K can discard a dilute dopant on one sample and keep noise on another. K is a per-dataset decision.</li>
-<li>EM anchor: this paper is the standard reference for anyone doing PCA on STEM-EDS maps. Students who do the spectral miniproject should read its method section.</li>
-<li>Transition: “PCA has now given us a clean subspace. But its components are signed, orthogonal mixtures. How do we get phases?”</li>
+<li>Transition: “PCA has now given us a clean subspace. But its components are signed, orthogonal mixtures. How do we get phases?” (Backup: Potapov &amp; Lubk’s weighted-PCA EDS maps, if asked about real data.)</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1518,34 +1118,20 @@
 </section>
 <section id="nmf-by-multiplicative-updates" class="slide level2">
 <h2>NMF by multiplicative updates</h2>
-<div class="columns">
-<div class="column" style="width:52%;">
 <ul>
-<li class="fragment"><strong>Lee–Seung updates</strong> (Frobenius loss) <span class="citation" data-cites="lee2001nmf"><a href="#/references" role="doc-biblioref" onclick="">Lee, Daniel D. et al., (2001)</a></span>: <span class="math display">\[\mathbf{H} \leftarrow \mathbf{H}\odot\frac{\mathbf{W}^T\mathbf{X}}{\mathbf{W}^T\mathbf{W}\mathbf{H}},\qquad \mathbf{W} \leftarrow \mathbf{W}\odot\frac{\mathbf{X}\mathbf{H}^T}{\mathbf{W}\mathbf{H}\mathbf{H}^T}\]</span> (<span class="math inline">\(\odot\)</span> and the fraction are element-wise).</li>
-<li class="fragment"><strong>Why it works:</strong> it is gradient descent with a per-element step size chosen so that the negative part of the gradient cancels. Every factor is ≥ 0, so <strong>non-negativity is preserved automatically</strong>, with no projection step.</li>
-<li class="fragment">The loss is <strong>non-increasing</strong> at every step (majorisation argument), but convergence can be slow and ends in a <em>local</em> minimum.</li>
-<li class="fragment">KL version: <span class="math inline">\(\mathbf{H}\leftarrow\mathbf{H}\odot\frac{\mathbf{W}^T(\mathbf{X}/\mathbf{WH})}{\mathbf{W}^T\mathbf{1}}\)</span>, the Poisson-ML update.</li>
+<li class="fragment"><strong>Lee–Seung updates</strong> (Frobenius loss) <span class="citation" data-cites="lee2001nmf"><a href="#/references" role="doc-biblioref" onclick="">Lee, Daniel D. et al., (2001)</a></span>, element-wise: <span class="math display">\[\mathbf{H} \leftarrow \mathbf{H}\odot\frac{\mathbf{W}^T\mathbf{X}}{\mathbf{W}^T\mathbf{W}\mathbf{H}},\qquad \mathbf{W} \leftarrow \mathbf{W}\odot\frac{\mathbf{X}\mathbf{H}^T}{\mathbf{W}\mathbf{H}\mathbf{H}^T}\]</span></li>
+<li class="fragment">Gradient descent with a per-element step size: all factors ≥ 0, so <strong>non-negativity is preserved automatically</strong>.</li>
+<li class="fragment">The loss <strong>never increases</strong>, but convergence is slow and ends in a <em>local</em> minimum.</li>
+<li class="fragment">KL version = Poisson-ML update. In practice: <code>sklearn.decomposition.NMF(beta_loss="kullback-leibler", solver="mu")</code>; you write the updates yourself in <strong>notebook Part D</strong>.</li>
 </ul>
-</div><div class="column" style="width:48%;">
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a aria-label="1"></a><span class="im">from</span> sklearn.decomposition <span class="im">import</span> NMF</span>
-<span id="cb3-2"><a aria-label="2"></a></span>
-<span id="cb3-3"><a aria-label="3"></a>X <span class="op">=</span> si.reshape(<span class="op">-</span><span class="dv">1</span>, n_channels)        <span class="co"># (N, D), counts &gt;= 0</span></span>
-<span id="cb3-4"><a aria-label="4"></a>nmf <span class="op">=</span> NMF(n_components<span class="op">=</span><span class="dv">3</span>,</span>
-<span id="cb3-5"><a aria-label="5"></a>          init<span class="op">=</span><span class="st">"nndsvda"</span>,             <span class="co"># SVD-based init</span></span>
-<span id="cb3-6"><a aria-label="6"></a>          beta_loss<span class="op">=</span><span class="st">"kullback-leibler"</span>,   <span class="co"># Poisson</span></span>
-<span id="cb3-7"><a aria-label="7"></a>          solver<span class="op">=</span><span class="st">"mu"</span>,                <span class="co"># multiplicative</span></span>
-<span id="cb3-8"><a aria-label="8"></a>          max_iter<span class="op">=</span><span class="dv">1000</span>, random_state<span class="op">=</span><span class="dv">0</span>)</span>
-<span id="cb3-9"><a aria-label="9"></a>W <span class="op">=</span> nmf.fit_transform(X)              <span class="co"># (N, K) abundances</span></span>
-<span id="cb3-10"><a aria-label="10"></a>H <span class="op">=</span> nmf.components_                   <span class="co"># (K, D) spectra</span></span>
-<span id="cb3-11"><a aria-label="11"></a>maps <span class="op">=</span> W.reshape(ny, nx, <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div></div>
 <aside class="notes">
 <ul>
-<li>Derivation sketch for the board: the gradient of <span class="math inline">\(\frac12\|\mathbf{X}-\mathbf{WH}\|^2\)</span> with respect to <span class="math inline">\(\mathbf{H}\)</span> is <span class="math inline">\(\mathbf{W}^T\mathbf{WH}-\mathbf{W}^T\mathbf{X}\)</span>, i.e.&nbsp;a positive part minus a negative part. Take a gradient step with element-wise step size <span class="math inline">\(\eta_{kj} = H_{kj}/(\mathbf{W}^T\mathbf{WH})_{kj}\)</span> and the update collapses to <span class="math inline">\(H_{kj}\cdot(\mathbf{W}^T\mathbf{X})_{kj}/(\mathbf{W}^T\mathbf{WH})_{kj}\)</span>. That is a <em>multiplicative</em> update, and since all terms are non-negative, <span class="math inline">\(\mathbf{H}\)</span> stays non-negative.</li>
-<li>The one point to land: the algorithm is a special case of the gradient descent students will meet properly in Week 4, with a clever learning rate <span class="math inline">\(\eta\)</span>. It is the first “learning algorithm” of the course that they can write by hand in five lines (the notebook does exactly this).</li>
-<li>Misconception to preempt: “multiplicative updates are the best solver.” They are simple and robust but slow. Coordinate descent (sklearn’s default <code>solver='cd'</code>) or HALS converge faster for the Frobenius loss. For the KL loss, <code>mu</code> is the standard sklearn option.</li>
-<li>Practical warning: a zero entry stays zero forever under multiplicative updates. Initialise with strictly positive values (NNDSVDa fills zeros with the mean), and never initialise with exact zeros where signal should be.</li>
-<li>EM anchor: for the synthetic 3-phase SI in the notebook (48 × 48 × 300), NMF converges in under a second on a laptop CPU.</li>
+<li>Derivation sketch for the board: the gradient of <span class="math inline">\(\frac12\|\mathbf{X}-\mathbf{WH}\|^2\)</span> w.r.t. <span class="math inline">\(\mathbf{H}\)</span> is <span class="math inline">\(\mathbf{W}^T\mathbf{WH}-\mathbf{W}^T\mathbf{X}\)</span>, a positive part minus a negative part. Take a gradient step with element-wise step size <span class="math inline">\(\eta_{kj} = H_{kj}/(\mathbf{W}^T\mathbf{WH})_{kj}\)</span> and the update collapses to <span class="math inline">\(H_{kj}\cdot(\mathbf{W}^T\mathbf{X})_{kj}/(\mathbf{W}^T\mathbf{WH})_{kj}\)</span> — multiplicative, and non-negative since all terms are. Monotone decrease follows from a majorisation argument.</li>
+<li>KL update: <span class="math inline">\(\mathbf{H}\leftarrow\mathbf{H}\odot\frac{\mathbf{W}^T(\mathbf{X}/\mathbf{WH})}{\mathbf{W}^T\mathbf{1}}\)</span>.</li>
+<li>The one point to land: a special case of the gradient descent of Week 4, with a clever learning rate. The first learning algorithm of the course that students can write by hand in five lines.</li>
+<li>sklearn call used in the notebook: <code>NMF(n_components=3, init="nndsvda", beta_loss="kullback-leibler", solver="mu", max_iter=1000, random_state=0)</code>; <code>W = nmf.fit_transform(X)</code> gives abundances (N, K), <code>H = nmf.components_</code> spectra (K, D).</li>
+<li>Misconception to preempt: “multiplicative updates are the best solver.” Simple and robust, but slow. Coordinate descent (sklearn default <code>solver='cd'</code>) or HALS are faster for the Frobenius loss; for KL, <code>mu</code> is the standard sklearn option.</li>
+<li>Practical warning: a zero entry stays zero forever. Initialise strictly positive (NNDSVDa fills zeros with the mean).</li>
 <li>Transition: “Let’s compare what PCA and NMF return on the same data.”</li>
 </ul>
 <style type="text/css">
@@ -1615,46 +1201,7 @@
 <li>Misconception to preempt: “MCR-ALS is just NMF with extra steps.” Mathematically yes, and that is the point. The extra steps turn a generic factorisation into a physically constrained one. Plain NMF has no knowledge of the physics. MCR lets you inject it.</li>
 <li>Implementation detail: the simplest non-negativity step is least squares followed by clipping negatives to zero. It is crude but widely used. Proper NNLS per pixel is more accurate but slower. The notebook’s optional MCR-ALS cell uses clipping plus closure.</li>
 <li>EM anchor (figure): the Ga/Pt component is the FIB-implanted Ga and the protective Pt cap. MCR isolates this contamination into its own component instead of letting it contaminate the chemistry. Read every component, including the boring ones.</li>
-<li>Transition: “A modern example where NMF made a trace-element measurement possible.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="case-study-nmf-aided-phase-unmixing-of-stem-edxs" class="slide level2">
-<h2>Case study: NMF-aided phase unmixing of STEM-EDXS</h2>
-<div class="columns">
-<div class="column" style="width:42%;">
-<ul>
-<li class="fragment"><strong>Sample:</strong> lower-mantle assemblage from a diamond-anvil cell: bridgmanite, ferropericlase, Ca-perovskite, doped with trace Nd/Sm/U <span class="citation" data-cites="chen_2024_nmf"><a href="#/references" role="doc-biblioref" onclick="">Chen, Hui et al., (2024), doi:<span>10.1016/j.ultramic.2024.113981</span></a></span>.</li>
-<li class="fragment"><strong>Problem:</strong> the phases share X-ray lines and intermix below the pixel scale. The per-pixel EDXS is far too noisy for trace elements.</li>
-<li class="fragment"><strong>Pipeline:</strong> NMF (3 components) → phase spectra + abundance maps → constrained least-squares refinement → quantification.</li>
-<li class="fragment"><strong>Result:</strong> trace Sm detected in ferropericlase down to tens of ppm.</li>
-<li class="fragment"><strong>Next step:</strong> physics-guided NMF, where endmembers are built from X-ray emission theory and fitted with a Poisson loss <span class="citation" data-cites="teurtrie_2024_espmnmf"><a href="#/references" role="doc-biblioref" onclick="">Teurtrie, Adrien et al., (2024)</a></span>.</li>
-</ul>
-</div><div class="column" style="width:58%;">
-<div class="quarto-figure quarto-figure-center">
-<figure>
-<p><img data-src="img/nmf_chen_deep_mantle.png" style="width:100.0%"></p>
-<figcaption>Recovered phase spectra of bridgmanite, ferropericlase and Ca-perovskite after NMF-aided unmixing (a–c), and the corresponding abundance maps (d–f). From <span class="citation" data-cites="chen_2024_nmf">Chen, Hui et al. <a href="#/references" role="doc-biblioref" onclick="">(2024), doi:<span>10.1016/j.ultramic.2024.113981</span></a></span>.</figcaption>
-</figure>
-</div>
-</div></div>
-<aside class="notes">
-<ul>
-<li>Why this is the right case study: clustering (K-means / GMM) fails here because the phases overlap spectrally and spatially. A hard cluster map would be wrong on nearly every mixed pixel. NMF pools the counts of all pixels belonging to a phase into one clean endmember spectrum, which is how a per-pixel-noisy measurement becomes a trace-element measurement.</li>
-<li>The one point to land: the benefit of unmixing is statistical. The endmember spectrum is estimated from <em>thousands</em> of pixels, so its SNR is far higher than that of any single pixel. This is the same “exploit redundancy” argument as PCA denoising, but in a physically interpretable basis.</li>
-<li>Physics-guided NMF (Teurtrie et al., the <code>espm</code> Python package): instead of learning arbitrary non-negative spectra, parameterise each endmember by elemental concentrations times theoretical X-ray line shapes plus a bremsstrahlung model. Fit with the Poisson (KL) loss. This greatly reduces rotational ambiguity, because the spectra can no longer take arbitrary shapes.</li>
-<li>Misconception to preempt: “a black-box NMF result is publishable.” Chen et al.&nbsp;validate against known phase compositions and refine the abundances with constrained least squares. The NMF step is a starting point, not the answer.</li>
-<li>Transition: “Which brings us to the pitfalls. Why is a factorisation not unique, and how do we notice when it is lying?”</li>
+<li>Transition: “Which brings us to the pitfalls. Why is a factorisation not unique, and how do we notice when it is lying?” (Backup: NMF-aided deep-mantle STEM-EDXS case study.)</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1685,7 +1232,8 @@
 <li class="fragment">Non-negativity only rules out some <span class="math inline">\(\mathbf{T}\)</span>. It leaves a <strong>feasible band</strong> of solutions.</li>
 <li class="fragment">Geometrically: any simplex that encloses the data and has non-negative vertices is a valid answer.</li>
 <li class="fragment"><strong>Symptoms:</strong> endmembers change between restarts, or converge consistently to spectra with dips / copies of other phases. Consistency ≠ correctness.</li>
-<li class="fragment"><strong>Remedies:</strong> closure, known spectra, pure pixels / selectivity, sparsity, physics-guided endmembers. Always <strong>report your constraints</strong>.</li>
+<li class="fragment"><strong>Remedies:</strong> closure, known spectra, pure pixels / selectivity, physics-guided endmembers. Always <strong>report your constraints</strong>.</li>
+<li class="fragment">PCA is unique (up to sign) only because it <em>imposes</em> orthogonality.</li>
 </ul>
 </div></div>
 <aside class="notes">
@@ -1841,6 +1389,7 @@
 <li class="fragment">Well-conditioned: <span class="math inline">\(\kappa \approx 1\)</span> (circular contours). Ill-conditioned: <span class="math inline">\(\kappa \gg 1\)</span> (narrow valley).</li>
 <li class="fragment"><strong>Cause:</strong> highly correlated features → data matrix nearly singular → small <span class="math inline">\(\sigma_\text{min}\)</span> → large <span class="math inline">\(\kappa\)</span>.</li>
 <li class="fragment"><strong>Effect:</strong> a tiny change in the data produces huge, unstable swings in the estimated parameters <span class="citation" data-cites="murphy2012machine"><a href="#/references" role="doc-biblioref" onclick="">Murphy, Kevin P., (2012)</a></span>.</li>
+<li class="fragment"><strong>Cures:</strong> standardise features, project onto the top PCs, or Ridge (Week 4).</li>
 </ul>
 </div></div>
 <aside class="notes">
@@ -1850,67 +1399,7 @@
 <li>Misconception to preempt: “ill-conditioning means the model is wrong.” No — the model can be perfectly specified but the data matrix is ill-conditioned. The solution is not a different model but a different computation: use SVD (which can detect and handle small singular values) instead of direct inversion.</li>
 <li>EM anchor: in EDS mapping of an alloy with Fe and Mn close in energy, the two elemental maps are highly correlated because the Fe-K<span class="math inline">\(\alpha\)</span> and Mn-K<span class="math inline">\(\alpha\)</span> peaks overlap. Directly fitting both peaks simultaneously creates a near-singular regression matrix. SVD-based pseudo-inverse or regularisation (Ridge) is the standard fix.</li>
 <li>Forward link: in Week 4, ridge regression adds <span class="math inline">\(\lambda\mathbf{I}\)</span> to the normal equations, which lifts all eigenvalues by <span class="math inline">\(\lambda\)</span> and eliminates ill-conditioning. This is the standard cure.</li>
-<li>Transition: “Why do correlated features produce ill-conditioning?”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="why-correlated-features-cause-ill-conditioning-in-em" class="slide level2">
-<h2>Why correlated features cause ill-conditioning in EM</h2>
-<ul>
-<li class="fragment"><strong>Scenario:</strong> two EDS channels (Fe-K<span class="math inline">\(\alpha\)</span> at 6.4 keV and Ni-K<span class="math inline">\(\alpha\)</span> at 7.5 keV) both increase with sample thickness in an FeNi alloy.</li>
-<li class="fragment">Forming a regression matrix from both channels → two nearly parallel column vectors → near-singular <span class="math inline">\(\mathbf{X}^T\mathbf{X}\)</span> → high <span class="math inline">\(\kappa\)</span>.</li>
-<li class="fragment"><strong>PCA as a cure:</strong> PCA rotates to the principal directions. In the new basis, the directions are uncorrelated by construction (orthogonal). The PCA-transformed data matrix has no correlated columns.</li>
-<li class="fragment"><strong>Practical rule:</strong> if your condition number is <span class="math inline">\(&gt; 10^3\)</span> and you are fitting a linear model, standardise your features (subtract mean, divide by std) and consider PCA pre-processing or Ridge regularisation.</li>
-<li class="fragment">Fitting with highly correlated features gives wildly uncertain coefficients even when the prediction accuracy looks fine.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>The key insight: high prediction accuracy with correlated features does not mean the coefficients are physically meaningful. The model found one combination of coefficients that works, but many other combinations work equally well (the loss valley is flat). Any perturbation of the data changes which combination is selected.</li>
-<li>The one point to land: “correct predictions, wrong coefficients” is a genuine failure mode. If you are using regression coefficients as physical descriptors (e.g., “the model says the Fe contribution is 0.7”), you need well-conditioned data for those numbers to be interpretable.</li>
-<li>Misconception to preempt: “I can check if my features are correlated by looking at the correlation matrix.” Yes — but the correlation matrix shows pairwise correlation. SVD shows the effective dimensionality of the full feature matrix, including higher-order redundancies. High condition number with moderate pairwise correlations is common.</li>
-<li>EM anchor: in 4D-STEM strain mapping, the lattice parameters <span class="math inline">\(a\)</span> and <span class="math inline">\(c\)</span> of a hexagonal crystal are often correlated in strained regions. Directly fitting both can produce unstable strain maps; using PCA-reduced diffraction pattern features as inputs avoids this.</li>
-<li>Forward link: Week 4 introduces regularisation (Ridge, Lasso) as the systematic cure for ill-conditioning. PCA pre-processing (projecting onto the well-conditioned principal components) is an alternative.</li>
-<li>Transition: “Before we close: what are the limits of linear methods, and what comes next?”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="ill-conditioning-a-quick-diagnostic" class="slide level2">
-<h2>Ill-conditioning: a quick diagnostic</h2>
-<ul>
-<li class="fragment"><strong>Check condition number:</strong> <code>np.linalg.cond(X)</code> — if <span class="math inline">\(&gt; 10^6\)</span>, you have a serious problem.</li>
-<li class="fragment"><strong>Variance–inflation factor (VIF):</strong> for each feature, regress it on all others. High <span class="math inline">\(R^2\)</span> → high VIF → high collinearity.</li>
-<li class="fragment"><strong>Standardise first:</strong> features on vastly different scales (counts vs kV vs nm) create artificial ill-conditioning. Always subtract the mean and divide by the standard deviation before linear modelling.</li>
-<li class="fragment"><strong>PCA as pre-processing:</strong> project features onto the first <span class="math inline">\(K\)</span> principal components (choose <span class="math inline">\(K\)</span> to drop near-zero singular values). The resulting <span class="math inline">\(K\)</span> features are guaranteed to be uncorrelated.</li>
-<li class="fragment"><strong>Ridge regularisation (Week 4):</strong> adds <span class="math inline">\(\lambda\mathbf{I}\)</span> to <span class="math inline">\(\mathbf{X}^T\mathbf{X}\)</span>, lifting all eigenvalues above <span class="math inline">\(\lambda\)</span> — quick fix when you want to keep all features.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>This is a practical toolbox slide. Give students a decision tree: (1) check condition number; (2) if high, check for correlated features; (3) standardise; (4) if still high, use PCA pre-processing or Ridge. Each step has a specific NumPy/sklearn call.</li>
-<li>The one point to land: standardisation (subtract mean, divide by std) is the first step in any linear model pipeline when features have different physical units. Skipping it is one of the most common beginner errors — it creates artificial ill-conditioning that has nothing to do with the actual physics.</li>
-<li>Misconception to preempt: “standardisation distorts the physical meaning of the features.” Standardisation changes scale but not relative variation. The regression coefficients after standardisation are in units of “standard deviations of the feature per unit target” — which is a meaningful, interpretable scale for comparing feature importances.</li>
-<li>EM anchor: in compositional analysis, if one feature is “Ti content in at%” (range 0–100) and another is “peak position in eV” (range 460–470), the scale difference is 100× — enough to create artificial ill-conditioning when both are used in a regression together.</li>
-<li>Forward link: Week 4 presents Ridge regression and introduces the explicit regularisation <span class="math inline">\(\lambda\)</span>. The geometric interpretation: Ridge replaces the sharp SVD truncation with a soft shrinkage of all singular values, which is smoother and often more practical.</li>
-<li>Transition: “Let’s close with the limits of linear methods and what we build toward.”</li>
+<li>Transition: “Before we close: what are the limits of linear methods, and what comes next?” (Backup: FeNi EDS example and a condition-number diagnostic checklist.)</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1929,9 +1418,7 @@
 <h2>Limits of linear methods</h2>
 <ul>
 <li class="fragment"><strong>Linearity:</strong> PCA, NMF and MCR all assume <span class="math inline">\(\mathbf{X}\approx\)</span> (maps) × (spectra). Peak <em>shifts</em> (strain, valence), peak-<em>shape</em> changes (ELNES), plural scattering and EDS absorption bend the data cloud off the flat subspace / simplex.</li>
-<li class="fragment"><strong>Noise model:</strong> PCA is optimal for isotropic Gaussian noise. For counts, weight (PCA) or use the KL loss (NMF), because at very low dose even weighting is only approximate.</li>
-<li class="fragment"><strong>Identifiability:</strong> a decomposition always returns <em>an</em> answer. Uniqueness requires constraints (orthogonality for PCA, physical priors for NMF/MCR).</li>
-<li class="fragment"><strong>Rare &amp; weak features:</strong> variance-based truncation erases them. Residual maps are mandatory.</li>
+<li class="fragment"><strong>Noise, identifiability, rare features:</strong> weight or use KL; add constraints; inspect residual maps (see the pitfalls).</li>
 <li class="fragment"><strong>These limits motivate Week 9:</strong> autoencoders learn non-linear low-dimensional representations, and constrained autoencoders learn NMF-style unmixing.</li>
 </ul>
 <aside class="notes">
@@ -2093,6 +1580,217 @@
 </ul>
 <!-- END prev-next -->
 </section>
+<section id="backup-slides" class="slide level2" data-visibility="uncounted">
+<h2>Backup slides</h2>
+<p>Material for questions and self-study; not part of the 90-minute lecture path.</p>
+</section>
+<section id="weighting-and-truncation-in-practice" class="slide level2" data-visibility="uncounted">
+<h2>Weighting and truncation in practice</h2>
+<div class="columns">
+<div class="column" style="width:45%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/potapov_weighted_pca_maps.png" style="width:100.0%"></p>
+<figcaption>STEM-XEDS element maps: raw → filtered → PCA unweighted → PCA weighted → PCA filtered &amp; weighted. Weighting plus the right truncation separates a clean map from a destroyed one. From <span class="citation" data-cites="potapov2019pca">Potapov, Pavel et al. <a href="#/references" role="doc-biblioref" onclick="">(2019), doi:<span>10.1186/s40679-019-0066-0</span></a></span>.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:55%;">
+<ul>
+<li class="fragment">EDS counts are even sparser than EELS counts (often &lt; 1 count per channel per pixel). Without weighting, PCA mainly models the bremsstrahlung.</li>
+<li class="fragment"><strong>Potapov &amp; Lubk</strong> derive the optimal truncation rank from the noise statistics. It beats eyeballing the scree elbow <span class="citation" data-cites="potapov2019pca"><a href="#/references" role="doc-biblioref" onclick="">Potapov, Pavel et al., (2019), doi:<span>10.1186/s40679-019-0066-0</span></a></span>.</li>
+<li class="fragment"><strong>Recipe:</strong> weight → PCA → choose <span class="math inline">\(K\)</span> where the eigenvalues leave the noise floor (flat after weighting) → reconstruct → un-weight.</li>
+<li class="fragment"><strong>Record</strong> weighting, <span class="math inline">\(K\)</span> and the software version. Otherwise the map is not reproducible (Week 2 FAIR).</li>
+</ul>
+</div></div>
+<aside class="notes">
+<ul>
+<li>Walk down the columns of the figure: the unweighted PCA row still shows noise-like texture in the minority elements, while the weighted row is clean. The difference comes entirely from the scaling step, since the algorithm is otherwise identical.</li>
+<li>The one point to land: “denoise with PCA” is not one method. It is a family of choices (weighting, K, spatial pre-filtering), and each choice changes the result. Report them.</li>
+<li>Misconception to preempt: “a fixed rule like keep 5 components is fine for all samples.” A facility-wide fixed K can discard a dilute dopant on one sample and keep noise on another. K is a per-dataset decision.</li>
+<li>EM anchor: this paper is the standard reference for anyone doing PCA on STEM-EDS maps. Students who do the spectral miniproject should read its method section.</li>
+<li>Transition: “PCA has now given us a clean subspace. But its components are signed, orthogonal mixtures. How do we get phases?”</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="case-study-nmf-aided-phase-unmixing-of-stem-edxs" class="slide level2" data-visibility="uncounted">
+<h2>Case study: NMF-aided phase unmixing of STEM-EDXS</h2>
+<div class="columns">
+<div class="column" style="width:42%;">
+<ul>
+<li class="fragment"><strong>Sample:</strong> lower-mantle assemblage from a diamond-anvil cell: bridgmanite, ferropericlase, Ca-perovskite, doped with trace Nd/Sm/U <span class="citation" data-cites="chen_2024_nmf"><a href="#/references" role="doc-biblioref" onclick="">Chen, Hui et al., (2024), doi:<span>10.1016/j.ultramic.2024.113981</span></a></span>.</li>
+<li class="fragment"><strong>Problem:</strong> the phases share X-ray lines and intermix below the pixel scale. The per-pixel EDXS is far too noisy for trace elements.</li>
+<li class="fragment"><strong>Pipeline:</strong> NMF (3 components) → phase spectra + abundance maps → constrained least-squares refinement → quantification.</li>
+<li class="fragment"><strong>Result:</strong> trace Sm detected in ferropericlase down to tens of ppm.</li>
+<li class="fragment"><strong>Next step:</strong> physics-guided NMF, where endmembers are built from X-ray emission theory and fitted with a Poisson loss <span class="citation" data-cites="teurtrie_2024_espmnmf"><a href="#/references" role="doc-biblioref" onclick="">Teurtrie, Adrien et al., (2024)</a></span>.</li>
+</ul>
+</div><div class="column" style="width:58%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/nmf_chen_deep_mantle.png" style="width:100.0%"></p>
+<figcaption>Recovered phase spectra of bridgmanite, ferropericlase and Ca-perovskite after NMF-aided unmixing (a–c), and the corresponding abundance maps (d–f). From <span class="citation" data-cites="chen_2024_nmf">Chen, Hui et al. <a href="#/references" role="doc-biblioref" onclick="">(2024), doi:<span>10.1016/j.ultramic.2024.113981</span></a></span>.</figcaption>
+</figure>
+</div>
+</div></div>
+<aside class="notes">
+<ul>
+<li>Why this is the right case study: clustering (K-means / GMM) fails here because the phases overlap spectrally and spatially. A hard cluster map would be wrong on nearly every mixed pixel. NMF pools the counts of all pixels belonging to a phase into one clean endmember spectrum, which is how a per-pixel-noisy measurement becomes a trace-element measurement.</li>
+<li>The one point to land: the benefit of unmixing is statistical. The endmember spectrum is estimated from <em>thousands</em> of pixels, so its SNR is far higher than that of any single pixel. This is the same “exploit redundancy” argument as PCA denoising, but in a physically interpretable basis.</li>
+<li>Physics-guided NMF (Teurtrie et al., the <code>espm</code> Python package): instead of learning arbitrary non-negative spectra, parameterise each endmember by elemental concentrations times theoretical X-ray line shapes plus a bremsstrahlung model. Fit with the Poisson (KL) loss. This greatly reduces rotational ambiguity, because the spectra can no longer take arbitrary shapes.</li>
+<li>Misconception to preempt: “a black-box NMF result is publishable.” Chen et al.&nbsp;validate against known phase compositions and refine the abundances with constrained least squares. The NMF step is a starting point, not the answer.</li>
+<li>Transition: “Which brings us to the pitfalls. Why is a factorisation not unique, and how do we notice when it is lying?”</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="the-covariance-matrix-where-geometry-meets-statistics" class="slide level2" data-visibility="uncounted">
+<h2>The covariance matrix: where geometry meets statistics</h2>
+<ul>
+<li class="fragment"><strong>Covariance matrix</strong> of centered data: <span class="math inline">\(\mathbf{S} = \frac{1}{N-1}\tilde{\mathbf{X}}^T\tilde{\mathbf{X}} \in \mathbb{R}^{D \times D}\)</span>.</li>
+<li class="fragment">Entry <span class="math inline">\(S_{ij}\)</span> = covariance between energy channels <span class="math inline">\(i\)</span> and <span class="math inline">\(j\)</span>; <span class="math inline">\(S_{ii}\)</span> = variance of channel <span class="math inline">\(i\)</span>.</li>
+<li class="fragment"><strong>Geometry:</strong> the level set <span class="math inline">\(\mathbf{x}^T\mathbf{S}^{-1}\mathbf{x} = 1\)</span> is an <strong>ellipsoid</strong> whose axes are the eigenvectors of <span class="math inline">\(\mathbf{S}\)</span> with lengths <span class="math inline">\(\propto \sqrt{\lambda_k}\)</span> (eigenvalues).</li>
+<li class="fragment"><strong>PCA = align the coordinate axes with the ellipsoid axes:</strong> rotate to the eigenbasis of <span class="math inline">\(\mathbf{S}\)</span>, where features are uncorrelated.</li>
+<li class="fragment"><strong>In EM:</strong> off-diagonal entries of <span class="math inline">\(\mathbf{S}\)</span> are large when two energy channels always increase or decrease together (e.g.&nbsp;Fe-L23 channels are correlated because they all belong to the same edge).</li>
+</ul>
+<aside class="notes">
+<ul>
+<li>The covariance matrix slide is the bridge between the abstract “directions of maximum variance” idea and the concrete eigenvector calculation. The ellipsoid picture is the geometric key: the long axis of the data ellipsoid is PC1.</li>
+<li>The one point to land: the shape of the covariance ellipsoid is exactly what PCA extracts. A thin, elongated ellipsoid means the data is highly structured and low-dimensional (good for PCA); a spherical ellipsoid means the data is isotropic (PCA helps little — all directions have equal variance).</li>
+<li>Misconception to preempt: “the covariance matrix is <span class="math inline">\(N \times N\)</span>” (number of observations squared). It is <span class="math inline">\(D \times D\)</span> (number of features squared). For EELS data with 1024 channels and 4096 pixels, the covariance matrix is 1024×1024, not 4096×4096. This is why PCA is feasible even for huge numbers of pixels.</li>
+<li>EM anchor: in EELS, correlated energy channels are the norm because each element contributes a characteristic edge shape that spans many channels. The covariance matrix of EELS spectra is block-diagonal, with each block corresponding to an element’s edge region.</li>
+<li>Forward link: SVD of the centered data matrix gives exactly the eigenvectors of <span class="math inline">\(\mathbf{S}\)</span> without ever forming <span class="math inline">\(\mathbf{S}\)</span> explicitly — which is important because forming <span class="math inline">\(\mathbf{S}\)</span> is computationally expensive and can be numerically unstable for large <span class="math inline">\(D\)</span>.</li>
+<li>Transition: “Now the big tool: SVD as a geometric picture.”</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="matrices-as-geometric-transformations" class="slide level2" data-visibility="uncounted">
+<h2>Matrices as geometric transformations</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/matrix_transform.png" style="width:100.0%"></p>
+<figcaption>A <span class="math inline">\(2\times2\)</span> matrix applied to the unit square: rotates, stretches, and shears — the unit square (blue) becomes a parallelogram (orange).</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:45%;">
+<ul>
+<li class="fragment">A matrix <span class="math inline">\(\mathbf{A}\)</span> maps every vector <span class="math inline">\(\mathbf{x}\)</span> to a new vector <span class="math inline">\(\mathbf{y} = \mathbf{Ax}\)</span>.</li>
+<li class="fragment">Geometrically: <span class="math inline">\(\mathbf{A}\)</span> <strong>rotates</strong>, <strong>stretches</strong>, and (for non-symmetric <span class="math inline">\(\mathbf{A}\)</span>) <strong>shears</strong> space.</li>
+<li class="fragment"><strong>The data matrix <span class="math inline">\(\mathbf{X} \in \mathbb{R}^{N \times D}\)</span>:</strong> <span class="math inline">\(N\)</span> spectra (rows), each with <span class="math inline">\(D\)</span> energy channels (columns).</li>
+<li class="fragment">One row = one spectrum = one point in <span class="math inline">\(\mathbb{R}^D\)</span>.</li>
+<li class="fragment"><strong>Convention for this week:</strong> observations in rows, features in columns.</li>
+</ul>
+</div></div>
+<aside class="notes">
+<ul>
+<li>The unit-square picture is the classic: take the four corners of the unit square, apply <span class="math inline">\(\mathbf{A}\)</span> to each corner, watch the square become a parallelogram. This encodes the full action of the matrix geometrically.</li>
+<li>The one point to land: a matrix is not just a 2-D spreadsheet — it is a machine that reshapes space. Understanding what kind of reshaping it does (rotation? stretch? compression?) is the key to understanding PCA and SVD.</li>
+<li>Misconception to preempt: “the data matrix has <span class="math inline">\(D\)</span> rows (features) and <span class="math inline">\(N\)</span> columns (observations).” Different fields use different conventions. In this course: observations (spectra, pixels, samples) are <strong>rows</strong>; features (energy channels, pixel values) are <strong>columns</strong>. Always check shape with <code>.shape</code>.</li>
+<li>EM anchor: for an EELS spectrum image of shape (64, 64, 1024), you reshape the first two axes to get the data matrix <span class="math inline">\(\mathbf{X}\)</span> of shape (4096, 1024) — 4096 spectra, each with 1024 energy channels. This is the input to PCA.</li>
+<li>Forward link: the column space of <span class="math inline">\(\mathbf{X}\)</span> (the span of all spectra) is the subspace PCA is searching for a compact basis for.</li>
+<li>Transition: “When we talk about ‘dimensions’ of EM data, what do we mean precisely?”</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="why-correlated-features-cause-ill-conditioning-in-em" class="slide level2" data-visibility="uncounted">
+<h2>Why correlated features cause ill-conditioning in EM</h2>
+<ul>
+<li class="fragment"><strong>Scenario:</strong> two EDS channels (Fe-K<span class="math inline">\(\alpha\)</span> at 6.4 keV and Ni-K<span class="math inline">\(\alpha\)</span> at 7.5 keV) both increase with sample thickness in an FeNi alloy.</li>
+<li class="fragment">Forming a regression matrix from both channels → two nearly parallel column vectors → near-singular <span class="math inline">\(\mathbf{X}^T\mathbf{X}\)</span> → high <span class="math inline">\(\kappa\)</span>.</li>
+<li class="fragment"><strong>PCA as a cure:</strong> PCA rotates to the principal directions. In the new basis, the directions are uncorrelated by construction (orthogonal). The PCA-transformed data matrix has no correlated columns.</li>
+<li class="fragment"><strong>Practical rule:</strong> if your condition number is <span class="math inline">\(&gt; 10^3\)</span> and you are fitting a linear model, standardise your features (subtract mean, divide by std) and consider PCA pre-processing or Ridge regularisation.</li>
+<li class="fragment">Fitting with highly correlated features gives wildly uncertain coefficients even when the prediction accuracy looks fine.</li>
+</ul>
+<aside class="notes">
+<ul>
+<li>The key insight: high prediction accuracy with correlated features does not mean the coefficients are physically meaningful. The model found one combination of coefficients that works, but many other combinations work equally well (the loss valley is flat). Any perturbation of the data changes which combination is selected.</li>
+<li>The one point to land: “correct predictions, wrong coefficients” is a genuine failure mode. If you are using regression coefficients as physical descriptors (e.g., “the model says the Fe contribution is 0.7”), you need well-conditioned data for those numbers to be interpretable.</li>
+<li>Misconception to preempt: “I can check if my features are correlated by looking at the correlation matrix.” Yes — but the correlation matrix shows pairwise correlation. SVD shows the effective dimensionality of the full feature matrix, including higher-order redundancies. High condition number with moderate pairwise correlations is common.</li>
+<li>EM anchor: in 4D-STEM strain mapping, the lattice parameters <span class="math inline">\(a\)</span> and <span class="math inline">\(c\)</span> of a hexagonal crystal are often correlated in strained regions. Directly fitting both can produce unstable strain maps; using PCA-reduced diffraction pattern features as inputs avoids this.</li>
+<li>Forward link: Week 4 introduces regularisation (Ridge, Lasso) as the systematic cure for ill-conditioning. PCA pre-processing (projecting onto the well-conditioned principal components) is an alternative.</li>
+<li>Transition: “Before we close: what are the limits of linear methods, and what comes next?”</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="ill-conditioning-a-quick-diagnostic" class="slide level2" data-visibility="uncounted">
+<h2>Ill-conditioning: a quick diagnostic</h2>
+<ul>
+<li class="fragment"><strong>Check condition number:</strong> <code>np.linalg.cond(X)</code> — if <span class="math inline">\(&gt; 10^6\)</span>, you have a serious problem.</li>
+<li class="fragment"><strong>Variance–inflation factor (VIF):</strong> for each feature, regress it on all others. High <span class="math inline">\(R^2\)</span> → high VIF → high collinearity.</li>
+<li class="fragment"><strong>Standardise first:</strong> features on vastly different scales (counts vs kV vs nm) create artificial ill-conditioning. Always subtract the mean and divide by the standard deviation before linear modelling.</li>
+<li class="fragment"><strong>PCA as pre-processing:</strong> project features onto the first <span class="math inline">\(K\)</span> principal components (choose <span class="math inline">\(K\)</span> to drop near-zero singular values). The resulting <span class="math inline">\(K\)</span> features are guaranteed to be uncorrelated.</li>
+<li class="fragment"><strong>Ridge regularisation (Week 4):</strong> adds <span class="math inline">\(\lambda\mathbf{I}\)</span> to <span class="math inline">\(\mathbf{X}^T\mathbf{X}\)</span>, lifting all eigenvalues above <span class="math inline">\(\lambda\)</span> — quick fix when you want to keep all features.</li>
+</ul>
+<aside class="notes">
+<ul>
+<li>This is a practical toolbox slide. Give students a decision tree: (1) check condition number; (2) if high, check for correlated features; (3) standardise; (4) if still high, use PCA pre-processing or Ridge. Each step has a specific NumPy/sklearn call.</li>
+<li>The one point to land: standardisation (subtract mean, divide by std) is the first step in any linear model pipeline when features have different physical units. Skipping it is one of the most common beginner errors — it creates artificial ill-conditioning that has nothing to do with the actual physics.</li>
+<li>Misconception to preempt: “standardisation distorts the physical meaning of the features.” Standardisation changes scale but not relative variation. The regression coefficients after standardisation are in units of “standard deviations of the feature per unit target” — which is a meaningful, interpretable scale for comparing feature importances.</li>
+<li>EM anchor: in compositional analysis, if one feature is “Ti content in at%” (range 0–100) and another is “peak position in eV” (range 460–470), the scale difference is 100× — enough to create artificial ill-conditioning when both are used in a regression together.</li>
+<li>Forward link: Week 4 presents Ridge regression and introduces the explicit regularisation <span class="math inline">\(\lambda\)</span>. The geometric interpretation: Ridge replaces the sharp SVD truncation with a soft shrinkage of all singular values, which is smoother and often more practical.</li>
+<li>Transition: “Let’s close with the limits of linear methods and what we build toward.”</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
 <section id="references" class="slide level2 smaller scrollable">
 <h2>References</h2>
 <div id="refs" class="references csl-bib-body" role="list">
@@ -2114,9 +1812,6 @@ Data processing for atomic resolution electron energy loss spectroscopy, Microsc
 <div id="ref-keenan2004poisson" class="csl-entry" role="listitem">
 Accounting for <span>P</span>oisson noise in the multivariate analysis of <span>ToF-SIMS</span> spectrum images, Surface and Interface Analysis, Michael R. Keenan &amp; Paul G. Kotula https://doi.org/<a href="https://doi.org/10.1002/sia.1657">10.1002/sia.1657</a>.
 </div>
-<div id="ref-potapov2019pca" class="csl-entry" role="listitem">
-Optimal principal component analysis of <span>STEM</span> <span>XEDS</span> spectrum images, Advanced Structural and Chemical Imaging, Pavel Potapov &amp; Axel Lubk https://doi.org/<a href="https://doi.org/10.1186/s40679-019-0066-0">10.1186/s40679-019-0066-0</a>.
-</div>
 <div id="ref-dobigeon2012unmixing" class="csl-entry" role="listitem">
 Spectral mixture analysis of <span>EELS</span> spectrum-images, Ultramicroscopy, Nicolas Dobigeon &amp; Nathalie Brun https://doi.org/<a href="https://doi.org/10.1016/j.ultramic.2012.05.006">10.1016/j.ultramic.2012.05.006</a>.
 </div>
@@ -2132,17 +1827,20 @@ Multivariate curve resolution (<span>MCR</span>). Solving the mixture analysis p
 <div id="ref-kotula2006mcr" class="csl-entry" role="listitem">
 Application of multivariate statistical analysis to <span>STEM</span> x-ray spectral images: Interfacial analysis in microelectronics, Microscopy and Microanalysis, Paul G. Kotula &amp; Michael R. Keenan https://doi.org/<a href="https://doi.org/10.1017/S1431927606060636">10.1017/S1431927606060636</a>.
 </div>
-<div id="ref-chen_2024_nmf" class="csl-entry" role="listitem">
-Non-negative matrix factorization-aided phase unmixing and trace element quantification of <span>STEM</span>-<span>EDXS</span> data, Ultramicroscopy, Hui Chen, Farhang Nabiei, James Badro, Duncan T. L. Alexander, &amp; Cécile Hébert https://doi.org/<a href="https://doi.org/10.1016/j.ultramic.2024.113981">10.1016/j.ultramic.2024.113981</a>.
-</div>
-<div id="ref-teurtrie_2024_espmnmf" class="csl-entry" role="listitem">
-From <span>STEM</span>-<span>EDXS</span> data to phase separation and quantification using physics-guided <span>NMF</span>, arXiv preprint arXiv:2404.17496, Adrien Teurtrie, Nathanaël Perraudin, Thomas Holvoet, Hui Chen, Duncan T. L. Alexander, Guillaume Obozinski, &amp; Cécile Hébert.
-</div>
 <div id="ref-lichtert2013pca" class="csl-entry" role="listitem">
 Statistical consequences of applying a <span>PCA</span> noise filter on <span>EELS</span> spectrum images, Ultramicroscopy, Stijn Lichtert &amp; Jo Verbeeck https://doi.org/<a href="https://doi.org/10.1016/j.ultramic.2012.10.001">10.1016/j.ultramic.2012.10.001</a>.
 </div>
 <div id="ref-murphy2012machine" class="csl-entry" role="listitem">
 Machine learning: A probabilistic perspective, Kevin P. Murphy.
+</div>
+<div id="ref-potapov2019pca" class="csl-entry" role="listitem">
+Optimal principal component analysis of <span>STEM</span> <span>XEDS</span> spectrum images, Advanced Structural and Chemical Imaging, Pavel Potapov &amp; Axel Lubk https://doi.org/<a href="https://doi.org/10.1186/s40679-019-0066-0">10.1186/s40679-019-0066-0</a>.
+</div>
+<div id="ref-chen_2024_nmf" class="csl-entry" role="listitem">
+Non-negative matrix factorization-aided phase unmixing and trace element quantification of <span>STEM</span>-<span>EDXS</span> data, Ultramicroscopy, Hui Chen, Farhang Nabiei, James Badro, Duncan T. L. Alexander, &amp; Cécile Hébert https://doi.org/<a href="https://doi.org/10.1016/j.ultramic.2024.113981">10.1016/j.ultramic.2024.113981</a>.
+</div>
+<div id="ref-teurtrie_2024_espmnmf" class="csl-entry" role="listitem">
+From <span>STEM</span>-<span>EDXS</span> data to phase separation and quantification using physics-guided <span>NMF</span>, arXiv preprint arXiv:2404.17496, Adrien Teurtrie, Nathanaël Perraudin, Thomas Holvoet, Hui Chen, Duncan T. L. Alexander, Guillaume Obozinski, &amp; Cécile Hébert.
 </div>
 </div>
 

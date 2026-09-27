@@ -273,13 +273,13 @@
 <p><strong>Road map (≈90 min)</strong></p>
 <ol type="1">
 <li>Why MLPs fail on images</li>
-<li>Convolution, stride, padding, channels</li>
-<li>Weight sharing, equivariance vs invariance</li>
+<li>Convolution: kernels, stride/padding, channels</li>
+<li>Weight sharing, equivariance vs invariance, symmetry</li>
 <li>Pooling, receptive field, hierarchy</li>
 <li>Architectures: LeNet → AlexNet → VGG → ResNet</li>
-<li>U-Net segmentation: Dice/IoU, class imbalance, EM cases</li>
+<li>U-Net segmentation: IoU/Dice, class imbalance, validation, EM cases</li>
 <li>Explainability: saliency, Grad-CAM, occlusion, shortcuts</li>
-<li>Failure modes, checklist, Week 8 preview</li>
+<li>Failure modes, checklist, notebook, Week 8 preview</li>
 </ol>
 </div><div class="column" style="width:45%;">
 <p><strong>After today you can …</strong></p>
@@ -295,6 +295,21 @@
 <ul>
 <li>Orientation only — 1–2 minutes. Point out the two anchors: the U-Net section (the workhorse for EM segmentation) and the shortcut-learning demo (the trust lesson).</li>
 <li>Self-study: <code>notebooks/week07_cnn_segmentation.ipynb</code> — kernels, an equivariance check, a tiny U-Net trained on synthetic particle images on CPU, saliency on a failure case, and the shortcut demo. Pointer slide near the end.</li>
+<li>Timing plan (90 min):
+<ul>
+<li>0–4 min: recap + road map (2 slides)</li>
+<li>4–7 min: §1 why MLPs fail (2 slides)</li>
+<li>7–17 min: §2 convolution, grain example, formula, kernels, stride/padding/channels (5 slides)</li>
+<li>17–26 min: §3 weight sharing, equivariance, rotations, three routes to symmetry, inductive bias (5 slides)</li>
+<li>26–34 min: §4 pooling, max-pool example, receptive field, feature hierarchy (4 slides)</li>
+<li>34–42 min: §5 timeline, LeNet/AlexNet, VGG, ResNet (4 slides)</li>
+<li>42–58 min: §6 U-Net (2), metrics, class imbalance, tiny U-Net, validation, two EM case studies (8 slides)</li>
+<li>58–70 min: §7 explainability — why, three methods, shortcut demo, segmentation failure, sanity checks (5 slides)</li>
+<li>70–75 min: §8 failure modes + checklist, notebook pointer (2 slides)</li>
+<li>75–81 min: summary, must-know, Week 8 teaser (3 slides)</li>
+<li>81–90 min: questions / slack (≈5 min) + buffer for discussion of the shortcut demo</li>
+</ul></li>
+<li>Backup slides after the “Continue” slide (residual-block details, Au nanoparticle case study) — use on request.</li>
 <li>Transition: “Start with the concrete problem — why does a plain MLP fail on microscopy images?”</li>
 </ul>
 <style type="text/css">
@@ -334,65 +349,8 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="mlps-destroy-spatial-structure" class="slide level2">
-<h2>MLPs destroy spatial structure</h2>
-<ul>
-<li class="fragment">An MLP <strong>flattens</strong> the image: pixel (0,0), pixel (0,1), pixel (0,2), …, in row-major order.</li>
-<li class="fragment">After flattening, the model treats pixel (100,100) and pixel (200,200) as completely <strong>unrelated</strong> input coordinates — no notion of “next to each other.”</li>
-<li class="fragment">Physics says the opposite: a grain boundary is a spatially <em>local</em> feature. An atomic column’s contrast depends on its immediate neighborhood, not on pixels in a different part of the image.</li>
-<li class="fragment"><strong>Result:</strong> the MLP must relearn the same edge detector at every possible image location — and then relearn it again if the same feature appears at a different size.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Draw the key diagram on the board: a 4×4 image flattened to a vector of 16 numbers. Ask: “Which two numbers were neighbors in the image?” You cannot tell from the vector alone.</li>
-<li>The one point to land: locality is a physical property of EM images, not a mathematical luxury. Every microscopy feature — atomic column, grain boundary, pore, precipitate — is defined by what is near it.</li>
-<li>Misconception to preempt: “I could just tell the model the pixel coordinates.” True in principle, but then you have already done feature engineering — you might as well use a CNN that does it automatically.</li>
-<li>EM anchor: a phase boundary in a TEM bright-field image is a 1–3 nm strip. Its signature is determined by the 10–20 pixels immediately around it, not by pixels 200 nm away.</li>
-<li>Transition: “The third problem is translation.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="the-translation-problem-why-position-should-not-matter" class="slide level2">
-<h2>The translation problem: why position should not matter</h2>
-<ul>
-<li class="fragment">If a precipitate moves 5 pixels to the right, the MLP sees a <strong>completely different</strong> input vector.</li>
-<li class="fragment">Every weight connected to the old location is now irrelevant; the model must have independently learned the same precipitate pattern at every position.</li>
-<li class="fragment">This is physically absurd: a precipitate is a precipitate regardless of where it sits in the field of view.</li>
-<li class="fragment"><strong>What we want:</strong> a feature detector that fires whenever the precipitate appears — regardless of location.</li>
-<li class="fragment">This property is called <strong>translation equivariance</strong>: shift the input → the feature response shifts by the same amount.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Use the “Where’s Waldo” analogy: you find Waldo by scanning the image with a mental template of Waldo, not by memorising where he was in last week’s puzzle. CNNs implement that template-scanning idea.</li>
-<li>The one point to land: translation equivariance is not a performance trick — it is encoding a physical fact about images. The network should not care where in the field of view the feature appears.</li>
-<li>Misconception to preempt: “convolution gives translation <em>in</em>variance.” Convolutional layers give equivariance (shift in → shift response). Invariance comes from pooling or global average pooling — slides later.</li>
-<li>EM anchor: in a HAADF image of a superlattice, atomic columns appear at every unit-cell position. A detector that fires “column present” must work equally at every location.</li>
-<li>Transition: “So how do we fix all three problems at once? With one elegant idea.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="summary-three-failures-of-mlp-on-images" class="slide level2">
-<h2>Summary: three failures of MLP on images</h2>
+<section id="three-failures-of-mlps-on-images" class="slide level2">
+<h2>Three failures of MLPs on images</h2>
 <table class="caption-top">
 <colgroup>
 <col style="width: 33%">
@@ -410,17 +368,17 @@
 <tr class="odd">
 <td>Parameter explosion</td>
 <td><span class="math inline">\(D \times M\)</span> weights per layer</td>
-<td><span class="math inline">\(k_h k_w C_{out} C_{in}\)</span> kernel weights</td>
+<td><span class="math inline">\(C_{out}(C_{in}k^2+1)\)</span> kernel weights</td>
 </tr>
 <tr class="even">
 <td>No spatial structure</td>
-<td>All pixels treated equally</td>
-<td>Local receptive field: inspect <span class="math inline">\(k \times k\)</span> patch</td>
+<td>flattened: neighbours become unrelated inputs</td>
+<td>local receptive field: a <span class="math inline">\(k \times k\)</span> patch</td>
 </tr>
 <tr class="odd">
 <td>No translation awareness</td>
-<td>Relearn at every location</td>
-<td>Weight sharing: one kernel applied everywhere</td>
+<td>a shifted precipitate is a new input vector</td>
+<td>weight sharing: one kernel applied everywhere</td>
 </tr>
 </tbody>
 </table>
@@ -429,10 +387,12 @@
 </div>
 <aside class="notes">
 <ul>
-<li>Use this as a mini-summary before moving to the mechanics. Students often feel the three failure points were introduced separately but are actually one principle: dense layers know nothing about spatial structure.</li>
-<li>The one point to land: locality + weight sharing = convolution. That is the entire derivation. Everything else (padding, stride, pooling, channels) is implementation detail.</li>
-<li>Misconception to preempt: “CNNs are always better than MLPs.” Wrong. For tabular non-spatial data (composition, temperature, hardness), MLPs or even linear models are often preferable. CNNs exploit spatial structure that may not exist.</li>
-<li>EM anchor: the “spatial structure” that CNNs exploit is exactly the physics-driven spatial correlation that Week 2 introduced via sampling and the Nyquist criterion: nearby pixels are correlated because they sample the same continuous physical field.</li>
+<li>Spatial structure: draw a 4×4 image flattened to a vector of 16 numbers. Ask: “Which two numbers were neighbours in the image?” You cannot tell from the vector. After flattening, pixel (100,100) and (200,200) are unrelated input coordinates — yet a grain boundary or an atomic column is defined by its immediate neighbourhood (a 1–3 nm boundary strip is decided by the 10–20 pixels around it).</li>
+<li>Translation: if a precipitate moves 5 pixels, the MLP sees a completely different input vector and must have learned the same pattern at every position. “Where’s Waldo”: you scan with a template, you do not memorise where Waldo was last week. The property we want is translation <strong>equivariance</strong>: shift the input → the feature response shifts by the same amount.</li>
+<li>Misconception to preempt: “convolution gives translation <em>in</em>variance.” Conv layers give equivariance; invariance comes from pooling / global average pooling (later today).</li>
+<li>Misconception to preempt: “CNNs are always better than MLPs.” For tabular, non-spatial data (composition, temperature) MLPs or linear models are often preferable.</li>
+<li>The one point to land: locality + weight sharing = convolution. Everything else (padding, stride, pooling, channels) is implementation detail.</li>
+<li>EM anchor: the spatial correlation CNNs exploit is the physics-driven correlation from Week 2 (sampling, Nyquist): nearby pixels sample the same continuous field.</li>
 <li>Transition: “Let us now look at the core operation — convolution.”</li>
 </ul>
 <style type="text/css">
@@ -448,45 +408,32 @@
       }</style></aside>
 <!-- ===== §2. Convolution: the sliding feature detector ===== -->
 </section>
-<section id="convolution-one-idea-three-properties-at-once" class="slide level2">
-<h2>Convolution: one idea, three properties at once</h2>
+<section id="convolution-a-sliding-feature-detector" class="slide level2">
+<h2>Convolution: a sliding feature detector</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/correlation.svg" style="width:100.0%"></p>
+<figcaption>Two-dimensional cross-correlation (the operation CNNs actually use): the 3×3 kernel slides over the input; at each position nine products are summed into one output value.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:50%;">
 <ul>
-<li class="fragment">Take a small <strong>kernel</strong> (e.g.&nbsp;3×3 weights).</li>
-<li class="fragment"><strong>Slide</strong> it across the image, pixel by pixel.</li>
-<li class="fragment">At each position: multiply the kernel by the overlapping image patch, element-wise, and sum → one output value.</li>
-<li class="fragment">The output is a <strong>feature map</strong>: a new image where each pixel encodes <em>how strongly the kernel’s pattern appeared at that location</em>.</li>
-<li class="fragment">One kernel produces one feature map. Multiple kernels in parallel → multiple feature maps.</li>
+<li class="fragment">Slide a small <strong>kernel</strong> (e.g.&nbsp;3×3 weights) across the image.</li>
+<li class="fragment">At each position: multiply with the patch, sum → one output value.</li>
+<li class="fragment">Output = <strong>feature map</strong>: how strongly the kernel’s pattern appears at each location.</li>
+<li class="fragment"><span class="math inline">\(C_{out}\)</span> kernels in parallel → <span class="math inline">\(C_{out}\)</span> feature maps.</li>
 </ul>
+</div></div>
 <aside class="notes">
 <ul>
-<li>Narrate one output value explicitly: “align the 3×3 kernel at position (i,j), multiply the 9 overlapping pixels by the 9 kernel weights, sum the 9 products → one number. That is one pixel in the feature map.”</li>
-<li>The one point to land: the “sliding” is what gives locality (only a local patch is used) AND translation equivariance (same kernel is slid everywhere).</li>
-<li>Misconception to preempt: “convolution flips the kernel.” That is strict mathematical convolution. CNN libraries implement cross-correlation (no flip). Since kernels are learned, the distinction does not matter in practice.</li>
-<li>EM anchor: imagine a 3×3 “bright-dot” kernel applied to a HAADF image. It will respond strongly wherever an atomic column is and weakly everywhere else — producing a bright-dot feature map.</li>
-<li>Transition: “Let me show this on a real synthetic grain image.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="the-sliding-window-operation-step-by-step" class="slide level2">
-<h2>The sliding-window operation step by step</h2>
-
-<img data-src="img/correlation.svg" style="width:55.0%" class="r-stretch quarto-figure-center"><p class="caption">Two-dimensional cross-correlation (the operation CNNs actually use). The 3×3 kernel slides one position at a time. At each position, nine element-wise multiplications are summed to give one output value. The output grid records the detector response at every spatial location.</p><aside class="notes">
-<ul>
-<li>Narrate one step of the sliding: “position the kernel over the top-left 3×3 patch; multiply each kernel weight by the overlapping pixel; sum the nine products; that single number becomes position (1,1) of the feature map. Now slide one pixel to the right; repeat.”</li>
-<li>The one point to land: this sliding IS the translation equivariance — the same kernel visits every location, so whatever pattern it detects in the top-left it will also detect in the bottom-right.</li>
-<li>Misconception to preempt: “this is slow.” For a single kernel loop it is. GPU-parallelised convolution evaluates all output positions simultaneously using BLAS-level matrix operations.</li>
-<li>EM anchor: think of the kernel as a template for a local feature — e.g.&nbsp;“bright centre, dark surround” for an atomic column. The sliding window asks: does my template match here? And here? And here?</li>
-<li>Transition: “Let us apply this to a real synthetic grain image and see the feature maps.”</li>
+<li>Narrate one output value explicitly: “align the 3×3 kernel at position (i,j), multiply the 9 overlapping pixels by the 9 kernel weights, sum the 9 products → one number. Slide one pixel to the right; repeat.”</li>
+<li>The one point to land: the sliding gives locality (only a local patch is used) AND translation equivariance (the same kernel visits every location).</li>
+<li>Misconception to preempt: “convolution flips the kernel.” That is strict mathematical convolution. CNN libraries implement cross-correlation (no flip). Since kernels are learned, the distinction does not matter.</li>
+<li>Misconception to preempt: “this is slow.” GPUs evaluate all output positions in parallel with BLAS-level matrix operations.</li>
+<li>EM anchor: a 3×3 “bright centre, dark surround” kernel on a HAADF image responds wherever an atomic column is — a column feature map.</li>
+<li>Transition: “Let me show this on a synthetic grain image.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -527,20 +474,18 @@
 <h2>The discrete convolution formula</h2>
 <p>For input image <span class="math inline">\(I\)</span> and kernel <span class="math inline">\(K\)</span>:</p>
 <p><span class="math display">\[
-(I \star K)_{m,n} = \sum_{a=-\Delta}^{\Delta}\sum_{b=-\Delta}^{\Delta} K_{a,b}\,I_{m+a,\, n+b}
+(I \star K)_{m,n} = \sum_{a=-\Delta}^{\Delta}\sum_{b=-\Delta}^{\Delta} K_{a,b}\,I_{m+a,\, n+b}, \qquad \Delta = (k-1)/2
 \]</span></p>
 <ul>
-<li class="fragment"><span class="math inline">\(K\)</span> is a small matrix (typically <span class="math inline">\(3\times3\)</span> or <span class="math inline">\(5\times5\)</span>); <span class="math inline">\(\Delta = (k-1)/2\)</span>.</li>
-<li class="fragment">At each output position <span class="math inline">\((m,n)\)</span>: dot product of the kernel with the local image patch.</li>
-<li class="fragment"><strong>Parameter count:</strong> <span class="math inline">\(k^2\)</span> weights — independent of image size <span class="math inline">\(H \times W\)</span>.</li>
-<li class="fragment">The same <span class="math inline">\(k^2\)</span> weights are applied at every <span class="math inline">\((m,n)\)</span> → <strong>weight sharing</strong>.</li>
+<li class="fragment">Only pixels within <span class="math inline">\(\pm\Delta\)</span> of <span class="math inline">\((m,n)\)</span> contribute → <strong>local</strong>.</li>
+<li class="fragment"><span class="math inline">\(k^2\)</span> weights, independent of image size <span class="math inline">\(H \times W\)</span>, reused at every <span class="math inline">\((m,n)\)</span> → <strong>weight sharing</strong>.</li>
 </ul>
 <aside class="notes">
 <ul>
 <li>Walk through the indices slowly: (m,n) is the output location; (a,b) runs over the kernel footprint. Students often confuse the kernel index with the image index.</li>
-<li>The one point to land: the formula shows why convolution is a LOCAL operation — only pixels within ±Δ of the output location contribute.</li>
-<li>Misconception to preempt: “the convolution formula requires flipping the kernel.” This formula is cross-correlation. Strict mathematical convolution uses (m-a, n-b). Because kernels are learned, it makes no difference.</li>
-<li>EM anchor: for a HAADF signal, K could encode “compare center pixel to neighbors” — exactly what an edge-detector kernel does. The math is the same as the intuition.</li>
+<li><span class="math inline">\(K\)</span> is typically <span class="math inline">\(3\times3\)</span> or <span class="math inline">\(5\times5\)</span>. At each output position the formula is a dot product of the kernel with the local patch.</li>
+<li>Misconception to preempt: “the formula requires flipping the kernel.” This is cross-correlation; strict convolution uses (m−a, n−b). Learned kernels make it irrelevant.</li>
+<li>EM anchor: for a HAADF signal, K could encode “compare centre pixel to neighbours” — exactly what an edge-detector kernel does.</li>
 <li>Transition: “What do specific kernels detect?”</li>
 </ul>
 <style type="text/css">
@@ -581,52 +526,23 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-<!-- ===== §3. Stride, padding, channels ===== -->
 </section>
-<section id="stride-and-padding-controlling-output-size" class="slide level2">
-<h2>Stride and padding: controlling output size</h2>
+<section id="stride-padding-channels-output-size-and-parameter-count" class="slide level2">
+<h2>Stride, padding, channels: output size and parameter count</h2>
 
-<img data-src="img/stride_padding.png" style="width:70.0%" class="r-stretch quarto-figure-center"><p class="caption">Stride=1 with same-padding (left): the kernel moves one pixel at a time and output is the same size as input. Stride=2 (right): the kernel skips every other position, halving spatial resolution.</p><ul>
-<li class="fragment"><strong>Padding (same):</strong> add zeros around the border → output size = input size. Standard in most segmentation architectures.</li>
-<li class="fragment"><strong>Stride <span class="math inline">\(s\)</span>:</strong> move the kernel <span class="math inline">\(s\)</span> pixels per step → output size <span class="math inline">\(\approx H/s\)</span>.</li>
-<li class="fragment">General rule: <span class="math inline">\(H_{out} = \left\lfloor\frac{H + 2p - k}{s}\right\rfloor + 1\)</span>; e.g.&nbsp;<span class="math inline">\(k=3, p=1, s=1\)</span> keeps <span class="math inline">\(H\)</span>; <span class="math inline">\(s=2\)</span> halves it.</li>
-<li class="fragment">Parameters <span class="math inline">\(C_{out}(C_{in}k^2+1)\)</span> — independent of <span class="math inline">\(H, W\)</span>: the same network runs on 256² and 4096² images.</li>
+<img data-src="img/stride_padding.png" style="width:55.0%" class="r-stretch quarto-figure-center"><p class="caption">Stride 1 with same-padding (left): output has the input size. Stride 2 (right): the kernel skips every other position, halving spatial resolution.</p><ul>
+<li class="fragment"><span class="math inline">\(H_{out} = \left\lfloor\frac{H + 2p - k}{s}\right\rfloor + 1\)</span>: <span class="math inline">\(k=3, p=1, s=1\)</span> keeps <span class="math inline">\(H\)</span> (“same” padding); <span class="math inline">\(s=2\)</span> halves it.</li>
+<li class="fragment">Kernel tensor <span class="math inline">\(C_{out}\times C_{in}\times k\times k\)</span> → <span class="math inline">\(C_{out}(C_{in}k^2+1)\)</span> parameters — independent of <span class="math inline">\(H, W\)</span>: the same network runs on 256² and 4096² images.</li>
+<li class="fragment">EM multichannel inputs: EELS/EDS spectrum images, multi-segment detector stacks.</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>Use the formula H_out = floor((H + 2p - k)/s) + 1 with concrete numbers. Ask students: “64×64 image, k=3, p=1, s=1 — what is H_out?” (Answer: 64.) “k=3, p=0, s=2?” (Answer: 31.)</li>
-<li>The one point to land: stride is the primary tool for downsampling in modern CNNs, often replacing explicit pooling layers (ResNet uses stride-2 convolutions instead of max-pool at stage transitions).</li>
-<li>Misconception to preempt: “zero padding is the only option.” Reflect padding (mirror boundary), circular padding (for periodic signals like diffraction), and replicate padding are all available — some are more physically meaningful for certain EM signals.</li>
-<li>EM anchor: in 4D-STEM, the diffraction pattern is often periodic — circular padding is physically justified. For real-space HAADF images, reflect padding is more natural than zero padding.</li>
-<li>Transition: “Real images and feature maps have multiple channels.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="multiple-channels-depth-in-the-tensor" class="slide level2">
-<h2>Multiple channels: depth in the tensor</h2>
-<ul>
-<li class="fragment">A grayscale image has <strong>1 channel</strong>: <span class="math inline">\(H\times W\times 1\)</span>.</li>
-<li class="fragment">After a layer with <span class="math inline">\(C_{out}\)</span> kernels: <span class="math inline">\(H_{out}\times W_{out}\times C_{out}\)</span> (one feature map per kernel).</li>
-<li class="fragment">A full convolutional layer kernel has shape <span class="math inline">\(C_{out}\times C_{in}\times k_h\times k_w\)</span>.</li>
-<li class="fragment">Total parameters: <span class="math inline">\(C_{out}(C_{in}k_hk_w + 1)\)</span> including biases — still independent of <span class="math inline">\(H, W\)</span>.</li>
-<li class="fragment">EM multichannels: hyperspectral EELS/EDS maps (spatial × energy), multi-segment detector images, RGB-like stacks of different contrast modes.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Give the parameter count for a concrete example: 64 input channels, 128 output channels, 3×3 kernel → 128×(64×9+1) = 73,856 parameters. Still far smaller than any dense layer on a real image.</li>
-<li>The one point to land: channels are how CNNs regain expressive power after imposing locality and weight sharing. Each output channel is a different learned feature map.</li>
-<li>Misconception to preempt: “channels are just like colour channels.” In the first layer yes, but by layer 3 each channel is an abstract learned representation — not interpretable as a colour or intensity.</li>
-<li>EM anchor: an EELS spectrum image at each of 1024 energy windows is a 3D tensor with 1024 channels. A convolutional layer over that can learn spatially localised spectral signatures — exactly what phase identification requires.</li>
+<li>Concrete numbers: “64×64 image, k=3, p=1, s=1 — H_out?” (64.) “k=3, p=0, s=2?” (31.)</li>
+<li>Parameter example: 64 input channels, 128 output channels, 3×3 kernel → 128×(64×9+1) = 73,856 parameters. A dense layer on a 256² image with 128 outputs has 8.4 M — 114× more.</li>
+<li>After a layer with <span class="math inline">\(C_{out}\)</span> kernels the tensor is <span class="math inline">\(H_{out}\times W_{out}\times C_{out}\)</span> — one feature map per kernel. Beyond layer 1, channels are abstract learned features, not colours.</li>
+<li>Stride is the main downsampling tool in modern CNNs (ResNet uses stride-2 convolutions at stage transitions).</li>
+<li>Padding options: zero, reflect (natural for real-space HAADF), circular (periodic signals such as diffraction patterns), replicate.</li>
+<li>EM anchor: an EELS spectrum image with 1024 energy channels is a 1024-channel input; a conv layer learns spatially localised spectral signatures.</li>
 <li>Transition: “Now let us make precise why weight sharing is such a powerful inductive bias.”</li>
 </ul>
 <style type="text/css">
@@ -640,7 +556,7 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-<!-- ===== §4. Weight sharing and translation equivariance ===== -->
+<!-- ===== §3. Weight sharing, equivariance, symmetry ===== -->
 </section>
 <section id="weight-sharing-the-key-efficiency-principle" class="slide level2">
 <h2>Weight sharing: the key efficiency principle</h2>
@@ -669,9 +585,8 @@
 <h2>Translation equivariance as an inductive bias</h2>
 <ul>
 <li class="fragment"><strong>Translation equivariance:</strong> if the input shifts by <span class="math inline">\(\delta\)</span> pixels, the feature map shifts by <span class="math inline">\(\delta\)</span> pixels — the detector response follows the feature.</li>
-<li class="fragment">Formally: <span class="math inline">\(f(T_\delta X) = T_\delta f(X)\)</span> where <span class="math inline">\(T_\delta\)</span> is a spatial shift and <span class="math inline">\(f\)</span> is a convolutional feature extractor.</li>
-<li class="fragment">This is the correct prior for most microscopy tasks: a precipitate is a precipitate wherever it appears.</li>
-<li class="fragment"><strong>Translation invariance</strong> (different!): the final <em>prediction</em> does not change if the input shifts. Built gradually via pooling, striding, and global average pooling — not by convolution alone.</li>
+<li class="fragment">Formally: <span class="math inline">\(f(T_\delta X) = T_\delta f(X)\)</span> for a spatial shift <span class="math inline">\(T_\delta\)</span>.</li>
+<li class="fragment"><strong>Translation invariance</strong> (different!): <span class="math inline">\(f(T_\delta X) = f(X)\)</span> — the <em>prediction</em> ignores the shift. Built by pooling, striding, global average pooling.</li>
 </ul>
 <div class="fragment">
 <p><em>Equivariance preserves “where.” Invariance discards “where” and keeps only “what.”</em></p>
@@ -682,7 +597,7 @@
 <li>The one point to land: architecture choice (conv vs pooling) determines whether you preserve or discard positional information. This is a design choice aligned with the task.</li>
 <li>Misconception to preempt: “data augmentation (random crops, flips) trains invariance.” Augmentation helps, but the architectural bias from pooling/striding is what gives the fundamental invariance property.</li>
 <li>EM anchor: grain boundary segmentation (U-Net, coming soon) needs equivariance. Defect present/absent classification can discard position. Architecture choice should match the task.</li>
-<li>Transition: “Pooling is the classical way to introduce invariance and reduce resolution.”</li>
+<li>Transition: “Translations are only one symmetry. What about rotations and mirrors?”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -722,23 +637,20 @@
 <section id="getting-symmetry-three-routes" class="slide level2">
 <h2>Getting symmetry: three routes</h2>
 <ul>
-<li class="fragment"><strong>Formal definitions</strong> (group <span class="math inline">\(G\)</span> acting on images and feature maps):
-<ul>
-<li class="fragment">equivariant: <span class="math inline">\(f(g\cdot x) = g\cdot f(x)\)</span> — output transforms <em>with</em> the input (segmentation masks, denoised images, strain maps);</li>
-<li class="fragment">invariant: <span class="math inline">\(f(g\cdot x) = f(x)\)</span> — output ignores the transform (phase label, “defect present?”).</li>
-</ul></li>
-<li class="fragment"><strong>Route 1 — augmentation:</strong> train on randomly rotated/flipped copies; the network <em>learns</em> approximate symmetry. Cheap, universal; costs data and capacity (Week 8).</li>
-<li class="fragment"><strong>Route 2 — test-time augmentation:</strong> average predictions over the 8 rotations/flips of the dihedral group <span class="math inline">\(D_4\)</span> (un-rotate the masks first). Free at training time, 8× cost at inference.</li>
-<li class="fragment"><strong>Route 3 — build it in:</strong> group-equivariant CNNs share weights across rotations as well as translations <span class="citation" data-cites="cohen2016group"><a href="#/references" role="doc-biblioref" onclick="">Cohen, Taco et al., (2016)</a></span>; exact symmetry, fewer parameters, more engineering.</li>
-<li class="fragment">Rule: <strong>know the symmetry of your task first</strong> — then decide whether to learn it, average over it, or hard-wire it.</li>
+<li class="fragment">For a group <span class="math inline">\(G\)</span> of transforms: equivariant <span class="math inline">\(f(g\cdot x) = g\cdot f(x)\)</span> (masks, denoised images); invariant <span class="math inline">\(f(g\cdot x) = f(x)\)</span> (phase label).</li>
+<li class="fragment"><strong>Route 1 — augmentation:</strong> train on rotated/flipped copies; approximate symmetry is <em>learned</em> (Week 8).</li>
+<li class="fragment"><strong>Route 2 — test-time augmentation:</strong> average predictions over the 8 rotations/flips of <span class="math inline">\(D_4\)</span> (un-rotate masks first).</li>
+<li class="fragment"><strong>Route 3 — build it in:</strong> group-equivariant CNNs share weights across rotations too <span class="citation" data-cites="cohen2016group"><a href="#/references" role="doc-biblioref" onclick="">Cohen, Taco et al., (2016)</a></span>.</li>
+<li class="fragment">Rule: <strong>know the symmetry of your task first</strong> — then learn it, average over it, or hard-wire it.</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>This is the brief version of the MFML symmetry discussion: invariance vs equivariance as properties of a map under a group action. Keep the group language light — “a set of transforms you can compose and undo”.</li>
+<li>Brief version of the MFML symmetry discussion. Keep the group language light — “a set of transforms you can compose and undo”.</li>
+<li>Trade-offs: augmentation is cheap and universal but costs data and capacity; TTA is free at training time but 8× cost at inference; group-equivariant layers give exact symmetry with fewer parameters but more engineering.</li>
 <li>The one point to land: equivariance is what you want in the <em>layers</em>; invariance (if needed at all) is created at the very end, e.g.&nbsp;by global average pooling. Segmentation needs equivariance throughout.</li>
 <li>Misconception to preempt: “augmentation makes the network invariant.” It makes it <em>approximately</em> equivariant/invariant on the training distribution — no guarantee on new data.</li>
 <li>EM anchor: for atomic-resolution images with a 4-fold or 6-fold zone axis, D4/D6 test-time augmentation is a two-line trick that typically cleans up segmentation noise.</li>
-<li>Forward link: the same symmetry question returns for graphs (permutation invariance) in Week 10 and for atomic environments (rotation invariance of descriptors) from Week 5.</li>
+<li>Forward link: the same symmetry question returns for graphs (permutation invariance) in Week 10 and for atomic environments (rotation-invariant descriptors) from Week 5.</li>
 <li>Transition: “Choosing an architecture is choosing which symmetries and assumptions to bake in — that is the inductive bias.”</li>
 </ul>
 <style type="text/css">
@@ -781,24 +693,34 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-<!-- ===== §5. Pooling and downsampling ===== -->
+<!-- ===== §4. Pooling, receptive field, hierarchy ===== -->
 </section>
-<section id="pooling-summarising-local-responses" class="slide level2">
-<h2>Pooling: summarising local responses</h2>
-
-<img data-src="img/pooling.svg" style="width:40.0%" class="r-stretch quarto-figure-center"><p class="caption">Max-pooling with a 2×2 window. For each non-overlapping 2×2 region, keep the maximum value. Spatial resolution halves in each dimension; channel count is unchanged.</p><ul>
-<li class="fragment"><strong>Max pooling:</strong> keep the strongest activation in each local window. Answers: “did this feature appear here?”</li>
-<li class="fragment"><strong>Average pooling:</strong> compute the mean. Answers: “how strongly was this feature present overall?”</li>
-<li class="fragment">No learned parameters — purely deterministic aggregation.</li>
-<li class="fragment"><span class="math inline">\(2\times2\)</span> max-pool: halves height and width, doubles the effective receptive field of later layers.</li>
+<section id="pooling-and-the-convpool-block" class="slide level2">
+<h2>Pooling and the Conv–Pool block</h2>
+<div class="columns">
+<div class="column" style="width:35%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/pooling.svg" style="width:100.0%"></p>
+<figcaption>2×2 max-pooling: keep the maximum of each non-overlapping 2×2 region; resolution halves, channel count unchanged.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:65%;">
+<ul>
+<li class="fragment"><strong>Max pool:</strong> “did the feature appear here?” <strong>Average pool:</strong> “how strongly on average?” No learned parameters.</li>
+<li class="fragment">2×2 pool halves <span class="math inline">\(H\)</span> and <span class="math inline">\(W\)</span> → approximate invariance to small shifts, faster receptive-field growth.</li>
+<li class="fragment">Standard block: <strong>Conv → ReLU → MaxPool</strong>, channels doubling per stage: 256² input → 16² × 512 after 4 blocks.</li>
+<li class="fragment"><strong>Global average pooling</strong> at the end → translation-invariant image-level prediction.</li>
 </ul>
+</div></div>
 <aside class="notes">
 <ul>
-<li>Narrate the 2×2 max-pool: “take the top-left 2×2 block of the feature map, keep the largest value, put it in position (0,0) of the pooled output. Repeat for every non-overlapping block.”</li>
-<li>The one point to land: pooling provides approximate translation invariance within a window. A precipitate shifted 1 pixel to the right stays in the same pool window and produces the same pooled output — the network becomes insensitive to small shifts.</li>
-<li>Misconception to preempt: “max-pool always wins.” In segmentation (U-Net), max-pool in the encoder is fine, but the decoder must recover spatial detail that max-pool discarded — that is what skip connections do.</li>
-<li>EM anchor: in a HAADF image of a defect, the defect might shift slightly between beam positions due to drift. Max-pool makes the detector robust to this sub-pixel drift.</li>
-<li>Transition: “Pooling and strided convolutions both reduce resolution. Together they make the receptive field grow quickly with depth.”</li>
+<li>Narrate the 2×2 max-pool: take the top-left 2×2 block, keep the largest value, put it at (0,0) of the output; repeat.</li>
+<li>The one point to land: pooling gives approximate translation invariance within a window — a precipitate shifted 1 pixel stays in the same window and gives the same pooled output.</li>
+<li>Spatial–channel trade-off: 128² × 64 → 64² × 128 → 32² × 256 → 16² × 512. Fine for classification; for segmentation the U-Net decoder must restore the discarded detail — that is what skip connections do.</li>
+<li>Misconception to preempt: “average pooling is always worse.” It is better when you care about the average level (how much of this phase is here), not just presence.</li>
+<li>EM anchor: max-pool makes an atomic-column detector robust to 1-pixel drift between scans.</li>
+<li>Transition: “A worked example.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -848,7 +770,7 @@
 <li>The one point to land: the maximum preserves “was this feature strongly present anywhere in this window?” — appropriate for feature detection where exact position within the 2×2 window does not matter.</li>
 <li>Misconception to preempt: “average pooling is always worse.” Average pooling is better when you care about the average activation level (e.g.&nbsp;how much of this phase is in this region), not just whether the feature appeared.</li>
 <li>EM anchor: in an atomic-column detector, you want max-pool to be robust to 1-pixel drift of the column within the window. Average-pool would dilute a single bright-column response with its dark background neighbours.</li>
-<li>Transition: “Multiple conv-pool blocks in sequence is the standard encoder pattern.”</li>
+<li>Transition: “Pooling and strided convolutions make the receptive field grow quickly with depth.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -861,64 +783,6 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-</section>
-<section id="pooling-in-practice-the-convpool-block" class="slide level2">
-<h2>Pooling in practice: the Conv–Pool block</h2>
-<ul>
-<li class="fragment">Standard building block: <strong>Conv → ReLU → MaxPool</strong>.</li>
-<li class="fragment">After <span class="math inline">\(L\)</span> such blocks (each with stride-2 or 2×2 pool): spatial size is <span class="math inline">\(H/2^L \times W/2^L\)</span>.</li>
-<li class="fragment">Channels typically double at each stage: 64 → 128 → 256 → 512.</li>
-<li class="fragment">Example: 256×256 input through 4 blocks → 16×16 feature maps with 512 channels.</li>
-</ul>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th style="text-align: center;">Block</th>
-<th style="text-align: center;">Channels</th>
-<th style="text-align: center;">Spatial size (from 256×256)</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: center;">1</td>
-<td style="text-align: center;">64</td>
-<td style="text-align: center;">128×128</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">2</td>
-<td style="text-align: center;">128</td>
-<td style="text-align: center;">64×64</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">3</td>
-<td style="text-align: center;">256</td>
-<td style="text-align: center;">32×32</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">4</td>
-<td style="text-align: center;">512</td>
-<td style="text-align: center;">16×16</td>
-</tr>
-</tbody>
-</table>
-<aside class="notes">
-<ul>
-<li>Ask students to confirm the table. After one 2×2 max-pool: 256/2 = 128. After two: 64. Three: 32. Four: 16. This is the standard encoder pattern in classification CNNs and the encoder half of U-Net.</li>
-<li>The one point to land: the spatial-channel trade-off is intentional. Losing spatial detail is acceptable if you are doing classification (just need a label). For segmentation, you need the decoder half of U-Net to restore the spatial detail.</li>
-<li>Transition: “Understanding receptive fields lets you reason about how much context each neuron sees.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-<!-- ===== §6. Receptive field and feature hierarchy ===== -->
 </section>
 <section id="receptive-fields-how-much-context-does-one-neuron-see" class="slide level2">
 <h2>Receptive fields: how much context does one neuron see?</h2>
@@ -953,6 +817,7 @@
 <li>Misconception to preempt: “feature maps are always interpretable.” Only Layer 1 features are reliably interpretable as edge/orientation detectors. Deeper features are abstract combinations with no simple physical label.</li>
 <li>EM anchor: in HAADF imaging: Layer 1 detects atomic columns. Layer 2 detects local lattice periodicity (grain interior) vs disorder (boundary). Layer 3 detects grain, phase, or defect-cluster regions. Layer 4+ enables phase classification.</li>
 <li>Forward link: Grad-CAM (later today) reads out exactly these deep, coarse feature maps to show which region drove a decision.</li>
+<li>Mid-lecture checkpoint: “which design choice explains the huge parameter reduction?” (weight sharing) “which explains how a network knows a whole grain is one phase?” (depth + pooling).</li>
 <li>Transition: “Let us now look at the major CNN architectures and what each added.”</li>
 </ul>
 <style type="text/css">
@@ -966,67 +831,7 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-</section>
-<section id="summary-how-locality-sharing-and-hierarchy-combine" class="slide level2">
-<h2>Summary: how locality, sharing, and hierarchy combine</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 33%">
-<col style="width: 33%">
-<col style="width: 33%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Design choice</th>
-<th>What it encodes</th>
-<th>EM benefit</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Local receptive field</td>
-<td>Features depend on local context</td>
-<td>Grain boundaries are local</td>
-</tr>
-<tr class="even">
-<td>Weight sharing</td>
-<td>Same feature appears at many positions</td>
-<td>Atomic columns repeat</td>
-</tr>
-<tr class="odd">
-<td>Multiple channels</td>
-<td>Many detectors in parallel</td>
-<td>Multi-contrast detection</td>
-</tr>
-<tr class="even">
-<td>Stride / pooling</td>
-<td>Coarser scale, larger context</td>
-<td>Phase-level reasoning</td>
-</tr>
-<tr class="odd">
-<td>Depth / nonlinearity</td>
-<td>Hierarchical feature composition</td>
-<td>Atoms → grains → phases</td>
-</tr>
-</tbody>
-</table>
-<aside class="notes">
-<ul>
-<li>Use this table as a mid-lecture checkpoint. Ask: “which row explains the 930,000× parameter reduction?” (Weight sharing.) “Which explains how a segmentation network eventually knows a whole grain is one phase?” (Depth + pooling.)</li>
-<li>Transition: “Now the major architectures.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-<!-- ===== §7. CNN architectures ===== -->
+<!-- ===== §5. CNN architectures ===== -->
 </section>
 <section id="cnn-architectures-in-one-breath-the-arc-from-1998-to-2015" class="slide level2">
 <h2>CNN architectures in one breath: the arc from 1998 to 2015</h2>
@@ -1036,7 +841,7 @@
 <li>Read the three boxes together as a story: “LeCun proved learned features beat hand-crafted features for digit recognition. The field then stalled for 14 years while GPUs and datasets grew. AlexNet in 2012 shocked the computer vision community with a 10-percentage-point lead on ImageNet. Then researchers tried to go deeper and hit the vanishing-gradient wall, which ResNet in 2015 solved with skip connections — enabling networks 20× deeper than AlexNet.”</li>
 <li>The one point to land: each innovation solved a specific failure mode. LeNet → learning beats hand-craft. AlexNet → scale + ReLU + dropout. ResNet → depth without vanishing gradients.</li>
 <li>Misconception to preempt: “you need to know these architectures by name for the exam.” What matters is the progression: what failed, what was added, why. The architecture names are labels for the innovations.</li>
-<li>Transition: “LeNet is worth knowing in a little more detail because it is the direct template for most materials-science CNNs.”</li>
+<li>Transition: “LeNet and AlexNet in one slide: the template and the revolution.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1050,51 +855,30 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="lenet-the-cnn-template" class="slide level2">
-<h2>LeNet: the CNN template</h2>
+<section id="lenet-and-alexnet-the-template-and-the-revolution" class="slide level2">
+<h2>LeNet and AlexNet: the template and the revolution</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><strong>LeNet-5</strong> <span class="citation" data-cites="lecun1998lenet"><a href="#/references" role="doc-biblioref" onclick="">LeCun, Yann et al., (1998)</a></span></p>
 <ul>
-<li class="fragment"><strong>LeNet-5</strong> <span class="citation" data-cites="lecun1998lenet"><a href="#/references" role="doc-biblioref" onclick="">LeCun, Yann et al., (1998)</a></span>: two convolutional layers, two pooling layers, three dense layers.</li>
-<li class="fragment">~60,000 parameters — tiny by modern standards.</li>
-<li class="fragment">Proved for the first time that a learned feature extractor could outperform hand-crafted features (SIFT, HOG) on a real vision task.</li>
-<li class="fragment"><strong>The template:</strong> Conv → Activation → Pool → Conv → Activation → Pool → Flatten → FC → FC → Output.</li>
-<li class="fragment">This exact recipe still appears in CNN classifiers for materials micrographs today — often with deeper variants.</li>
+<li>Conv → Act → Pool → Conv → Act → Pool → Flatten → FC → FC → Output</li>
+<li>~60,000 parameters; learned features beat hand-crafted ones (SIFT, HOG)</li>
+<li>Still the template for small micrograph classifiers</li>
 </ul>
+</div><div class="column" style="width:50%;">
+<p><strong>AlexNet</strong> <span class="citation" data-cites="krizhevsky2012alexnet"><a href="#/references" role="doc-biblioref" onclick="">Krizhevsky, Alex et al., (2012)</a></span></p>
+<ul>
+<li>Won ImageNet 2012 by ~10 percentage points</li>
+<li><strong>ReLU</strong>, <strong>dropout</strong>, <strong>GPU training</strong>, ~60 M parameters</li>
+<li>Opened the deep-learning era</li>
+</ul>
+</div></div>
 <aside class="notes">
 <ul>
-<li>Draw the LeNet template on the board as a pipeline. Students should be able to reproduce this from memory by the end of the course.</li>
-<li>The one point to land: LeNet answers “what is the basic recipe?” The subsequent architectures are variations that go deeper, wider, and more efficient.</li>
-<li>EM anchor: a CNN for classifying steel microstructures as martensitic vs ferritic often follows this exact LeNet template — two or three conv-pool blocks, then a dense classifier head.</li>
-<li>Transition: “AlexNet added scale, ReLU, and dropout.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="alexnet-the-deep-learning-revolution-krizhevsky2012alexnet" class="slide level2">
-<h2>AlexNet: the deep learning revolution <span class="citation" data-cites="krizhevsky2012alexnet"><a href="#/references" role="doc-biblioref" onclick="">Krizhevsky, Alex et al., (2012)</a></span></h2>
-<ul>
-<li class="fragment"><strong>AlexNet (2012):</strong> won the ImageNet Large Scale Visual Recognition Challenge by 10 percentage points over the second-place hand-crafted pipeline.</li>
-<li class="fragment">Key innovations (each still used today):
-<ul>
-<li class="fragment"><strong>ReLU activation:</strong> faster convergence, no vanishing gradient for <span class="math inline">\(z &gt; 0\)</span> (from Week 6).</li>
-<li class="fragment"><strong>Dropout:</strong> randomly zero out neurons during training → prevents co-adaptation, reduces overfitting.</li>
-<li class="fragment"><strong>GPU training:</strong> made deep networks with 60 million parameters computationally feasible.</li>
-</ul></li>
-<li class="fragment">Opened the “deep learning era” — almost every subsequent architecture follows the AlexNet pattern with improvements.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Connect ReLU back to Week 6: “you already know why ReLU beat sigmoid — gradient is 1 for z &gt; 0, so it doesn’t vanish through many layers.” Dropout was introduced in Week 6 — recall it as “randomly turning off 50% of neurons per batch prevents any one neuron from becoming essential, forcing the network to learn redundant distributed representations.”</li>
-<li>The one point to land: AlexNet’s margin of victory was so large that it instantly converted the computer-vision community from hand-crafted features to deep learning. The same shift happened in materials science about 5 years later.</li>
-<li>Transition: “The next step was not a new trick but a new design discipline: blocks.”</li>
+<li>A CNN classifying steel microstructures (martensitic vs ferritic) often follows the LeNet template: two or three conv-pool blocks, then a dense head.</li>
+<li>ReLU (Week 6): gradient 1 for z &gt; 0, so it does not vanish through many layers. Dropout: randomly zero neurons during training → no co-adaptation.</li>
+<li>AlexNet’s margin converted computer vision from hand-crafted features to deep learning; materials science followed about 5 years later.</li>
+<li>Transition: “The next step was not a new trick but a design discipline: blocks.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1120,17 +904,16 @@
 </div>
 </div><div class="column" style="width:58%;">
 <ul>
-<li class="fragment"><strong>VGG block:</strong> <span class="math inline">\(n\times\)</span> (3×3 conv, padding 1, ReLU) → 2×2 max-pool. Channels double after each block: 64 → 128 → 256 → 512.</li>
-<li class="fragment"><strong>Why only 3×3?</strong> Two stacked 3×3 layers have a 5×5 receptive field, three have 7×7 — with <span class="math inline">\(3\cdot 9C^2 = 27C^2\)</span> instead of <span class="math inline">\(49C^2\)</span> weights and <strong>two extra non-linearities</strong>.</li>
-<li class="fragment"><strong>The design lesson:</strong> think in <em>blocks</em>, not layers — a network is a short program: <code>for c in (64,128,256,512): block(c)</code>.</li>
-<li class="fragment">VGG-16 ≈ 138 M parameters (most in the dense head) — accurate but heavy; still a common “perceptual” feature extractor.</li>
+<li class="fragment"><strong>VGG block:</strong> <span class="math inline">\(n\times\)</span> (3×3 conv, pad 1, ReLU) → 2×2 max-pool; channels 64 → 128 → 256 → 512.</li>
+<li class="fragment"><strong>Why 3×3?</strong> Each stacked 3×3 adds 2 pixels of receptive field: three give 7×7 with <span class="math inline">\(27C^2\)</span> instead of <span class="math inline">\(49C^2\)</span> weights and <strong>two extra non-linearities</strong>.</li>
+<li class="fragment"><strong>Design lesson:</strong> think in <em>blocks</em>, not layers.</li>
 </ul>
 </div></div>
 <aside class="notes">
 <ul>
-<li>Source: SS25 <code>03_cnns/04_convnets_1.qmd</code> (VGG section) and MFML U4. Keep it to the design idea.</li>
-<li>The one point to land: VGG turned CNN design into a modular recipe. Every modern architecture (ResNet, U-Net) is a stack of repeated blocks.</li>
+<li>The one point to land: VGG turned CNN design into a modular recipe — a network is a short program: <code>for c in (64,128,256,512): block(c)</code>. Every modern architecture (ResNet, U-Net) is a stack of repeated blocks.</li>
 <li>Ask: “How many weights does a 7×7 conv with C in/out channels have vs three 3×3?” 49C² vs 27C² — and the stack is <em>more</em> expressive.</li>
+<li>VGG-16 ≈ 138 M parameters (most in the dense head) — accurate but heavy; still a common “perceptual” feature extractor.</li>
 <li>Misconception to preempt: “VGG is obsolete, so irrelevant.” Its block design and the encoder half of the original U-Net are VGG-style.</li>
 <li>Transition: “So just stack more VGG blocks? That is where things break.”</li>
 </ul>
@@ -1146,74 +929,33 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="going-deeper-breaks-the-degradation-problem" class="slide level2">
-<h2>Going deeper breaks: the degradation problem</h2>
-<ul>
-<li class="fragment">Naïvely stacking more conv layers (20 → 56) makes <strong>training</strong> error <em>worse</em>, not only test error <span class="citation" data-cites="he2016resnet"><a href="#/references" role="doc-biblioref" onclick="">He, Kaiming et al., (2016)</a></span>.</li>
-<li class="fragment">This is <strong>not overfitting</strong> (training error rises) and not only vanishing gradients (BatchNorm keeps activations well-scaled): plain deep stacks are simply <strong>hard to optimise</strong>.</li>
-<li class="fragment">Thought experiment: a deeper net could copy the shallow one and set the extra layers to the identity — yet SGD does not find that solution.</li>
-<li class="fragment"><strong>Idea:</strong> make the identity the <em>default</em> — let each block learn only a correction to it.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>This slide motivates ResNet properly. Students often think ResNet only “fixes vanishing gradients”; He et al.&nbsp;showed that with BatchNorm the gradients are fine, and the deeper plain net still trains worse.</li>
-<li>The one point to land: an optimisation problem, not a capacity or regularisation problem.</li>
-<li>BatchNorm recap (Week 6): normalise each channel over the mini-batch, then learnable scale/shift <span class="citation" data-cites="ioffe2015batchnorm"><a href="#/references" role="doc-biblioref" onclick="">Ioffe, Sergey et al., (2015)</a></span>. In CNNs the statistics are per channel over batch × H × W. At inference, running averages are used — remember <code>model.eval()</code>.</li>
-<li>Transition: “The fix is one line of code.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="resnet-skip-connections-solve-vanishing-gradients-he2016resnet" class="slide level2">
-<h2>ResNet: skip connections solve vanishing gradients <span class="citation" data-cites="he2016resnet"><a href="#/references" role="doc-biblioref" onclick="">He, Kaiming et al., (2016)</a></span></h2>
-
-<img data-src="img/resnet_skip.png" style="width:42.0%" class="r-stretch quarto-figure-center"><p class="caption">ResNet residual block. The main path learns a residual function F(x) = y − x. The skip connection adds the input x directly to the output. During backpropagation, gradients flow through the skip path without attenuation — solving the vanishing gradient problem for 50+ layer networks.</p><div class="fragment">
-<p><span class="math display">\[\mathbf{y} = F(\mathbf{x}) + \mathbf{x}\]</span> Instead of learning the target <span class="math inline">\(\mathbf{y}\)</span>, learn the <strong>residual</strong> <span class="math inline">\(F(\mathbf{x}) = \mathbf{y} - \mathbf{x}\)</span>.</p>
+<section id="resnet-skip-connections-make-depth-trainable-he2016resnet" class="slide level2">
+<h2>ResNet: skip connections make depth trainable <span class="citation" data-cites="he2016resnet"><a href="#/references" role="doc-biblioref" onclick="">He, Kaiming et al., (2016)</a></span></h2>
+<div class="columns">
+<div class="column" style="width:38%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/resnet_skip.png" style="width:100.0%"></p>
+<figcaption>ResNet residual block: the main path learns F(x); the skip connection adds x to the output.</figcaption>
+</figure>
 </div>
+</div><div class="column" style="width:62%;">
+<ul>
+<li class="fragment"><strong>Degradation:</strong> plain stacks of 20 → 56 layers reach <em>worse training</em> error — not overfitting, an optimisation problem.</li>
+<li class="fragment"><strong>Residual block:</strong> <span class="math inline">\(\mathbf{y} = F(\mathbf{x}) + \mathbf{x}\)</span> — learn only a correction to the identity.</li>
+<li class="fragment">Gradient <span class="math inline">\(\partial\mathbf{y}/\partial\mathbf{x} = \mathbf{I} + \partial F/\partial\mathbf{x}\)</span>: an unattenuated path through every block.</li>
+<li class="fragment">Block: conv–<strong>BN</strong>–ReLU–conv–<strong>BN</strong>, add, ReLU.</li>
+<li class="fragment">Skips today: <strong>additive</strong> (ResNet: optimisation) vs <strong>concatenating</strong> (U-Net: localisation).</li>
+</ul>
+</div></div>
 <aside class="notes">
 <ul>
-<li>Connect to Week 6’s vanishing gradient discussion: “through 20 layers of sigmoid, the gradient shrinks by 0.25^20 ≈ 10^-12. ReLU fixed this for moderate depth. ResNet fixed it for arbitrary depth by providing a gradient highway through the skip connection.”</li>
-<li>The one point to land: the skip connection makes the gradient path shorter. Even if the convolutional branch produces a near-zero gradient, the skip branch passes the full gradient back without modification.</li>
-<li>Misconception to preempt: “ResNet needs 50+ layers to work.” ResNet blocks are useful at any depth. Even a 10-layer network benefits from skip connections when training is unstable.</li>
-<li>EM anchor: several recent papers on materials microstructure segmentation use ResNet-50 as the feature extractor in a Mask R-CNN or DeepLab pipeline — students will encounter this terminology in the literature.</li>
-<li>Transition: “What does a residual block look like in practice?”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="residual-blocks-in-practice-bn-stages-and-why-em-cares" class="slide level2">
-<h2>Residual blocks in practice: BN, stages, and why EM cares</h2>
-<ul>
-<li class="fragment"><strong>Basic block:</strong> conv3×3 → BN → ReLU → conv3×3 → BN, <strong>add</strong> input, ReLU. If shapes change (stride 2, more channels) the skip uses a 1×1 conv.</li>
-<li class="fragment"><strong>Gradient view:</strong> <span class="math inline">\(\frac{\partial \mathbf{y}}{\partial \mathbf{x}} = \mathbf{I} + \frac{\partial F}{\partial \mathbf{x}}\)</span> — the identity term carries the gradient through every block unattenuated.</li>
-<li class="fragment"><strong>Stages:</strong> ResNet-18/34/50 = 4 stages of residual blocks, stride-2 between stages, global average pooling + one linear layer (no big dense head: ResNet-18 ≈ 11 M params vs VGG-16 ≈ 138 M).</li>
-<li class="fragment"><strong>EM use:</strong> ResNet backbones are the standard <em>encoder</em> for U-Net-style segmenters and the usual starting point for transfer learning (Week 8).</li>
-<li class="fragment">Skip connections appear twice today: <strong>additive</strong> (ResNet: ease optimisation) and <strong>concatenating</strong> (U-Net: restore spatial detail).</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Draw the basic block on the board, and the 1×1 projection skip for the stride-2 case.</li>
-<li>The one point to land: identity + small correction. Blocks that are not needed can learn <span class="math inline">\(F\approx 0\)</span> and become near-identity — depth stops hurting.</li>
-<li>Misconception to preempt: “ResNet and U-Net skips are the same thing.” Same name, different purpose: ResNet adds <span class="math inline">\(x\)</span> to help optimisation; U-Net concatenates encoder features to recover <em>where</em>.</li>
-<li>EM anchor: literature on nanoparticle/defect segmentation constantly says “U-Net with ResNet-34 encoder, ImageNet-pretrained” — students can now parse every word of that sentence (the “pretrained” part is Week 8).</li>
+<li>Degradation: He et al.&nbsp;showed that with BatchNorm the gradients are fine, yet the deeper plain net trains worse. Thought experiment: a deeper net could copy the shallow one and set the extra layers to identity — SGD does not find that. Idea: make identity the default.</li>
+<li>Connect to Week 6: through 20 sigmoid layers the gradient shrinks by 0.25^20 ≈ 10^-12. ReLU fixed moderate depth; the skip provides a gradient highway for arbitrary depth.</li>
+<li>BatchNorm recap (Week 6) <span class="citation" data-cites="ioffe2015batchnorm"><a href="#/references" role="doc-biblioref" onclick="">Ioffe, Sergey et al., (2015)</a></span>: in CNNs the statistics are per channel over batch × H × W; running averages at inference — remember <code>model.eval()</code>.</li>
+<li>If shapes change (stride 2, more channels) the skip uses a 1×1 conv. ResNet-18/34/50 = 4 stages, global average pooling + one linear layer (ResNet-18 ≈ 11 M params vs VGG-16 ≈ 138 M). Backup slide has the details.</li>
+<li>Misconception to preempt: “ResNet and U-Net skips are the same thing.” ResNet adds <span class="math inline">\(x\)</span> to help optimisation; U-Net concatenates encoder features to recover <em>where</em>.</li>
+<li>EM anchor: “U-Net with ResNet-34 encoder, ImageNet-pretrained” — students can now parse that sentence (the “pretrained” part is Week 8).</li>
 <li>Transition: “Classification networks produce one label per image. For EM segmentation we need one label per pixel — that is U-Net.”</li>
 </ul>
 <style type="text/css">
@@ -1227,7 +969,7 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-<!-- ===== §8. U-Net ===== -->
+<!-- ===== §6. U-Net segmentation ===== -->
 </section>
 <section id="u-net-encoderdecoder-for-segmentation-ronneberger2015unet" class="slide level2">
 <h2>U-Net: encoder–decoder for segmentation <span class="citation" data-cites="ronneberger2015unet"><a href="#/references" role="doc-biblioref" onclick="">Ronneberger, Olaf et al., (2015)</a></span></h2>
@@ -1252,62 +994,33 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="u-net-encoder-bottleneck-decoder" class="slide level2">
-<h2>U-Net: encoder, bottleneck, decoder</h2>
+<section id="u-net-encoder-decoder-per-pixel-output" class="slide level2">
+<h2>U-Net: encoder, decoder, per-pixel output</h2>
 <div class="columns">
 <div class="column" style="width:50%;">
-<p><strong>Encoder path</strong></p>
+<p><strong>Encoder</strong> (context)</p>
 <ul>
-<li class="fragment">Conv × 2 → ReLU → MaxPool (stride 2).</li>
-<li class="fragment">Repeat 4 times: spatial halves, channels double.</li>
-<li class="fragment">Each level captures increasing context.</li>
-<li class="fragment">Similar to a standard classification CNN encoder.</li>
+<li>(Conv×2 → ReLU → MaxPool) × 4</li>
+<li>spatial halves, channels double</li>
 </ul>
 </div><div class="column" style="width:50%;">
-<p><strong>Decoder path</strong></p>
+<p><strong>Decoder</strong> (resolution)</p>
 <ul>
-<li class="fragment">Upsample (bilinear or transposed conv) → concatenate skip.</li>
-<li class="fragment">Conv × 2 → ReLU.</li>
-<li class="fragment">Repeat 4 times: spatial doubles, channels halve.</li>
-<li class="fragment">Final 1×1 conv → class probabilities per pixel.</li>
+<li>(Upsample → <strong>concatenate skip</strong> → Conv×2) × 4</li>
+<li>final 1×1 conv → <span class="math inline">\(K\times H\times W\)</span> class scores</li>
 </ul>
 </div></div>
-<div class="fragment">
-<p><strong>Why skip connections are non-negotiable for segmentation:</strong> without them, precise boundary locations are lost in the bottleneck compression; the output mask is correct in texture but blurry in boundary position.</p>
-</div>
-<aside class="notes">
 <ul>
-<li>Explain why the decoder uses concatenation rather than addition: “we want to keep both the fine-detail information from the encoder (position, texture) and the high-level semantic information from the deeper decoder. Concatenation preserves both; addition would blend them.”</li>
-<li>The one point to land: in segmentation, “where?” matters as much as “what?” — and skip connections are the mechanism that preserves “where.”</li>
-<li>Misconception to preempt: “U-Net needs huge training sets.” One of the explicit design goals of Ronneberger et al.&nbsp;2015 was to work with very small labelled datasets (~30 images in the original biomedical application). This is ideal for EM.</li>
-<li>EM anchor: in a 4D-STEM phase-mapping application, the U-Net input could be the 2D real-space image (from virtual bright-field) and the output mask labels each pixel as phase A, B, or boundary.</li>
-<li>Transition: “Now let us see U-Net in action on EM data.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="u-net-output-per-pixel-classification" class="slide level2">
-<h2>U-Net output: per-pixel classification</h2>
-<ul>
-<li class="fragment">Input: <span class="math inline">\(C\times H\times W\)</span> (image or multi-channel tensor).</li>
-<li class="fragment">Output: <span class="math inline">\(K\times H\times W\)</span> (K class probability maps, same resolution as input).</li>
-<li class="fragment">At inference: <span class="math inline">\(\arg\max\)</span> over the <span class="math inline">\(K\)</span> channels gives the segmentation mask.</li>
-<li class="fragment">Loss: <strong>cross-entropy at every pixel</strong>, averaged over the image — often combined with a Dice loss (next slides).</li>
-<li class="fragment">The loss is differentiable → same backprop + Adam optimisation as any other network.</li>
+<li class="fragment">Mask = <span class="math inline">\(\arg\max\)</span> over <span class="math inline">\(K\)</span> channels; loss = <strong>per-pixel cross-entropy</strong> (often + Dice), same backprop + Adam.</li>
+<li class="fragment">Without skips, boundary positions are lost in the bottleneck → blurry masks.</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>Write the loss explicitly: “for a binary segmentation (grain vs boundary), the loss at pixel (m,n) is the binary cross-entropy between the predicted probability and the ground-truth label. The total loss is the average over all pixels in the minibatch.”</li>
-<li>The one point to land: U-Net uses the exact same training machinery as the MLP and classification CNN from the last two weeks. The only change is the output head and the loss computation.</li>
+<li>Upsampling: bilinear or transposed convolution. Why concatenation, not addition: keep both the fine-detail encoder information (position, texture) and the semantic decoder information.</li>
+<li>Loss written out: for binary segmentation, BCE between predicted probability and label at each pixel (m,n), averaged over all pixels in the minibatch. U-Net uses exactly the training machinery from Week 6; only the output head and the loss change.</li>
+<li>The one point to land: in segmentation “where?” matters as much as “what?” — skip connections preserve “where.”</li>
+<li>Misconception to preempt: “U-Net needs huge training sets.” Ronneberger et al.&nbsp;designed it for ~30 labelled images — ideal for EM.</li>
+<li>EM anchor: 4D-STEM phase mapping — input a virtual bright-field image, output phase A / phase B / boundary per pixel.</li>
 <li>Transition: “How do we measure whether a mask is good?”</li>
 </ul>
 <style type="text/css">
@@ -1349,10 +1062,9 @@
 <h2>Class imbalance: losses that keep the minority visible</h2>
 <ul>
 <li class="fragment">Pixel-wise BCE is an <em>average</em> over pixels: with 9% particles, the minority class carries 9% of the loss weight.</li>
-<li class="fragment"><strong>Weighted BCE:</strong> <code>pos_weight</code> <span class="math inline">\(=(1-f)/f\)</span> up-weights the rare class.</li>
+<li class="fragment"><strong>Weighted BCE</strong> (<code>pos_weight</code> <span class="math inline">\(=(1-f)/f\)</span>); <strong>focal loss</strong> <span class="citation" data-cites="lin2017focal"><a href="#/references" role="doc-biblioref" onclick="">Lin, Tsung-Yi et al., (2017)</a></span> down-weights easy pixels.</li>
 <li class="fragment"><strong>Soft Dice loss</strong> <span class="citation" data-cites="milletari2016vnet"><a href="#/references" role="doc-biblioref" onclick="">Milletari, Fausto et al., (2016)</a></span>, with <span class="math inline">\(p_i=\sigma(z_i)\)</span>: <span class="math display">\[\mathcal{L}_\text{Dice} = 1-\frac{2\sum_i p_i y_i+\epsilon}{\sum_i p_i+\sum_i y_i+\epsilon}\]</span> normalised by the foreground size → “predict nothing” costs ≈ 1.</li>
-<li class="fragment"><strong>Focal loss</strong> <span class="citation" data-cites="lin2017focal"><a href="#/references" role="doc-biblioref" onclick="">Lin, Tsung-Yi et al., (2017)</a></span>: down-weights easy, confidently-correct pixels.</li>
-<li class="fragment"><strong>Common recipe:</strong> BCE + Dice. Notebook ablation: <strong>BCE only collapsed to “all background” (IoU 0.00, accuracy 0.91)</strong> in the same 15-epoch budget where BCE + Dice reached IoU 0.84.</li>
+<li class="fragment"><strong>BCE + Dice</strong> is the default. Notebook: BCE alone collapsed to “all background” (IoU 0.00); BCE + Dice reached IoU 0.84.</li>
 </ul>
 <aside class="notes">
 <ul>
@@ -1409,33 +1121,9 @@
 <aside class="notes">
 <ul>
 <li>Tile leakage is the segmentation-specific version of the Week 4 leakage story and it is extremely common in published EM work.</li>
-<li>Annotator ceiling: ML-PC unit 3 recommends computing Dice/IoU between annotators. Roberts et al.&nbsp;(next slides) report their model at roughly inter-annotator level — beyond that, more capacity buys nothing.</li>
+<li>Annotator ceiling: ML-PC unit 3 recommends computing Dice/IoU between annotators. Roberts et al.&nbsp;(next slide) report their model at roughly inter-annotator level — beyond that, more capacity buys nothing.</li>
 <li>Downstream: a U-Net with IoU 0.85 can still bias a size distribution if it systematically erodes boundaries by one pixel; for small particles that is a large relative error.</li>
-<li>Transition: “Now the EM case studies.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-<!-- ===== §9. EM case studies ===== -->
-</section>
-<section id="em-case-study-1-au-nanoparticle-phase-segmentation" class="slide level2">
-<h2>EM case study 1: Au nanoparticle phase segmentation</h2>
-
-<img data-src="img/unet_em_casestudy.png" style="width:85.0%" class="r-stretch quarto-figure-center"><p class="caption">U-Net applied to TEM images of Au nanoparticles on an amorphous support. Left: input TEM image (representative Au-nanoparticle-on-amorphous-support TEM segmentation task). Centre: ground-truth binary mask (crystalline=bright, amorphous=dark). Right: U-Net prediction — pixel-wise classification matching the ground truth closely.</p><aside class="notes">
-<ul>
-<li>Describe the physical task: “Au nanoparticles are crystalline — they show regular lattice fringes in TEM. The silica matrix is amorphous — shows no periodic structure. The task is to label every pixel as ‘crystalline Au’ or ‘amorphous silica’, producing a quantitative phase map.”</li>
-<li>The one point to land: this is exactly the task where U-Net excels — the boundary between phases has a specific local texture signature that the encoder learns, and the exact location of the boundary matters for measuring nanoparticle size distributions.</li>
-<li>Misconception to preempt: “we need thousands of labelled TEM frames to train.” In practice, 50–200 carefully labelled frames can train a U-Net for this specific task, especially combined with data augmentation (Week 8).</li>
-<li>EM anchor: phase fraction measurement (how much Au vs how much silica?) requires pixel-accurate segmentation — a classification-only CNN cannot provide this.</li>
-<li>Transition: “The second case study shows how synthetic data can replace expensive labelling.”</li>
+<li>Transition: “A published EM case study where exactly this ceiling shows up.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1449,78 +1137,8 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="u-net-tem-segmentation-published-results" class="slide level2">
-<h2>U-Net TEM segmentation: published results</h2>
-
-<img data-src="img/unet_results.png" style="width:75.0%" class="r-stretch quarto-figure-center"><p class="caption">U-Net segmentation of TEM images from a published materials science application. The encoder–decoder with skip connections accurately reproduces phase boundaries, even in noisy low-dose images where the boundary is only 1–3 pixels wide.</p><aside class="notes">
-<ul>
-<li>The key message from a real result: the U-Net output mask closely tracks the true phase boundary, including thin boundary regions that would be hard to threshold manually.</li>
-<li>The one point to land: the skip connections are what enables boundary-level precision. Without them, the decoder would produce a coarsely correct but spatially blurry mask.</li>
-<li>Misconception to preempt: “high pixel-accuracy means a good model.” Check IoU and Dice on the boundary class specifically — boundary pixels are rare (thin lines) so accuracy is dominated by the background class.</li>
-<li>EM anchor: published phase-fraction measurements from TEM use exactly this kind of pixel-accurate mask to compute the crystalline volume fraction — directly connecting to quantitative materials characterisation.</li>
-<li>Transition: “The same encoder–decoder approach, but trained on free synthetic data, works for grain boundary detection.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="em-case-study-2-grain-boundary-segmentation-from-synthetic-training-data" class="slide level2">
-<h2>EM case study 2: Grain boundary segmentation from synthetic training data</h2>
-
-<img data-src="img/grain_boundary_segmentation.png" style="width:85.0%" class="r-stretch quarto-figure-center"><p class="caption">Grain boundary segmentation pipeline. Left: synthetic Voronoi grain image (used for CNN training). Centre: automatically generated ground-truth grain labels (free — no expert annotation). Right: U-Net predicted grain boundaries from the output mask.</p><aside class="notes">
-<ul>
-<li>Explain the Voronoi approach: “Voronoi tessellations generate random grain patterns where every pixel’s grain assignment is known by construction — providing perfect free labels. A U-Net trained on thousands of these synthetic images can then be applied to real SEM polycrystal images.”</li>
-<li>The one point to land: synthetic data generation is a powerful strategy for EM applications where expert labelling is expensive (hours per image). The CNN learns the topological truth of grain boundaries from synthetic images and transfers to real ones.</li>
-<li>Misconception to preempt: “a network trained on perfect synthetic images will fail on noisy real ones.” Often it does not — because grain boundary topology (a dark line separating two bright regions) is visually robust to noise, contrast variation, and imaging conditions.</li>
-<li>EM anchor: grain boundary segmentation underpins the quantitative measurement of grain size distributions, which connects directly to Hall–Petch (Week 6’s materials example) — a closed-loop materials data science pipeline.</li>
-<li>Forward link: systematic strategies for bridging the synthetic-to-real gap — augmentation, transfer learning, domain randomisation — are the topic of Week 8.</li>
-<li>Transition: “The third case study shows defect detection.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="synthetic-to-real-transfer-voronoi-sem-grain-maps" class="slide level2">
-<h2>Synthetic-to-real transfer: Voronoi → SEM grain maps</h2>
-
-<img data-src="img/sem_segmentation.png" style="width:75.0%" class="r-stretch quarto-figure-center"><p class="caption">CNN grain segmentation applied to a real SEM polycrystal image. The network was trained only on synthetic Voronoi grain images (with perfect free labels), yet it correctly identifies grain boundaries in the real SEM image — demonstrating that the topological signature of boundaries transfers from synthetic to real data.</p><aside class="notes">
-<ul>
-<li>Point out the core message: the network was never shown a real SEM image during training. It learned “grain boundary = dark narrow strip separating two regions of different texture” from synthetic images, and that description transfers.</li>
-<li>The one point to land: this is why synthetic data generation is a first-class strategy in EM data science. Physical topology (connectivity, boundary shape) is independent of the specific instrument, contrast mode, and noise level.</li>
-<li>Misconception to preempt: “domain shift will always break synthetic-to-real transfer.” For grain boundaries specifically, the topological prior is very strong. For more subtle features (specific lattice defects, chemical contrast), domain adaptation or real labelled data may still be needed.</li>
-<li>EM anchor: the practical value is enormous — generating 10,000 Voronoi images takes minutes; manually labelling 10,000 real SEM grain images takes months. The synthetic approach democratises labelled data creation.</li>
-<li>Forward link: Week 8 will show how to augment synthetic images (add noise, vary contrast, apply elastic deformations) to further close the synthetic-to-real gap.</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="em-case-study-3-defects-in-irradiated-steel-roberts2019stemdefects" class="slide level2">
-<h2>EM case study 3: defects in irradiated steel <span class="citation" data-cites="roberts2019stemdefects"><a href="#/references" role="doc-biblioref" onclick="">Roberts, Graham et al., (2019), doi:<span>10.1038/s41598-019-49105-0</span></a></span></h2>
+<section id="em-case-study-defects-in-irradiated-steel-roberts2019stemdefects" class="slide level2">
+<h2>EM case study: defects in irradiated steel <span class="citation" data-cites="roberts2019stemdefects"><a href="#/references" role="doc-biblioref" onclick="">Roberts, Graham et al., (2019), doi:<span>10.1038/s41598-019-49105-0</span></a></span></h2>
 
 <img data-src="img/roberts2019stemdefects_p7_1.jpeg" style="width:62.0%" class="r-stretch quarto-figure-center"><p class="caption">DefectSegNet predictions on STEM (DCI) images of irradiated steel: input, ground truth, prediction and comparison for precipitates and voids. From <span class="citation" data-cites="roberts2019stemdefects">Roberts, Graham et al. <a href="#/references" role="doc-biblioref" onclick="">(2019), doi:<span>10.1038/s41598-019-49105-0</span></a></span> (Sci. Rep., CC BY 4.0).</p><div class="fragment">
 <ul>
@@ -1534,7 +1152,9 @@
 <li>Read the figure: four columns = input / human label / CNN / comparison. Most disagreement sits at object boundaries — where humans disagree too.</li>
 <li>The one point to land: the annotator floor is the practical ceiling. This connects to the “label ceiling” bullet on the validation slide.</li>
 <li>Material from ML-PC unit 4 (case 6).</li>
-<li>Transition: “How much does all this cost in parameters and labels?”</li>
+<li>The Au nanoparticle phase-map case study is on a backup slide.</li>
+<li>Labelling cost: a U-Net from scratch on EM data typically needs 50–200 annotated images; transfer/self-supervised pretraining (Week 8) can cut this to 20–50. A compact 4-level U-Net (32→256 channels) has ~7.8 M parameters, the original ~30 M.</li>
+<li>Transition: “The second case: no human labels at all.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1548,20 +1168,34 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="quantitative-example-parameter-savings-and-labelling-cost" class="slide level2">
-<h2>Quantitative example: parameter savings and labelling cost</h2>
+<section id="em-case-study-grain-boundaries-from-synthetic-voronoi-labels" class="slide level2">
+<h2>EM case study: grain boundaries from synthetic Voronoi labels</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/grain_boundary_segmentation.png" style="width:100.0%"></p>
+<figcaption>Training: synthetic Voronoi grain image, free ground-truth labels, U-Net predicted boundaries.</figcaption>
+</figure>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="img/sem_segmentation.png" style="width:100.0%"></p>
+<figcaption>Application: the network trained only on synthetic Voronoi images segments grain boundaries in a real SEM polycrystal image.</figcaption>
+</figure>
+</div>
+</div></div>
 <ul>
-<li class="fragment">A <span class="math inline">\(3\times3\)</span> conv layer with 64 input and 128 output channels: <span class="math inline">\(128 \times (64 \times 9 + 1) = 73{,}856\)</span> parameters.</li>
-<li class="fragment">A dense layer on a <span class="math inline">\(256\times256\)</span> image with 128 outputs: <span class="math inline">\(256^2 \times 128 = 8{,}388{,}608\)</span> parameters — <strong>114× more</strong>.</li>
-<li class="fragment">A compact four-level U-Net (32→64→128→256 channels) for 256×256 binary segmentation: ~7.8 million parameters. The original Ronneberger et al.&nbsp;U-Net is ~30 million parameters.</li>
-<li class="fragment">A 256×256 dense prediction MLP would need hundreds of millions of parameters per layer.</li>
-<li class="fragment"><strong>Labelling cost:</strong> training a U-Net from scratch on EM data typically requires 50–200 carefully annotated images. Transfer learning and self-supervised pre-training (Week 8) can reduce this to 20–50.</li>
+<li>Voronoi tessellations give perfect labels for free; the boundary topology (“dark strip between two regions”) transfers to real SEM images.</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>Use this slide as a concrete summary of the efficiency argument and connect it to the practical context students face in their MSc projects. 200 labelled images is feasible in a 3-month project; 10,000 is not.</li>
-<li>The one point to land: the parameter efficiency of CNNs is not a luxury — it is what makes deep learning tractable for EM datasets, which are small by computer-vision standards.</li>
-<li>Transition: “Now the practicalities and failure modes.”</li>
+<li>Generating 10,000 Voronoi images takes minutes; labelling 10,000 real SEM grain images takes months.</li>
+<li>Caveat: for grain boundaries the topological prior is strong; for subtle features (specific lattice defects, chemical contrast) domain adaptation or real labels may still be needed.</li>
+<li>EM anchor: grain-size distributions → Hall–Petch — a closed-loop materials data-science pipeline.</li>
+<li>Forward link: Week 8 covers systematic sim-to-real strategies (augmentation, domain randomisation, transfer).</li>
+<li>Transition: “Segmenters at annotator level, even from free labels — can we trust <em>why</em> they decide?”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1574,15 +1208,14 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-<!-- ===== §XAI. Explainability for CNNs ===== -->
+<!-- ===== §7. Explainability for CNNs ===== -->
 </section>
 <section id="why-explain-a-cnn-in-em" class="slide level2">
 <h2>Why explain a CNN in EM?</h2>
 <ul>
 <li class="fragment">A segmenter or classifier with 0.99 test accuracy can still be <strong>right for the wrong reason</strong> — “shortcut learning” <span class="citation" data-cites="geirhos2020shortcut"><a href="#/references" role="doc-biblioref" onclick="">Geirhos, Robert et al., (2020)</a></span>.</li>
-<li class="fragment">In EM, shortcuts are everywhere: scan-start or detector-edge artefacts, session-specific contrast, scale bars and annotations, beam damage that co-occurs with one specimen, drift direction.</li>
+<li class="fragment">EM shortcuts: scan-start/detector-edge artefacts, session contrast, scale bars, beam damage tied to one specimen.</li>
 <li class="fragment"><strong>Local explanation question:</strong> <em>which input pixels drove this particular prediction?</em></li>
-<li class="fragment">Three workhorse answers for CNNs: <strong>gradient saliency</strong>, <strong>Grad-CAM</strong>, <strong>occlusion</strong>.</li>
 <li class="fragment">Their job is <strong>diagnosis</strong> (find shortcuts, understand failures, decide what data to add) — not proof that a model is physically correct.</li>
 </ul>
 <aside class="notes">
@@ -1590,7 +1223,7 @@
 <li>Explainability thread: Week 4 read coefficients, Week 5 did permutation importance and SHAP on descriptors. For images there are no named features — the “features” are pixels, so explanations become maps.</li>
 <li>The one point to land: accuracy on a test set from the same sessions cannot detect a shortcut, because the shortcut is also present in the test set. You need either a shifted test set or an explanation.</li>
 <li>EM anchor: a real case pattern — all defective specimens were imaged on one day with a slightly different detector setting; the model learns the setting.</li>
-<li>Transition: “The cheapest explanation is one backward pass.”</li>
+<li>Transition: “Three workhorse answers for CNNs.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1604,72 +1237,19 @@
           display:block!important;
       }</style></aside>
 </section>
-<section id="gradient-saliency-one-backward-pass-simonyan2014saliency" class="slide level2">
-<h2>Gradient saliency: one backward pass <span class="citation" data-cites="simonyan2014saliency"><a href="#/references" role="doc-biblioref" onclick="">Simonyan, Karen et al., (2014)</a></span></h2>
+<section id="three-local-explanations-saliency-grad-cam-occlusion" class="slide level2">
+<h2>Three local explanations: saliency, Grad-CAM, occlusion</h2>
 <ul>
-<li class="fragment">For class score (logit) <span class="math inline">\(z_c\)</span> and input image <span class="math inline">\(\mathbf{x}\)</span>: <span class="math inline">\(\;S_i = \left|\dfrac{\partial z_c}{\partial x_i}\right|\)</span>.</li>
-<li class="fragment">Large <span class="math inline">\(S_i\)</span>: a small change of pixel <span class="math inline">\(i\)</span> changes the score strongly → the model is locally <strong>sensitive</strong> to pixel <span class="math inline">\(i\)</span>.</li>
-<li class="fragment">Implementation: <code>x.requires_grad_(True); model(x)[0, c].backward(); S = x.grad.abs()</code> — backprop from Week 6, but w.r.t. the <strong>input</strong> instead of the weights.</li>
-<li class="fragment">For segmentation: backpropagate from a <em>set of output pixels</em> (e.g.&nbsp;all false positives) to ask what drove those decisions.</li>
-<li class="fragment">Caveats: noisy, pixel-level, local linearisation — sensitivity is not the same as contribution.</li>
+<li class="fragment"><strong>Gradient saliency</strong> <span class="citation" data-cites="simonyan2014saliency"><a href="#/references" role="doc-biblioref" onclick="">Simonyan, Karen et al., (2014)</a></span>: <span class="math inline">\(S_i = |\partial z_c/\partial x_i|\)</span> — one backward pass w.r.t. the <em>input</em>; pixel-level, noisy; sensitivity, not contribution.</li>
+<li class="fragment"><strong>Grad-CAM</strong> <span class="citation" data-cites="selvaraju2017gradcam"><a href="#/references" role="doc-biblioref" onclick="">Selvaraju, Ramprasaath R. et al., (2017)</a></span>: weight the last-conv feature maps by their mean gradient, <span class="math inline">\(L^c = \mathrm{ReLU}\big(\sum_k \alpha_k^c A^k\big)\)</span>, <span class="math inline">\(\alpha_k^c = \frac{1}{Z}\sum_{i,j}\partial z_c/\partial A^k_{ij}\)</span> — coarse, smooth regions.</li>
+<li class="fragment"><strong>Occlusion</strong> <span class="citation" data-cites="zeiler2014visualizing"><a href="#/references" role="doc-biblioref" onclick="">Zeiler, Matthew D. et al., (2014)</a></span>: slide a grey patch, record the drop <span class="math inline">\(p_c(\mathbf{x}) - p_c(\mathbf{x}_\text{occ})\)</span> — model-agnostic, forward passes only.</li>
+<li class="fragment">For segmentation: backpropagate from a <em>set</em> of output pixels (e.g.&nbsp;all false positives).</li>
 </ul>
 <aside class="notes">
 <ul>
-<li>Emphasise: zero modification of the trained model, one extra forward+backward pass.</li>
-<li>Picture: the model is a surface over pixel space; saliency is the local slope.</li>
-<li>Exam-level understanding: “what does a high saliency value at a pixel mean?” — the prediction is locally sensitive to that pixel’s value. Not: “this pixel caused the prediction.”</li>
-<li>Transition: “Pixel gradients are noisy. Grad-CAM moves one level up.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="grad-cam-explanations-from-the-last-conv-layer-selvaraju2017gradcam" class="slide level2">
-<h2>Grad-CAM: explanations from the last conv layer <span class="citation" data-cites="selvaraju2017gradcam"><a href="#/references" role="doc-biblioref" onclick="">Selvaraju, Ramprasaath R. et al., (2017)</a></span></h2>
-<ul>
-<li class="fragment">Take the last convolutional feature maps <span class="math inline">\(A^k\)</span> (e.g.&nbsp;32 channels at 8×8) and the gradient of the class score w.r.t. them.</li>
-<li class="fragment">Channel weights and map: <span class="math display">\[\alpha_k^c = \frac{1}{Z}\sum_{i,j}\frac{\partial z_c}{\partial A^k_{ij}}, \qquad L^c_\text{Grad-CAM} = \mathrm{ReLU}\Big(\sum_k \alpha_k^c A^k\Big)\]</span></li>
-<li class="fragment">Upsample to image size → smooth, <strong>region-level</strong> heat map.</li>
-<li class="fragment">Resolution = resolution of the last conv layer (coarse); class-specific; works for any CNN architecture with a conv backbone.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>The formula is reference, not a derivation to memorise. The exam question: “how does Grad-CAM differ from input-gradient saliency?” — it explains at the level of the last conv feature maps (coarse, smooth, semantically meaningful) instead of at raw pixels (fine, noisy).</li>
-<li>Connect to the feature-hierarchy slide: the last conv layer holds the most abstract features; Grad-CAM asks which of them — and where — supported the class.</li>
-<li>Transition: “Both methods need gradients. Occlusion does not.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="occlusion-model-agnostic-what-if-this-region-were-missing-zeiler2014visualizing" class="slide level2">
-<h2>Occlusion: model-agnostic “what if this region were missing?” <span class="citation" data-cites="zeiler2014visualizing"><a href="#/references" role="doc-biblioref" onclick="">Zeiler, Matthew D. et al., (2014)</a></span></h2>
-<ul>
-<li class="fragment">Slide a grey patch over the image; record the drop in predicted probability <span class="math inline">\(p_c(\mathbf{x}) - p_c(\mathbf{x}_\text{occluded})\)</span> at each position.</li>
-<li class="fragment"><strong>Model-agnostic:</strong> needs only forward passes — works for any classifier, even non-differentiable pipelines.</li>
-<li class="fragment">Measures a <em>global</em> effect (remove a region) instead of a local slope → often much crisper than gradients.</li>
-<li class="fragment">Costs: one forward pass per patch position; resolution = patch size; result depends on the fill value (mean, black, blurred) → report it.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>In the notebook: 4×4 patches on 32×32 images = 64 forward passes per image — trivial. For a 1024² micrograph with 16² patches it is 4096 passes; use strides and batches.</li>
-<li>The fill value matters: occluding with black in a HAADF image <em>adds</em> information (“dark hole”) rather than removing it; the mean or a local blur is the usual choice. Checking two fill values is a cheap robustness test.</li>
+<li>Saliency implementation: <code>x.requires_grad_(True); model(x)[0, c].backward(); S = x.grad.abs()</code> — backprop from Week 6, but w.r.t. the input instead of the weights. No modification of the trained model. Picture: the model is a surface over pixel space; saliency is the local slope. Exam-level: a high value means the prediction is locally <em>sensitive</em> to that pixel — not “this pixel caused the prediction”.</li>
+<li>Grad-CAM: the formula is reference, not a derivation to memorise. Resolution = last conv layer (e.g.&nbsp;8×8, upsampled); class-specific; works for any conv backbone. Connects to the feature-hierarchy slide: the last conv layer holds the most abstract features. Exam question: “how does Grad-CAM differ from input-gradient saliency?” — coarse, smooth, semantically meaningful vs fine and noisy.</li>
+<li>Occlusion: measures a <em>global</em> effect (remove a region) instead of a local slope → often crisper. Cost: one forward pass per patch position (notebook: 4×4 patches on 32×32 = 64 passes; a 1024² micrograph with 16² patches = 4096 — use strides and batches). Resolution = patch size. The fill value matters: black in a HAADF image <em>adds</em> a “dark hole”; use the mean or a local blur, and report it.</li>
 <li>Transition: “Now put all three to work on the shortcut problem.”</li>
 </ul>
 <style type="text/css">
@@ -1733,9 +1313,9 @@
 <section id="sanity-checks-and-honest-limits-of-saliency" class="slide level2">
 <h2>Sanity checks and honest limits of saliency</h2>
 <ul>
-<li class="fragment"><strong>Model-randomisation test</strong> <span class="citation" data-cites="adebayo2018sanity"><a href="#/references" role="doc-biblioref" onclick="">Adebayo, Julius et al., (2018)</a></span>: randomise the weights and recompute. If the map barely changes, the method shows <em>image structure</em> (edges, bright columns), not what the model learned. Notebook: trained vs randomised saliency correlation ≈ 0.</li>
+<li class="fragment"><strong>Model-randomisation test</strong> <span class="citation" data-cites="adebayo2018sanity"><a href="#/references" role="doc-biblioref" onclick="">Adebayo, Julius et al., (2018)</a></span>: randomise the weights and recompute. If the map barely changes, it shows <em>image structure</em>, not what the model learned (notebook: correlation ≈ 0 — passes).</li>
 <li class="fragment"><strong>Fragility</strong> <span class="citation" data-cites="kindermans2019reliability"><a href="#/references" role="doc-biblioref" onclick="">Kindermans, Pieter-Jan et al., (2019)</a></span>: simple input transformations (e.g.&nbsp;a constant shift) can change some attribution maps without changing the prediction.</li>
-<li class="fragment"><strong>Sensitivity ≠ causation:</strong> a hot pixel says the prediction is sensitive there, not that the physics is right. A coherent map can be coherent about the <em>wrong</em> feature (the corner).</li>
+<li class="fragment"><strong>Sensitivity ≠ causation:</strong> a coherent map can be coherent about the <em>wrong</em> feature (the corner).</li>
 <li class="fragment"><strong>Use them as hypotheses → test them:</strong> occlude the suspected region, build a shifted test set, retrain without the cue.</li>
 </ul>
 <aside class="notes">
@@ -1757,78 +1337,38 @@
           overflow: hidden!important;
           display:block!important;
       }</style></aside>
-<!-- ===== §10. Practicalities, failure modes, forward link ===== -->
+<!-- ===== §8. Practicalities, failure modes, forward link ===== -->
 </section>
-<section id="failure-modes-of-cnns-in-em-applications" class="slide level2">
-<h2>Failure modes of CNNs in EM applications</h2>
+<section id="failure-modes-and-a-practical-checklist" class="slide level2">
+<h2>Failure modes and a practical checklist</h2>
+<div class="columns">
+<div class="column" style="width:45%;">
+<p><strong>Failure modes</strong></p>
 <ul>
-<li class="fragment"><strong>Domain shift:</strong> a CNN trained on HAADF images from one microscope fails on HAADF images from a different microscope with a different contrast transfer function or detector geometry. Solution: retrain on the target instrument or use domain adaptation.</li>
-<li class="fragment"><strong>Beam damage artefacts:</strong> a CNN trained on undamaged samples may misclassify beam-damage artefacts as phase boundaries. Always inspect predictions qualitatively.</li>
-<li class="fragment"><strong>Scale sensitivity:</strong> a CNN trained on 0.1 nm/pixel resolution misclassifies images at 0.5 nm/pixel. Always match training and inference resolution.</li>
-<li class="fragment"><strong>Out-of-distribution inputs:</strong> a U-Net trained on grain boundaries gives nonsense output on a completely different microstructure type. Check training data coverage.</li>
+<li><strong>Domain shift:</strong> other microscope, detector, contrast transfer</li>
+<li><strong>Beam-damage artefacts</strong> that look like boundaries</li>
+<li><strong>Scale:</strong> trained at 0.1 nm/px, applied at 0.5 nm/px</li>
+<li><strong>Out-of-distribution</strong> microstructures</li>
 </ul>
+</div><div class="column" style="width:55%;">
+<p><strong>Checklist</strong></p>
+<ul>
+<li>Match pixel size between training and inference.</li>
+<li><code>GroupKFold</code> by specimen/session — not random splits.</li>
+<li>Look at predicted masks; report per-class IoU/Dice.</li>
+<li>Start simple; beat a thresholding baseline first.</li>
+<li>Explain before deploying (+ randomisation check).</li>
+</ul>
+</div></div>
 <aside class="notes">
 <ul>
-<li>Use one concrete failure story if possible: “a U-Net for Au nanoparticle segmentation was applied to a Pt nanoparticle dataset. The contrast pattern was similar but the lattice spacing was different. The model over-segmented the Pt particles as multiple Au-sized objects.”</li>
-<li>The one point to land: CNNs learn correlations in training data. If the test distribution differs from training, all bets are off. Validation on held-out microscopy sessions (not just random image crops) is essential.</li>
-<li>Misconception to preempt: “a high train/val accuracy guarantees the CNN is correct.” Not if the val set was drawn from the same microscopy session. Use GroupKFold by session/specimen (Week 4’s lesson!) for honest evaluation — the shortcut demo is exactly this failure.</li>
-<li>EM anchor: beam damage is a uniquely EM failure mode. Damage artifacts can look like grain boundaries or phase inclusions. The CNN has no way to distinguish them from real structure unless trained to do so.</li>
-<li>Forward link: data augmentation, transfer and self-supervised learning (Week 8) are the main strategies to improve robustness to domain shift and scale variation.</li>
-<li>Transition: “One last practical note before the forward link.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="practical-checklist-for-cnn-based-em-analysis" class="slide level2">
-<h2>Practical checklist for CNN-based EM analysis</h2>
-<ul>
-<li class="fragment"><strong>Match resolution:</strong> train and infer at the same pixel size.</li>
-<li class="fragment"><strong>Honest validation:</strong> use <code>GroupKFold</code> by specimen or microscopy session — not random splits.</li>
-<li class="fragment"><strong>Inspect qualitatively:</strong> always look at predicted masks on held-out images before reporting metrics.</li>
-<li class="fragment"><strong>Report IoU and Dice, not accuracy:</strong> for segmentation on imbalanced masks (thin boundaries vs large grains), accuracy is misleading.</li>
-<li class="fragment"><strong>Start simple:</strong> a 4-level U-Net with 32→64→128→256 channels often outperforms a 50-layer ResNet when <span class="math inline">\(N &lt; 200\)</span> labelled images; beat a thresholding baseline first.</li>
-<li class="fragment"><strong>Explain before deploying:</strong> saliency/occlusion on failures and on a shifted test set; randomisation sanity check.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Point out that points 2 and 3 directly echo Week 4 (honest validation) and Week 6 (training diagnostics: look at what the model does). The recurring theme is: do not trust numbers alone; look at what the model actually predicts.</li>
-<li>The one point to land: for EM applications, the engineering simplicity rule applies. A simple, well-validated model that the team can understand and debug is more valuable than a complex model with marginally better metrics.</li>
-<li>Transition: “Where to practise on real data, and the notebook.”</li>
-</ul>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
-<section id="real-data-practice-metaldam-in-ai4mat" class="slide level2">
-<h2>Real-data practice: MetalDAM in Ai4Mat</h2>
-<ul>
-<li class="fragment">The companion repository <strong>Ai4MatLectures</strong> (<a href="https://github.com/ECLIPSE-Lab/Ai4MatLectures">github.com/ECLIPSE-Lab/Ai4MatLectures</a>) provides PyTorch-ready EM datasets: <code>from ai4mat.datasets import ...</code></li>
-<li class="fragment"><strong>MetalDAM:</strong> SEM micrographs of additively manufactured metal with per-pixel phase/defect labels — the real-data version of today’s notebook.</li>
-<li class="fragment">Suggested exercise (miniproject-sized): U-Net with 3–4 levels (or a ResNet encoder) → per-class IoU with a split <strong>by micrograph</strong> → saliency on the worst class → one augmentation that fixes a failure.</li>
-<li class="fragment">Also in Ai4Mat: HRTEM images and NEU-DET surface defects for classification with Grad-CAM.</li>
-</ul>
-<aside class="notes">
-<ul>
-<li>Point students here for the miniproject: the synthetic notebook teaches the mechanics; MetalDAM shows real class imbalance (rare defect classes), real label noise and real contrast variation.</li>
-<li>Practical hint: a GPU (Colab) is needed for 3–4-level U-Nets on full-size micrographs; tile into 256² crops, but split by micrograph <em>before</em> tiling.</li>
-<li>Transition: “Here is this week’s notebook.”</li>
+<li>Failure story: a U-Net for Au nanoparticle segmentation applied to Pt nanoparticles — similar contrast, different lattice spacing — over-segmented the Pt particles into multiple Au-sized objects.</li>
+<li>Domain shift fixes: retrain on the target instrument or domain adaptation (Week 8). Beam damage is a uniquely EM failure mode — the CNN cannot distinguish damage from structure unless trained to.</li>
+<li>The one point to land: CNNs learn correlations in the training data. Validation on held-out sessions (Week 4) is essential — the shortcut demo is exactly this failure.</li>
+<li>“Start simple”: a 4-level U-Net with 32→256 channels often beats a 50-layer ResNet when N &lt; 200 labelled images. A simple, well-validated model the team can debug beats a complex one with marginally better metrics.</li>
+<li>Checklist points 2 and 3 echo Week 4 (honest validation) and Week 6 (look at what the model does).</li>
+<li>Forward link: augmentation, transfer and self-supervised learning (Week 8) are the main strategies against domain shift and scale variation.</li>
+<li>Transition: “Here is this week’s notebook — and where to practise on real data.”</li>
 </ul>
 <style type="text/css">
         span.MJX_Assistive_MathML {
@@ -1866,10 +1406,12 @@
 <ul>
 <li>Runs end-to-end on a CPU in a few minutes.</li>
 <li>Exercises: soft-Dice loss, ablations (no skips / no Dice), saliency sanity check.</li>
+<li>Real data: <strong>MetalDAM</strong> (SEM, AM metal, per-pixel labels) via <a href="https://github.com/ECLIPSE-Lab/Ai4MatLectures">Ai4MatLectures</a>.</li>
 </ul>
 </div></div>
 <aside class="notes">
 <ul>
+<li>MetalDAM (<code>from ai4mat.datasets import ...</code>) is the real-data version of today’s notebook: real class imbalance, label noise and contrast variation. Miniproject-sized exercise: U-Net with 3–4 levels (or ResNet encoder) → per-class IoU with a split <strong>by micrograph</strong> (split before tiling into 256² crops) → saliency on the worst class → one augmentation that fixes a failure. Needs a GPU (Colab). Ai4Mat also has HRTEM and NEU-DET surface defects for classification with Grad-CAM.</li>
 <li>Stress the ablation exercise: plain BCE collapses to “all background” on this imbalanced data — students should see the class-imbalance trap with their own eyes.</li>
 <li>The notebook numbers quoted on the slides come from the same code and seeds (<code>img/make_figures.py</code> reproduces the figures).</li>
 <li>Transition: “Summary.”</li>
@@ -1977,6 +1519,61 @@
 </ul>
 <!-- END prev-next -->
 </section>
+<section id="backup-slides" class="slide level2" data-visibility="uncounted">
+<h2>Backup slides</h2>
+<p>Material not covered in the 90-minute lecture path — for questions and self-study.</p>
+</section>
+<section id="residual-blocks-in-practice-bn-stages-and-why-em-cares" class="slide level2" data-visibility="uncounted">
+<h2>Residual blocks in practice: BN, stages, and why EM cares</h2>
+<ul>
+<li class="fragment"><strong>Basic block:</strong> conv3×3 → BN → ReLU → conv3×3 → BN, <strong>add</strong> input, ReLU. If shapes change (stride 2, more channels) the skip uses a 1×1 conv.</li>
+<li class="fragment"><strong>Gradient view:</strong> <span class="math inline">\(\frac{\partial \mathbf{y}}{\partial \mathbf{x}} = \mathbf{I} + \frac{\partial F}{\partial \mathbf{x}}\)</span> — the identity term carries the gradient through every block unattenuated.</li>
+<li class="fragment"><strong>Stages:</strong> ResNet-18/34/50 = 4 stages of residual blocks, stride-2 between stages, global average pooling + one linear layer (no big dense head: ResNet-18 ≈ 11 M params vs VGG-16 ≈ 138 M).</li>
+<li class="fragment"><strong>EM use:</strong> ResNet backbones are the standard <em>encoder</em> for U-Net-style segmenters and the usual starting point for transfer learning (Week 8).</li>
+<li class="fragment">Skip connections appear twice today: <strong>additive</strong> (ResNet: ease optimisation) and <strong>concatenating</strong> (U-Net: restore spatial detail).</li>
+</ul>
+<aside class="notes">
+<ul>
+<li>Draw the basic block on the board, and the 1×1 projection skip for the stride-2 case.</li>
+<li>The one point to land: identity + small correction. Blocks that are not needed can learn <span class="math inline">\(F\approx 0\)</span> and become near-identity — depth stops hurting.</li>
+<li>Misconception to preempt: “ResNet and U-Net skips are the same thing.” Same name, different purpose: ResNet adds <span class="math inline">\(x\)</span> to help optimisation; U-Net concatenates encoder features to recover <em>where</em>.</li>
+<li>EM anchor: literature on nanoparticle/defect segmentation constantly says “U-Net with ResNet-34 encoder, ImageNet-pretrained” — students can now parse every word of that sentence (the “pretrained” part is Week 8).</li>
+<li>Transition: “Classification networks produce one label per image. For EM segmentation we need one label per pixel — that is U-Net.”</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="em-case-study-au-nanoparticle-phase-segmentation" class="slide level2" data-visibility="uncounted">
+<h2>EM case study: Au nanoparticle phase segmentation</h2>
+
+<img data-src="img/unet_em_casestudy.png" style="width:85.0%" class="r-stretch quarto-figure-center"><p class="caption">U-Net applied to TEM images of Au nanoparticles on an amorphous support. Left: input TEM image (representative Au-nanoparticle-on-amorphous-support TEM segmentation task). Centre: ground-truth binary mask (crystalline=bright, amorphous=dark). Right: U-Net prediction — pixel-wise classification matching the ground truth closely.</p><aside class="notes">
+<ul>
+<li>Describe the physical task: “Au nanoparticles are crystalline — they show regular lattice fringes in TEM. The silica matrix is amorphous — shows no periodic structure. The task is to label every pixel as ‘crystalline Au’ or ‘amorphous silica’, producing a quantitative phase map.”</li>
+<li>The one point to land: this is exactly the task where U-Net excels — the boundary between phases has a specific local texture signature that the encoder learns, and the exact location of the boundary matters for measuring nanoparticle size distributions.</li>
+<li>Misconception to preempt: “we need thousands of labelled TEM frames to train.” In practice, 50–200 carefully labelled frames can train a U-Net for this specific task, especially combined with data augmentation (Week 8).</li>
+<li>EM anchor: phase fraction measurement (how much Au vs how much silica?) requires pixel-accurate segmentation — a classification-only CNN cannot provide this.</li>
+</ul>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
 <section id="references" class="slide level2 smaller scrollable">
 <h2>References</h2>
 <div id="refs" class="references csl-bib-body" role="list">
@@ -2001,11 +1598,11 @@ Batch normalization: Accelerating deep network training by reducing internal cov
 <div id="ref-ronneberger2015unet" class="csl-entry" role="listitem">
 U-net: Convolutional networks for biomedical image segmentation, Medical image computing and computer-assisted intervention (MICCAI), Olaf Ronneberger, Philipp Fischer, &amp; Thomas Brox.
 </div>
-<div id="ref-milletari2016vnet" class="csl-entry" role="listitem">
-<span>V-Net</span>: Fully convolutional neural networks for volumetric medical image segmentation, Fourth international conference on 3D vision (3DV), Fausto Milletari, Nassir Navab, &amp; Seyed-Ahmad Ahmadi.
-</div>
 <div id="ref-lin2017focal" class="csl-entry" role="listitem">
 Focal loss for dense object detection, Proceedings of the IEEE international conference on computer vision (ICCV), Tsung-Yi Lin, Priya Goyal, Ross Girshick, Kaiming He, &amp; Piotr Dollár.
+</div>
+<div id="ref-milletari2016vnet" class="csl-entry" role="listitem">
+<span>V-Net</span>: Fully convolutional neural networks for volumetric medical image segmentation, Fourth international conference on 3D vision (3DV), Fausto Milletari, Nassir Navab, &amp; Seyed-Ahmad Ahmadi.
 </div>
 <div id="ref-roberts2019stemdefects" class="csl-entry" role="listitem">
 Deep learning for semantic segmentation of defects in advanced <span>STEM</span> images of steels, Scientific Reports, Graham Roberts, Simon Y. Haile, Rajat Sainju, Danny J. Edwards, Brian Hutchinson, &amp; Yuanyuan Zhu https://doi.org/<a href="https://doi.org/10.1038/s41598-019-49105-0">10.1038/s41598-019-49105-0</a>.
