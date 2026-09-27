@@ -5,15 +5,19 @@ Central link index for lecture decks and units.
 ## Data Science for Electron Microscopy
 
 <!-- BEGIN units:data_science_for_em -->
-- **Unit 01: Intro** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/01_intro/template.html) · [Source](./data_science_for_em/01_intro/template.qmd)
-- **Unit 02: Regression** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/02_regression/template.html) · [Source](./data_science_for_em/02_regression/template.qmd)
-- **Unit 03: CNNs** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/03_cnns/template.html) · [Source](./data_science_for_em/03_cnns/template.qmd)
-- **Unit 04: Self-Supervised Learning** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/04_selfsupervised/template.html) · [Source](./data_science_for_em/04_selfsupervised/template.qmd)
-- **Unit 05: GANs** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/05_gan/template.html) · [Source](./data_science_for_em/05_gan/template.qmd)
-- **Unit 06: Gaussian Processes** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/06_gaussian_processes/template.html) · [Source](./data_science_for_em/06_gaussian_processes/template.qmd)
-- **Unit 07: Gaussian Processes II** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/07_gaussian_processes2/template.html) · [Source](./data_science_for_em/07_gaussian_processes2/template.qmd)
-- **Unit 08: Imaging Inverse Problems I** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/08_imaging_inverse_problems1/template.html) · [Source](./data_science_for_em/08_imaging_inverse_problems1/template.qmd)
-- **Unit 09: Imaging Inverse Problems II** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/09_imaging_inverse_problems2/template.html) · [Source](./data_science_for_em/09_imaging_inverse_problems2/template.qmd)
+- **Unit 01: Python crash course & the EM data deluge** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/01_python_crash/01_intro.html) · [Source](./data_science_for_em/01_python_crash/01_intro.qmd)
+- **Unit 02: Learning from EM data: signal formation, noise & loss** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/02_em_data_formation/01_intro.html) · [Source](./data_science_for_em/02_em_data_formation/01_intro.qmd)
+- **Unit 03: Linear algebra, PCA & spectral unmixing** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/03_linear_algebra_spectral/01_intro.html) · [Source](./data_science_for_em/03_linear_algebra_spectral/01_intro.qmd)
+- **Unit 04: Regression, optimisation & honest validation** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/04_regression_validation/01_intro.html) · [Source](./data_science_for_em/04_regression_validation/01_intro.qmd)
+- **Unit 05: From images to features: descriptors & tree ensembles** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/05_features_trees/01_intro.html) · [Source](./data_science_for_em/05_features_trees/01_intro.qmd)
+- **Unit 06: Neural networks & backpropagation** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/06_neural_networks/01_intro.html) · [Source](./data_science_for_em/06_neural_networks/01_intro.qmd)
+- **Unit 07: CNNs & U-Nets for microscopy** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/07_cnns_for_microscopy/01_intro.html) · [Source](./data_science_for_em/07_cnns_for_microscopy/01_intro.qmd)
+- **Unit 08: Small data: augmentation, transfer & self-supervision** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/08_small_data_self_supervised/01_intro.html) · [Source](./data_science_for_em/08_small_data_self_supervised/01_intro.qmd)
+- **Unit 09: Unsupervised learning, autoencoders & latent spaces** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/09_unsupervised_latent/01_intro.html) · [Source](./data_science_for_em/09_unsupervised_latent/01_intro.qmd)
+- **Unit 10: Attention, transformers & graph networks for EM** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/10_transformers_graphs/01_intro.html) · [Source](./data_science_for_em/10_transformers_graphs/01_intro.qmd)
+- **Unit 11: Uncertainty, Gaussian processes & autonomous EM** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/11_uncertainty_autonomous_em/01_intro.html) · [Source](./data_science_for_em/11_uncertainty_autonomous_em/01_intro.qmd)
+- **Unit 12: Inverse problems I: regularisation, tomography & sensor fusion** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/12_inverse_problems_1/01_intro.html) · [Source](./data_science_for_em/12_inverse_problems_1/01_intro.qmd)
+- **Unit 13: Inverse problems II: ptychography, generative priors & synthesis** — [Slides](https://pelzlab.science/public_presentations/data_science_for_em/13_inverse_problems_2_generative/01_intro.html) · [Source](./data_science_for_em/13_inverse_problems_2_generative/01_intro.qmd)
 <!-- END units:data_science_for_em -->
 
 ## Mathematical Foundations of AI & ML
@@ -33,7 +37,6 @@ Central link index for lecture decks and units.
 - **Unit 12: Uncertainty in Predictions** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/12_uncertainty_in_predictions/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/12_uncertainty_in_predictions/01_intro.qmd)
 - **Unit 13: Physics-Informed & Constrained Learning** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/13_physics_informed_learning/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/13_physics_informed_learning/01_intro.qmd)
 - **Unit 14: Explainability, Limits, and Scientific Trust** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/14_explainability_limits_trust/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/14_explainability_limits_trust/01_intro.qmd)
-- **Appendix: Algorithm Compendium — Pseudocode Reference** — [Slides](https://pelzlab.science/public_presentations/mathematical_foundations_of_ai_and_ml/15_algorithm_compendium/01_intro.html) · [Source](./mathematical_foundations_of_ai_and_ml/15_algorithm_compendium/01_intro.qmd)
 <!-- END units:mathematical_foundations_of_ai_and_ml -->
 
 ## Materials Genomics

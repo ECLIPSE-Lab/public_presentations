@@ -34,7 +34,7 @@ All check-ins are off lecture time (email/Moodle upload). There are no in-class 
 
 ## Dataset / Task Menu
 
-Choose **one** of the four options below. If you have a compelling alternative from your own research, email the instructor by the Week 6 deadline for approval.
+Choose **one** of the five options below. If you have a compelling alternative from your own research, email the instructor by the Week 6 deadline for approval.
 
 ---
 
@@ -47,7 +47,7 @@ Choose **one** of the four options below. If you have a compelling alternative f
 - NFFA-EUROPE open TEM/SEM datasets (requires an NFFA user account — use the synthetic fallback if access is unavailable): <https://www.nffa.eu/apply/data/>.
 - Any SEM grain-boundary dataset you can export from your department's microscope (include a data-sharing statement).
 
-**Deliverable:** A segmentation notebook (data generation or loading → lightweight CNN (≤3 conv layers) or a pretrained backbone (e.g. ResNet encoder) → IoU vs noise level curve → at least one Grad-CAM or saliency map on a failure case). A U-Net is an optional stretch goal for pairs with GPU access.
+**Deliverable:** A segmentation notebook (data generation or loading → small U-Net (Week 7) or a pretrained/foundation-model backbone (Week 8, e.g. frozen DINO/SAM features + linear head) → IoU vs noise level curve → at least one Grad-CAM or saliency map on a failure case). The MetalDAM SEM dataset from the Ai4Mat companion notebooks is a good real-data choice.
 
 ---
 
@@ -60,7 +60,7 @@ Choose **one** of the four options below. If you have a compelling alternative f
 - `hyperspy` example datasets (installed in course environment): `hs.datasets.example_signals` (e.g. `hs.datasets.example_signals.EDS_TEM_Spectrum()`).
 - Public EELS Atlas spectra from <https://eelsdb.eu> for reference validation.
 
-**Deliverable:** A denoising + clustering notebook (spectra loading or generation → PCA/autoencoder → latent-space t-SNE/UMAP → phase map → comparison with ground-truth positions; uncertainty: reconstruction error distribution per phase).
+**Deliverable:** A denoising + clustering notebook (spectra loading or generation → PCA / NMF (Week 3) / autoencoder or VAE (Week 9) → latent-space t-SNE/UMAP → phase map → comparison with ground-truth positions; uncertainty: reconstruction error distribution per phase).
 
 ---
 
@@ -73,7 +73,7 @@ Choose **one** of the four options below. If you have a compelling alternative f
 - Synthetic composition-property data: linear model + heteroscedastic noise (generate in-notebook — explicitly labelled synthetic, useful for benchmarking your uncertainty estimates against the known ground truth).
 - Any tabular dataset from your group's experiments with ≥80 samples.
 
-**Deliverable:** A regression notebook (EDA → feature engineering → cross-validated model (GP or gradient-boosted tree) → calibration plot (reliability diagram) → SHAP feature-importance plot answering "which descriptor matters most and why?").
+**Deliverable:** A regression notebook (EDA → feature engineering → cross-validated model (GP or gradient-boosted tree, `GroupKFold` if groups exist) → calibration plot (reliability diagram) → SHAP feature-importance plot answering "which descriptor matters most and why?").
 
 ---
 
@@ -89,9 +89,21 @@ Choose **one** of the four options below. If you have a compelling alternative f
 
 ---
 
+### Option E — Atom-Column Descriptors & Defect Classification
+
+**Task:** Locate atom columns in (simulated or real) atomic-resolution HAADF-STEM images, build local-environment descriptors (Week 5), and classify defects (vacancy, substitution, dislocation core, grain boundary) with a tree ensemble; optionally compare with a small graph neural network on the atom-column graph (Week 10).
+
+**Suggested datasets / sources:**
+- Synthetic HAADF lattices with known defects (generate in-notebook: Gaussian columns on a lattice + Poisson noise — zero download required, explicitly labelled synthetic; extend the Week 5 notebook).
+- Public atomic-resolution STEM images from your group or from open repositories (include a data-sharing statement).
+
+**Deliverable:** A notebook (column finding → descriptors → RF/GBM with image-grouped cross-validation → confusion matrix → permutation importance / SHAP answering "which structural feature identifies the defect?" → per-column predictive uncertainty or a reject option for ambiguous columns).
+
+---
+
 ## Deliverables
 
-1. **Notebook** (`miniproject_<surname>.ipynb`): self-contained, fully executable. All figures must be generated inside the notebook. Target runtime: ≤ 5 min on a laptop CPU for Options B, C, and D; image-segmentation submissions (Option A) using a small CNN should target ≤ 10 min (or use a pretrained backbone / Google Colab GPU).
+1. **Notebook** (`miniproject_<surname>.ipynb`): self-contained, fully executable. All figures must be generated inside the notebook. Target runtime: ≤ 5 min on a laptop CPU for Options B, C, D and E; image-segmentation submissions (Option A) using a small CNN should target ≤ 10 min (or use a pretrained backbone / Google Colab GPU).
 2. **Report** (`miniproject_<surname>.pdf`): ≈4–6 pages (A4, ≥11 pt font, figures included in the page count). Sections: Introduction / Dataset & Preprocessing / Methods / Results & Uncertainty / Explainability / Conclusion. References in any consistent style.
 
 Both files submitted as a single ZIP to Moodle by the deadline.

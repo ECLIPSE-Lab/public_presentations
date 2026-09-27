@@ -1,7 +1,7 @@
 ---
 title: |-
   Data Science for Electron Microscopy<br>
-  Week 4: Regression, gradient descent &amp; honest validation
+  Week 4: Regression, optimisation & honest validation
 author:
 - name: Prof. Dr. Philipp Pelz
   affiliation:
@@ -36,44 +36,60 @@ format:
 ## Recap: where we left off
 
 :::: {.incremental}
-- **Week 3:** linear algebra & PCA — SVD, score maps, eigenspectra.
-- You can now compress a 50 000-spectrum EELS dataset into a handful of components and plot a scree plot.
-- Key geometric insight: least-squares = projection of the target vector onto the column space of $\mathbf{X}$.
-- **Gap:** projection gives the optimal weights analytically, but only when we can invert $\mathbf{X}^T\mathbf{X}$.
-  For large or non-linear problems we need an iterative approach — gradient descent.
+- **Week 3:** linear algebra, PCA & spectral unmixing — SVD, scree plots, NMF / MCR-ALS endmembers and abundance maps.
+- Key geometric insight: least-squares = projection of the target vector onto the column space of $\mathbf{X}$; the condition number $\kappa$ tells you how fragile that projection is.
+- **Gap #1:** the projection gives optimal weights analytically, but only when we can (stably) invert $\mathbf{X}^T\mathbf{X}$.
+  For large, ill-conditioned or non-linear problems we need an iterative approach — gradient descent.
 - **Gap #2:** fitting a model well on training data is not the same as fitting it *honestly*.
-  We will spend the second half of today on that distinction.
+  The second half of today is about that distinction — splits, leakage and what a coefficient may be trusted to mean.
 ::::
 
 :::: {.notes}
-- Open by checking: who saw a clear scree-plot elbow in the Week 3 notebook? Use that as the bridge — PCA found the signal subspace by finding the directions of maximum variance. Regression will ask "what direction minimises prediction error?" Same geometric spirit, different criterion.
-- The one point to land: the analytic normal-equations solution exists but requires a matrix inversion — fragile for large or ill-conditioned systems. Gradient descent is the scalable alternative, and it is the workhorse of every neural network we will meet from Week 5 onward.
-- Misconception to preempt: "gradient descent is a neural-network thing, not a regression thing." It applies to *any differentiable loss — including MSE linear regression. The same algorithm that trains ResNet-50 can fit a line to 10 data points.
-- EM anchor: EELS spectrum fitting often runs on GPU using SGD; the same code scales from 10 to 10 million spectra.
-- Pacing note: move swiftly through §1–3 (loss and GD, ~30 min), spend 15 min on §4 (SGD/Adam), and protect 25 min for §5–7 (validation and leakage) — that is where the exam-critical material lives.
-- Transition: "Two questions anchor today — let me show you before we dive in."
+- Open by checking: who saw a clear scree-plot elbow in the Week 3 notebook, and whose NMF endmembers matched the ground truth? Use that as the bridge — PCA/NMF found a signal subspace by a *criterion* (variance, non-negative reconstruction). Regression asks "which weights minimise prediction error?" Same geometric spirit, different criterion.
+- The one point to land: the analytic normal-equations solution exists but requires a matrix inversion — fragile for large or ill-conditioned systems. Gradient descent is the scalable alternative, and it is the workhorse of every neural network we will meet from Week 6 onward.
+- Callback that pays off later: NMF's multiplicative updates in Week 3 *were* an iterative optimiser on a non-convex loss. Today names the general machinery.
+- Misconception to preempt: "gradient descent is a neural-network thing, not a regression thing." It applies to *any* differentiable loss — including MSE linear regression.
+- Pacing note: §1–4 (loss, landscape, optimisers) ~35 min; §5 regularisation ~12 min; §6–7 validation and leakage ~25 min (exam-critical, protect it); metrics + reading coefficients ~15 min; close 3 min.
+- Transition: "Two questions anchor today."
 ::::
 
 ## Today's questions
 
 :::: {.incremental}
-- **Why does a model trained on EM crops from one specimen fail on crops from a new specimen?**
-  Because crops from the same specimen are correlated — training on them while testing on others measures memorisation, not generalisation.
-- **How do we find model parameters without inverting a matrix?**
-  Gradient descent: follow the slope of the loss surface downhill, one small step at a time.
-- **Road map:** prediction = loss minimisation (3) · MSE / MAE / Huber & noise (5) · loss landscape & GD picture (4) · learning rate (3) · SGD → Adam, intuition only (6) · overfitting & bias–variance (4) · train/val/test (4) · K-fold CV (3) · **data leakage in EM — the crop-vs-specimen trap** (6) · regression & segmentation metrics (4) · limits + Week 5 preview (2).
-- **Self-study:** `notebooks/week04_leakage_demo.ipynb` — fit a regressor two ways and watch the honest score drop.
+- **How do we find model parameters without inverting a matrix — and when is the answer unique?**
+  Gradient descent on the loss landscape; convexity decides whether "a minimum" is "the minimum".
+- **Why does a model trained on crops from one specimen fail on a new specimen?**
+  Because crops from one specimen are correlated — random splits measure memorisation, not generalisation.
+- **Road map:** ERM & losses · loss landscapes & convexity · learning rate, SGD → Adam · bias–variance · Ridge/Lasso geometry · train/val/test & CV · **leakage taxonomy** (duplicate · temporal · group · preprocessing) · metrics · **reading coefficients (E1/E2)** · honest EM recipe.
+- **Self-study:** `notebooks/week04_leakage_demo.ipynb` — group leakage *and* preprocessing leakage, measured.
 ::::
 
 :::: {.notes}
-- Read the road map together with the room and point to two anchors: (1) the loss landscape in §2 and (2) the leakage figures in §5. Tell students those two things are the core of the week.
-- The one point to land: today has two halves that connect. The first half (loss minimisation, GD) answers "how do I fit a model?" The second half (validation, leakage) answers "how do I trust my score?" Both are essential for every EM project.
-- Pacing note: this slide is orientation only — 2 minutes maximum. Do not read all bullet points aloud; gesture at the structure and move on.
+- Orientation only — 2 minutes. Point to the three anchors: the landscape pictures (§3), the leakage taxonomy (§7), and the coefficient-reading slides near the end.
+- The one point to land: today has two halves that connect. The first half answers "how do I fit?"; the second answers "how do I trust my score — and my coefficients?"
+- Transition: "Here is what you should be able to do at the end of today."
+::::
+
+## Learning outcomes
+
+By the end of this lecture you can:
+
+:::: {.incremental}
+1. Write regression as **empirical risk minimisation** and derive MSE / MAE / Huber from a noise model.
+2. Explain a **loss landscape**: convexity, local minima, saddle points, conditioning — and why optimisation ≠ generalisation.
+3. Describe what **learning rate, momentum and Adam** each fix.
+4. Sketch the **Ridge (disc) vs Lasso (diamond)** geometry and predict which gives sparse weights.
+5. Choose a **split** (random, grouped, chronological) and name the **four leakage types** with an EM example each.
+6. Report the right **metric** and read **linear coefficients** without over-interpreting them (E1/E2).
+::::
+
+:::: {.notes}
+- These six outcomes map one-to-one onto the must-know list at the end and onto the Week 4 exam questions.
+- Outcomes 4, 5 and 6 are new this year: Ridge/Lasso geometry, the full leakage taxonomy (from the Materials Genomics course, U8), and the first step of the explainability ladder that runs through the whole course (W5 permutation importance, W7 saliency, W10 attention, W13 synthesis).
 - Transition: "Start with the simplest question: what does it mean to predict?"
 ::::
 
 <!-- ===== §1. Prediction as loss minimisation ===== -->
-
 ## Prediction = minimising a loss
 
 :::: {.incremental}
@@ -91,9 +107,9 @@ format:
 :::: {.notes}
 - Write the ERM equation on the board while saying it aloud — the notation is more intimidating than the concept. "We pick the weights that make our predictions closest to the true targets, on average."
 - The one point to land: *training a model is just minimising a function*. The function has a specific shape — the loss surface — and the optimiser is the algorithm that walks downhill on that surface.
-- Misconception to preempt: "the loss and the metric are the same thing." They are not — the loss is what we minimise (must be differentiable, gradient-friendly); the metric is what we report to humans (must be interpretable). We train with MSE and report RMSE in the correct units. More on this in §6.
+- Misconception to preempt: "the loss and the metric are the same thing." They are not — the loss is what we minimise (must be differentiable, gradient-friendly); the metric is what we report to humans (must be interpretable). We train with MSE and report RMSE in the correct units. More on this in §8 (metrics).
 - EM anchor: in EELS spectral fitting, $\mathbf{x}_i$ is one spectrum, $y_i$ is the elemental concentration at pixel $i$, and $f_\mathbf{w}$ is a linear combination of reference spectra. Minimising the MSE across all spectra gives the best-fit concentrations everywhere.
-- Forward link: in Week 5, we will replace the linear predictor $f_\mathbf{w}$ with a neural network — the loss and ERM framework are identical.
+- Forward link: in Week 6, we will replace the linear predictor $f_\mathbf{w}$ with a neural network — the loss and ERM framework are identical.
 - Transition: "The most common loss is MSE — but it is not the only one, and the choice matters."
 ::::
 
@@ -120,51 +136,29 @@ format:
 - Transition: "To minimise the loss iteratively, we need to know which direction is downhill — that is the gradient."
 ::::
 
-## What is the gradient?
+## The gradient & the gradient-descent update
 
 :::: {.incremental}
-- The **gradient** $\nabla_\mathbf{w} \hat{R}(\mathbf{w})$ is a vector pointing in the direction of *steepest ascent* of the loss surface.
-- **Key insight:** moving opposite to the gradient (steepest descent) reduces the loss (at least locally).
+- The **gradient** $\nabla_\mathbf{w} \hat{R}(\mathbf{w})$ points in the direction of *steepest ascent*; step against it.
 - **First-order Taylor:** $\hat{R}(\mathbf{w} - \eta \nabla \hat{R}) \approx \hat{R}(\mathbf{w}) - \eta \|\nabla \hat{R}\|^2 < \hat{R}(\mathbf{w})$ for small $\eta > 0$.
-- **For MSE linear regression:** $\nabla_\mathbf{w} \hat{R} = \tfrac{2}{N}\mathbf{X}^T(\mathbf{X}\mathbf{w} - \mathbf{y})$ — a matrix-vector product, no inversion needed.
+- **Update rule:** $\mathbf{w}_{t+1} = \mathbf{w}_t - \eta\,\nabla_\mathbf{w}\hat{R}(\mathbf{w}_t)$, start at $\mathbf{w}_0$ (zeros / small random), repeat until the loss stops decreasing.
+- **For MSE linear regression:** $\nabla_\mathbf{w} \hat{R} = \tfrac{2}{N}\mathbf{X}^T(\mathbf{X}\mathbf{w} - \mathbf{y})$ — a matrix-vector product, no inversion.
+- **For any differentiable model:** backpropagation (Week 6) computes the same gradient automatically.
 ::::
 
 . . .
 
-> Gradient descent: take the gradient, step opposite to it, repeat.
+> Only first-order information is needed — no inverses, no second derivatives.
 
 :::: {.notes}
-- Draw the 1D parabola on the board: "Imagine you are blindfolded on a hilly landscape and can only feel the slope under your feet. You always step downhill. That is gradient descent."
-- The one point to land: the gradient tells you the direction of fastest ascent; the negative gradient is the direction of fastest descent. The learning rate $\eta$ controls how large each step is.
-- Misconception to preempt: "gradients are only for neural networks." For MSE and linear models, the gradient is just a matrix-vector product. No autograd library required.
-- EM anchor: in ptychographic reconstruction, the loss (sum of intensity mismatches) is minimised by gradient descent over the complex exit wave — exactly the same update rule, but for a 2D complex array.
-- Forward link: Week 5 will show how to compute gradients for non-linear models using backpropagation — which is just the chain rule applied systematically to a computation graph.
-- Transition: "Let us see the update rule and what the loss landscape looks like."
-::::
-
-## Gradient descent — the update rule
-
-:::: {.incremental}
-- **Update rule:** $\mathbf{w}_{t+1} = \mathbf{w}_t - \eta\,\nabla_\mathbf{w}\hat{R}(\mathbf{w}_t)$.
-- **Initialisation:** start at some $\mathbf{w}_0$ (typically small random values or zeros).
-- **Repeat** until the loss stops decreasing (convergence criterion) or a budget is exhausted.
-- **For MSE linear regression:** closed form for the gradient —
-  $\nabla_\mathbf{w}\hat{R} = \tfrac{2}{N}\mathbf{X}^T(\mathbf{Xw} - \mathbf{y})$.
-- **For any differentiable model:** backpropagation (Week 5) computes the gradient automatically.
-- **The key insight:** we only ever need first-order information (the gradient). No matrix inverses, no second-order terms.
-::::
-
-:::: {.notes}
-- Write the update rule on the board and label each part: $\mathbf{w}_{t+1}$ (new weights), $\eta$ (learning rate), $\nabla_\mathbf{w}\hat{R}$ (gradient — the direction of steepest ascent of the loss). The minus sign means we step in the direction of steepest *descent*.
-- The one point to land: the gradient is a vector the same shape as $\mathbf{w}$. For a linear model with 100 features, the gradient has 100 entries. For a neural network with 10 million parameters, the gradient has 10 million entries — computed by backpropagation in one pass.
-- Misconception to preempt: "gradient descent always converges." Only on convex problems. On non-convex surfaces (neural networks), it converges to a stationary point — which may be a local minimum, saddle point, or plateau. The choice of initialisation, learning rate, and optimiser determines which one.
-- EM anchor: ptychographic phase retrieval minimises the mismatch between measured and predicted diffraction intensities using GD on the complex exit wave. The gradient of the diffraction mismatch with respect to each pixel of the exit wave is the update direction.
-- Forward link: the loss landscape slide shows what the GD trajectory looks like in weight space.
-- Transition: "Which loss function should we choose? The answer depends on the noise model of our data."
+- Draw the 1D parabola: "Blindfolded on a hilly landscape, you can only feel the slope under your feet. Always step downhill." Then write the update rule and label each part: $\mathbf{w}_{t+1}$ new weights, $\eta$ learning rate, $\nabla\hat R$ gradient, minus sign = descent.
+- The one point to land: the gradient has the same shape as $\mathbf{w}$ — 100 entries for 100 features, $10^7$ for a CNN, computed in one backward pass.
+- Misconception to preempt: "gradient descent always converges to the best answer." Only on convex problems with a suitable $\eta$ — the next section makes this precise.
+- EM anchor: ptychographic reconstruction (Week 13) minimises the diffraction-intensity mismatch with exactly this update over a complex-valued object array.
+- Transition: "Which loss should we descend? That depends on the noise model."
 ::::
 
 <!-- ===== §2. MSE / MAE / Huber and their noise-model connection ===== -->
-
 ## MSE — the default regression loss
 
 :::: {.incremental}
@@ -184,7 +178,7 @@ format:
 - The one point to land: the choice of loss encodes a physics assumption about the noise. MSE = Gaussian. Use it when that assumption holds.
 - Misconception to preempt: "MSE is always the right loss for regression." Only when residuals are Gaussian and outliers are rare. STEM HAADF imaging at moderate dose is often Gaussian + Poisson mixture; pure MSE is reasonable. Cryo-EM at ultra-low dose is Poisson-dominated — use Poisson NLL.
 - EM anchor: in atomic column position fitting from HAADF images, residuals are close to Gaussian (high dose, well-calibrated detector). MSE is appropriate. In EELS at 1-electron doses, shot noise dominates.
-- Forward link: the loss landscape figure on the next slide shows why the bowl shape is convenient.
+- Forward link: the loss landscape figure two slides ahead shows why the bowl shape is convenient.
 - Transition: "What happens when your data has outliers or the noise is not Gaussian?"
 ::::
 
@@ -234,31 +228,54 @@ format:
 - The one point to land: the elongated oval (ill-conditioned bowl) is what happens when two features have very different scales — GD takes many zigzag steps. Standardising the data makes the contours more circular and GD more efficient.
 - Misconception to preempt: "if the loss is convex, GD always finds the global minimum." Correct for infinite steps, but for a finite step budget the learning rate must be chosen carefully.
 - EM anchor: in ptychographic phase retrieval, the loss landscape is non-convex (highly structured patterns of local minima). GD may converge to a poor local minimum — initialisation and momentum help.
-- Forward link: next slides explore the effect of the learning rate $\eta$ explicitly.
-- Transition: "The single most important hyperparameter in gradient descent is the learning rate. Let us see what happens when it is wrong."
+- Forward link: the eigenvalues of this bowl are the eigenvalues of $\mathbf{X}^T\mathbf{X}$ (Week 3) — next slide makes "bowl" precise as convexity.
+- Transition: "When is the landscape guaranteed to be a single bowl? That is what convexity means."
 ::::
 
-## Why the loss landscape shape matters
+## Convexity — when "a minimum" is "the minimum"
+
+::: {layout-ncol=2}
+![Convex (left): every chord lies above the curve → one global minimum. Non-convex (right): the chord dips below → several local minima.](img/convexity_chord.png){width="100%"}
 
 :::: {.incremental}
-- **Convex** (MSE, Ridge): one bowl, one minimum — GD will find it.
-- **Non-convex** (any neural network): many local minima, saddle points, plateaus.
-- For non-convex losses, GD finds *a* minimum, not necessarily the *best* one.
-- **Practical message for EM:** linear models trained with MSE are convex → any GD run converges to the same answer. Neural networks (Week 5) require careful initialisation and momentum to avoid bad local minima.
-- **Saddle points** (equal numbers of upward and downward curvatures): gradient is zero but no minimum — GD stalls unless there is noise (SGD rescues this, next section).
+- **Definition:** $f$ is convex if for all $\mathbf{a},\mathbf{b}$ and $\lambda\in[0,1]$
+  $$f(\lambda\mathbf{a}+(1-\lambda)\mathbf{b}) \le \lambda f(\mathbf{a})+(1-\lambda)f(\mathbf{b}).$$
+- **Consequence:** every local minimum is global; GD with a suitable $\eta$ reaches it from any start.
+- **Twice differentiable:** convex ⇔ Hessian $\nabla^2 f \succeq 0$ everywhere. For MSE: $\nabla^2\hat R = \tfrac{2}{N}\mathbf{X}^T\mathbf{X} \succeq 0$ ✓.
+- **Convex:** MSE, MAE, Huber, Poisson-NLL of a linear model, + Ridge/Lasso penalties.
+  **Non-convex:** anything with a hidden layer, NMF (Week 3), ptychography.
+::::
+:::
+
+:::: {.notes}
+- Draw the chord on the board: pick two points on the curve, connect them — for a convex function the line never goes below the curve. This is the whole definition; Jensen's inequality is the same statement for expectations.
+- The one point to land: convexity is a *property of loss + model together*. MSE is convex in $\mathbf{w}$ for a linear model, but MSE of a neural network is not — the model composition breaks it.
+- Hessian link to Week 3: the eigenvalues of $\mathbf{X}^T\mathbf{X}$ are the curvatures of the bowl. Largest/smallest eigenvalue = condition number = how elongated the contours are = how badly plain GD zigzags. Same number, three readings.
+- Sums of convex functions are convex — that is why "convex loss + convex penalty" (Ridge, Lasso) stays convex.
+- Misconception to preempt: "non-convex = hopeless." Practical message (MFML U3): convex problems have one *correct* answer; non-convex problems have one we can *find*.
+- Source: SS25 `convexity.qmd`, MFML U3 "convex vs non-convex".
+- Transition: "What does the non-convex world look like?"
+::::
+
+## Non-convex landscapes: saddles, and optimisation ≠ generalisation
+
+![Left: $\hat R = w_1^2 - w_2^2 + w_2^4/4$. GD started exactly on the ridge stalls at the saddle; a tiny perturbation (the noise SGD provides) escapes to a minimum. Right: the empirical risk (training set) and the true risk (new data) have different minima — driving training loss to its minimum is not the goal.](img/nonconvex_saddle_risk.png){width="70%"}
+
+:::: {.incremental}
+- **Critical points** ($\nabla\hat R = 0$): minima, maxima, **saddles** (mixed-sign Hessian eigenvalues) — in high dimensions saddles vastly outnumber bad minima.
+- **Plateaus & vanishing gradients:** gradient ≈ 0 over wide regions → GD crawls (Week 6). **Remedies:** SGD noise (saddles), momentum (plateaus, ravines), Adam (heterogeneous curvature).
 ::::
 
 :::: {.notes}
-- Sketch two pictures on the board side by side: a smooth bowl (convex) and a bumpy surface with several dips (non-convex). "For your linear model, you are always in the left picture. For your neural network next week, you are in the right picture."
-- The one point to land: non-convexity is not a disaster in practice — large neural networks typically have many equivalent good minima, and SGD's noise helps escape saddle points. But it means you cannot guarantee convergence to the global minimum.
-- Misconception to preempt: "non-convex = broken." Not at all — virtually every deep learning model is non-convex and they work very well in practice. The landscape analysis tells you *why* SGD with momentum works: it adds enough noise to escape saddle points and small local minima.
-- EM anchor: atom-position refinement in crystal structures uses alternating GD steps in a highly non-convex landscape (diffraction intensities as a function of atom coordinates). Multiple restarts from different initialisations are standard practice.
-- Forward link: the learning rate effect on convergence — next slide.
-- Transition: "The single most important hyperparameter is the learning rate. Let us explore what happens when it is wrong."
+- Left panel: "the black path starts exactly on the $w_2=0$ ridge; the gradient in $w_2$ is exactly zero, so GD slides into the saddle and stops. The green path starts 0.08 off the ridge and escapes. SGD's minibatch noise is that perturbation, for free."
+- Why saddles dominate (MFML U6): at a random critical point each Hessian eigenvalue is roughly equally likely to be positive or negative; a minimum needs *all* $D$ of them positive — probability shrinks like $2^{-D}$. So in a $10^6$-parameter network, stalls are almost always saddles, not bad local minima.
+- Right panel (after d2l / SS25 `optimization-intro.qmd`): the dashed red curve is what we can compute (training loss); the blue curve is what we care about (loss on a new specimen). Their minima differ. This is the hinge of the whole lecture — the optimiser only sees $\hat R$; the second half of today is about estimating $R$ honestly.
+- Misconception to preempt: "the global minimum of the training loss is the best model." For an over-parameterised model it is usually an overfit one.
+- EM anchor: atom-position refinement against diffraction intensities is highly non-convex; multiple restarts from different initialisations are standard practice.
+- Transition: "On any landscape, the first knob is the step size."
 ::::
 
 <!-- ===== §3 cont. Learning rate ===== -->
-
 ## Learning rate — too small, just right, too large
 
 ::: {layout-ncol=2}
@@ -269,6 +286,7 @@ format:
 - **About right:** loss decreases monotonically; convergence in tens to hundreds of steps.
 - **Too large** ($\eta > 2/L$): overshoots the minimum repeatedly → oscillates or diverges.
 - **Rule of thumb:** start at $\eta = 0.01$–$0.1$, monitor the loss curve, reduce if it bounces.
+- **Schedules:** large $\eta$ early (explore), small late (fine-tune) — step decay, cosine, or *reduce-on-plateau* (the common EM default).
 ::::
 :::
 
@@ -281,46 +299,7 @@ format:
 - Transition: "Vanilla gradient descent uses the same learning rate for every parameter. Modern practice uses adaptive methods."
 ::::
 
-## Learning rate schedules
-
-:::: {.incremental}
-- **Constant:** $\eta_t = \eta_0$ — simplest, works if $\eta_0$ is well chosen.
-- **Exponential decay:** $\eta_t = \eta_0\,e^{-\lambda t}$ — fast early, conservative late.
-- **Step decay:** $\eta_t = \eta_0 \cdot \gamma^{\lfloor t/s \rfloor}$ — halve every $s$ epochs.
-- **Reduce on plateau:** halve $\eta$ when the loss has not improved for $k$ epochs. Default in many EM projects.
-- **Why decay helps:** large $\eta$ early → explore; small $\eta$ late → fine-tune near the minimum.
-::::
-
-:::: {.notes}
-- Sketch a loss curve on the board: steep initial descent then noisy plateau. "The plateau is where a constant learning rate keeps the model bouncing. Reducing $\eta$ compresses the bouncing and the model converges to a tighter minimum."
-- The one point to land: learning rate schedules are not magic — they are the controlled version of "take large exploratory steps early, then fine-tune." Understanding this conceptually helps diagnose training runs.
-- Misconception to preempt: "I should always start with a cosine annealing schedule." That is a strong default for image classification, but for a simple linear model on a small EM dataset, a constant $\eta$ with reduce-on-plateau is often simpler and works just as well.
-- EM anchor: training a U-Net for grain-boundary segmentation in TEM images typically uses an initial $\eta = 0.001$, reduce by factor 0.1 if validation Dice does not improve for 5 epochs. This is the most common schedule in published EM papers.
-- Forward link: Adam (two slides ahead) largely eliminates the need to hand-tune schedules for the per-parameter scale.
-- Transition: "Full gradient descent computes the gradient over the entire dataset. For large datasets that is expensive — enter SGD."
-::::
-
-## When can GD get stuck?
-
-:::: {.incremental}
-- **Local minima** — non-convex losses (all neural networks) have multiple dips. GD finds *a* minimum, not necessarily *the* best one.
-- **Saddle points** — gradient is zero but no minimum exists; GD stalls exactly there.
-- **Plateaus** — gradient is near zero over a wide region; GD crawls.
-- **Vanishing gradients** — for deep networks, gradients can shrink exponentially with depth (Week 5 details). The update becomes negligible far from the output.
-- **Good news:** for problems with wide flat minima (most modern over-parameterised networks), many local minima have similar loss values. SGD's noise helps escape narrow sharp minima and saddle points naturally.
-::::
-
-:::: {.notes}
-- Keep this brief — one concrete example per bullet is enough. "A saddle point is a point where you are at a minimum in one direction and a maximum in another. The gradient is zero, so GD has no update. But a small random noise — which SGD provides naturally — will kick the iterate off the saddle."
-- The one point to land: the pathologies of GD (local minima, saddle points, plateaus) are real but largely solved in practice by three tools: (1) SGD noise for escaping saddles; (2) momentum for escaping plateaus; (3) Adam for handling heterogeneous curvature.
-- Misconception to preempt: "the global minimum is always the best model." For over-parameterised networks, there are many global minima with similar loss. The flat minima (found by SGD with small batches) tend to generalise better than sharp minima — an empirical observation known as 'flat minima hypothesis.'
-- EM anchor: in HAADF image denoising with a small neural network, GD can sometimes stall at a plateau where the loss is constant for thousands of epochs. Increasing the learning rate briefly, or switching to Adam, escapes the plateau.
-- Forward link: SGD and momentum (next section) provide the key remedies.
-- Transition: "Full gradient descent uses all N training samples per step. For large datasets that is too slow."
-::::
-
 <!-- ===== §4. SGD → Adam ===== -->
-
 ## Stochastic gradient descent (SGD)
 
 :::: {.incremental}
@@ -350,7 +329,7 @@ format:
   1. **Variance reduction:** $\text{Var}(\text{gradient estimate}) \propto 1/b$ — larger $b$ = smoother steps.
   2. **Vectorisation:** modern GPUs process $b$ samples in parallel almost for free ($b = 32$–$256$).
 - **Typical $b$:** 32, 64, 128 — hardware-aligned powers of 2.
-- This is the default training loop for every neural network you will use from Week 5 onwards.
+- This is the default training loop for every neural network you will use from Week 6 onwards.
 ::::
 
 :::: {.notes}
@@ -404,7 +383,7 @@ format:
 - The one point to land: Adam is not magic — it is SGD + momentum + per-parameter adaptive learning rate. Understanding those three pieces makes you able to debug it when it fails (e.g. when gradients are very small, $\hat{s}_t$ is also small, and $\epsilon$ prevents division by zero — but if $\epsilon$ is too large, the adaptive scaling is suppressed).
 - Misconception to preempt: "Adam always converges faster than SGD." On some problems (especially transformers), SGD with momentum and a carefully tuned schedule outperforms Adam. Adam is the default because it requires less tuning, not because it is theoretically superior.
 - EM anchor: training a neural-network denoiser for 4D-STEM data at FAU uses Adam with $\eta = 0.001$ out of the box. Changing to SGD with the same $\eta$ results in 10× slower convergence.
-- Forward link: when we meet neural networks in Week 5, Adam will be the default optimiser with no further discussion — you now know what it is doing.
+- Forward link: when we meet neural networks in Week 6, Adam will be the default optimiser with no further discussion — you now know what it is doing.
 - Transition: "We now know how to minimise a loss. But minimising the training loss well does not mean the model generalises to new data. That is the second half of today."
 ::::
 
@@ -464,6 +443,7 @@ format:
 - **Bias:** systematic error — how far the average prediction is from the truth (underfitting).
 - **Variance:** sensitivity to the training set — how much the prediction changes across different training sets (overfitting).
 - **Noise $\sigma^2$:** irreducible — set by the physics and detector (recall Week 2: shot noise, readout noise).
+- **Diagnostic:** high train + high val error → bias; low train + high val error → variance. Always plot loss vs epoch, train vs val error, and residuals.
 ::::
 
 . . .
@@ -483,29 +463,6 @@ format:
 - Transition: "To measure whether a model has overfit, we need data the model has never seen — the test set."
 ::::
 
-## The training error vs test error diagnostic
-
-:::: {.incremental}
-- **Diagnostic rule:**
-  | Pattern | Diagnosis | Action |
-  |---------|-----------|--------|
-  | High train error + high test error | Underfit (high bias) | More capacity or features |
-  | Low train error + low test error | Good fit | Deploy |
-  | Low train error + high test error | Overfit (high variance) | More data, regularise, or simplify |
-  | Very low train error + any test error | Probably memorised noise | Check $N$ vs parameters |
-- **In EM** with small datasets ($N < 100$): the gap between train and test error is large even for reasonable models. Report both — the gap is as informative as either number alone.
-- **Checklist:** always plot (a) loss vs epoch, (b) train vs test error, (c) residuals. Three plots that catch 90% of modelling mistakes.
-::::
-
-:::: {.notes}
-- The table is a reference card. Tell students: "When your model is underperforming, the first diagnostic is always to separate train error from test error. They tell you completely different things."
-- The one point to land: a large train-test gap = overfitting; a small gap with both high = underfitting. Neither error alone is sufficient.
-- Misconception to preempt: "monitoring the loss curve is enough." The loss curve only shows training loss. You need to evaluate on held-out data at regular intervals (every epoch or every few epochs) to see the train-test gap evolve in time.
-- EM anchor: in neural-network grain segmentation of TEM images, the training Dice reaches 0.95 after 20 epochs. The validation Dice peaks at 0.80 at epoch 15 and then starts decreasing — classic overfitting. Early stopping at epoch 15 is the correct action.
-- Forward link: regularisation (next slide) systematically reduces overfitting.
-- Transition: "Regularisation is the principled tool for reducing the train-test gap."
-::::
-
 ## Regularisation — controlling variance
 
 :::: {.incremental}
@@ -513,7 +470,7 @@ format:
   $$\mathcal{L}_{\text{reg}}(\mathbf{w}) = \underbrace{\frac{1}{N}\|\mathbf{Xw} - \mathbf{y}\|^2}_{\text{data term}} + \lambda\,\Omega(\mathbf{w})$$
 - **Ridge (L2):** $\Omega(\mathbf{w}) = \|\mathbf{w}\|_2^2$ — shrinks all weights toward zero; keeps them non-zero. Bayesian interpretation: Gaussian prior on $\mathbf{w}$.
 - **Lasso (L1):** $\Omega(\mathbf{w}) = \|\mathbf{w}\|_1$ — drives many weights *exactly* to zero → automatic feature selection. Bayesian: Laplace prior.
-- **$\lambda$ is a hyperparameter** — tune it by cross-validation (§7).
+- **$\lambda$ is a hyperparameter** — tune it by (grouped) cross-validation (§6–7).
 - **In Week 3 context:** Ridge adds $\lambda\mathbf{I}$ to $\mathbf{X}^T\mathbf{X}$, lifting all eigenvalues above $\lambda$ — eliminates ill-conditioning.
 ::::
 
@@ -522,39 +479,48 @@ format:
 - The one point to land: regularisation is the principled tool for trading variance for bias. $\lambda = 0$ is unregularised (maximum flexibility); $\lambda \to \infty$ is maximum shrinkage (predicts the mean). Cross-validation finds the $\lambda$ that minimises test error.
 - Misconception to preempt: "regularisation always helps." It helps when the model is overfit. If the model is already underfitting, adding regularisation makes things worse. Always check training vs test error before deciding whether to regularise.
 - EM anchor: Ridge regression is standard in quantitative STEM composition maps: the regression matrix (simulated HAADF signals vs. atom types) is often near-singular; Ridge lifts the condition number and stabilises the solution.
-- Forward link: now we need a strategy to measure test error honestly — the train/val/test split.
-- Transition: "We know how to fit a model and control variance. But how do we measure performance honestly?"
+- Forward link: why does L1 give exact zeros while L2 does not? The geometry answers it.
+- Transition: "Let us look at the two penalties as shapes in weight space."
 ::::
 
-## The train-complexity-error plot
+## Ridge vs Lasso — the geometry
+
+![Constrained view: minimise the MSE (grey elliptical contours around $\hat{\mathbf{w}}_{\mathrm{OLS}}$) subject to $\Omega(\mathbf{w})\le t$. The first contour to touch the constraint set gives the solution. The L1 diamond has corners on the axes, so the contact point typically has $w_2 = 0$ exactly.](img/ridge_lasso_geometry.png){width="62%"}
 
 :::: {.incremental}
-- Plot **train error** (loss on training data) and **test error** (loss on held-out data) as a function of **model complexity** (degree, number of parameters, depth):
-
-```
-Error
- │  test:  \____/‾‾‾‾  ← U-shape (optimal somewhere in the middle)
- │ train: ‾‾‾‾‾‾‾‾\   ← monotonically decreases with complexity
- └───────────────────── Model complexity →
-```
-
-- **Underfitting region:** both train and test error are high.
-- **Optimal region:** test error is minimised — this is the model you deploy.
-- **Overfitting region:** train error → 0, test error ↑.
-- The optimal model is found by cross-validation (§6 and §7), not by looking at training error alone.
+- Penalised form $\hat R + \lambda\Omega(\mathbf{w})$ ⇔ constrained form $\min \hat R$ s.t. $\Omega(\mathbf{w})\le t$ (Lagrange duality; larger $\lambda$ ⇔ smaller $t$).
+- **Disc (L2):** smooth boundary → contact anywhere → all weights shrunk, none exactly zero. **Diamond (L1):** corners on the axes → contact at a corner → **exact zeros = feature selection** [@tibshirani1996regression].
 ::::
 
 :::: {.notes}
-- Sketch the U-shape on the board (or point to the overfitting figure). "The blue curve is training error — it always decreases as you add complexity. The red curve is test error — it initially decreases (the model is actually getting better) then increases (the model starts memorising). The bottom of the red curve is where you want to be."
-- The one point to land: training error is a lower bound on test error that tells you nothing about how bad the test error actually is. The U-shape is diagnostic — its minimum tells you the right model complexity for your dataset.
-- Misconception to preempt: "adding more data always pushes the optimal complexity higher." True in general, but in materials science where data is expensive, you are usually in the underfitting or slightly overfitting regime. Simpler models often win.
-- EM anchor: for EELS phase mapping, systematically increasing the number of NMF components from 1 to 10 and plotting train and test reconstruction error shows a clear elbow — usually at the true number of chemical phases. This is the same U-shape applied to dimensionality selection.
-- Forward link: the next section introduces the tools to find the U-curve minimum honestly.
-- Transition: "To find the U-curve minimum, we need a way to measure test error. The train/val/test split is the fundamental tool."
+- Draw this on the board: ellipse contours of the data term centred at the OLS solution, then grow the ellipses until they first touch the disc / the diamond. The touching point is the regularised solution.
+- The one point to land: sparsity is a *geometric* consequence of the corners of the L1 ball. In higher dimensions the L1 ball is almost all corners and edges, so Lasso solutions are very often sparse.
+- Tilted ellipses = correlated features. Note the ridge solution moves along the ellipse toward the origin while keeping both weights; the lasso solution snaps onto the $w_1$ axis.
+- Bayesian reading (MFML U3 "every regulariser is a prior"): disc ⇔ Gaussian prior, diamond ⇔ Laplace prior, whose sharp peak at zero puts real probability mass on "this weight is zero".
+- Ridge has a closed form $(\mathbf{X}^T\mathbf{X}+\lambda\mathbf{I})^{-1}\mathbf{X}^T\mathbf{y}$ [@hoerl1970ridge]; Lasso does not (non-differentiable at 0) — solved by coordinate descent, which is what sklearn uses.
+- EM anchor: fitting an EELS spectrum with a library of 30 reference edges, Lasso returns the handful of elements actually present — a sparse, readable answer. Ridge returns small non-zero weights for all 30.
+- Transition: "How do the weights move as we turn $\lambda$ up?"
+::::
+
+## Regularisation paths & choosing $\lambda$
+
+![Coefficient paths on a synthetic EELS-window regression (target: Fe at%). Fe-L3 and Fe-L2 are nearly collinear. Ridge shrinks them together; Lasso eventually keeps only one of the pair.](img/regularisation_paths.png){width="68%"}
+
+:::: {.incremental}
+- **Always standardise first** — the penalty acts on $|w_j|$, so feature units would otherwise decide who gets penalised.
+- **Pick $\lambda$ by (grouped!) cross-validation** — `RidgeCV`, `LassoCV`, or a `Pipeline` + `GridSearchCV` with the same splitter you report with.
+- **Correlated groups:** Lasso picks one member (arbitrarily); Ridge spreads weight; Elastic Net ($\ell_1+\ell_2$) keeps groups together.
+::::
+
+:::: {.notes}
+- Read the left panel from left to right: at small $\lambda$ the coefficients are the OLS values; as $\lambda$ grows they all shrink smoothly toward 0 and none hits zero until the very end.
+- Right panel: Lasso drops "noise", "bkg slope" and "Mn-L3" first, then thickness, and at the strong end keeps only one of Fe-L2 / Fe-L3. Which one survives is decided by tiny noise differences — a warning for anyone who wants to read "Fe-L2 matters, Fe-L3 doesn't" from a Lasso fit. We return to this in the coefficient-reading slides.
+- The one point to land: $\lambda$ is a hyperparameter; it belongs to the validation set, not the test set, and its CV must respect specimen groups — otherwise the leakage we discuss in §7 leaks into $\lambda$ too.
+- Figure generated by `img/make_figures.py` (synthetic data, reproducible).
+- Transition: "We now know how to fit and control variance. How do we measure performance honestly?"
 ::::
 
 <!-- ===== §6. Train/val/test + CV ===== -->
-
 ## Why a held-out test set is sacred
 
 ::: {layout-ncol=2}
@@ -576,27 +542,6 @@ Error
 - EM anchor: in a recent STEM segmentation paper, a model was tuned to give the best Dice on what the authors called the "test set." A reviewer pointed out that this made it a validation set by definition; the authors had to re-split and report a much lower number.
 - Forward link: K-fold CV addresses the instability of a single random split.
 - Transition: "A single holdout split is sensitive to which points end up in test by chance. K-fold cross-validation averages over many splits."
-::::
-
-## Why the test set estimate is noisy
-
-:::: {.incremental}
-- A single 80/20 random split gives *one* test-error number.
-- If you repeat the split 100 times on the same dataset, you get 100 different numbers — sometimes differing by 50%.
-- **Root cause:** for small EM datasets ($N < 200$, common), any single random split is an unreliable sample of the true generalisation error.
-- **Two problems:**
-  1. *No measure of uncertainty* — you do not know if this was a lucky or unlucky split.
-  2. *Selection bias* — rare classes or outlier samples may land entirely in train or entirely in test.
-- **Fix:** K-fold cross-validation.
-::::
-
-:::: {.notes}
-- Sandfeld's example is striking: 100 random 60/40 splits on the same dataset yield MSEs that sometimes differ by 5×. A single holdout MSE is a random variable with wide distribution. Students need to know this to trust their own project results.
-- The one point to land: the holdout estimate is not wrong — it is unbiased but has high variance. K-fold CV averages out this variance.
-- Misconception to preempt: "if I use the same random seed, the result is reproducible." Reproducible, yes. Representative, not necessarily — you have locked in one particular unlucky or lucky split.
-- EM anchor: in a dataset of 80 TEM micrographs (4 specimens × 20 images), a single 80/20 split may put all images from one specimen in test — inflating or deflating the score depending on that specimen's properties.
-- Forward link: K-fold CV provides multiple estimates and a measure of their spread.
-- Transition: "K-fold cross-validation gives both an average error and a spread — much more informative than a single split."
 ::::
 
 ## The sklearn cross-validation pipeline
@@ -644,6 +589,7 @@ Error
 - **Every data point contributes** to both training and testing — no waste.
 - **The std** tells you how stable the estimate is across splits.
 - **Defaults:** $k=5$ for compute-bound situations; $k=10$ for moderate datasets ($N \sim 10^3$); $k=N$ (LOOCV) for very small datasets ($N < 30$, common in materials science).
+- **Why not one split?** For small EM datasets ($N<200$) a single 80/20 split is a noisy draw — repeated splits can differ by 50% or more.
 - **Cost:** $k$ trainings — skip for slow deep models; use repeated holdout with multiple seeds instead.
 ::::
 :::
@@ -662,25 +608,42 @@ Error
 ## Data leakage — the silent score inflator
 
 :::: {.incremental}
-- **Definition:** information from the *test* set influences the *training* process — directly or indirectly.
+- **Definition:** information that would *not be available at prediction time* reaches the training or model-selection process — directly or indirectly [@kapoor2023leakage].
   The reported performance is then optimistic by an unknown amount.
 - **Symptoms:**
-  - Cross-validation score far above performance on a new specimen or lab.
-  - Even a simple model matches a deep network — both are exploiting the leak.
-  - Performance drops sharply when data is collected from a different sample batch.
-- **Root cause:** not a bug — a *discipline failure*. Three main patterns:
-  1. **Pre-processing leakage** — scaling/PCA fitted on all data before splitting.
-  2. **Temporal leakage** — using future measurements to predict past ones.
-  3. **Group / spatial leakage** — same physical specimen in both train and test.
+  - CV score far above performance on a new specimen, session or lab.
+  - A trivial model matches a deep network — both exploit the leak.
+  - Performance drops sharply for a new sample batch or microscope.
+- **Not a bug — a discipline failure.** It is the *norm* unless actively prevented; Kapoor & Narayanan found leakage-affected papers in 17 fields.
 ::::
 
 :::: {.notes}
-- Open with the war story: "A widely-cited 2019 paper on superconductor $T_c$ prediction reported $R^2 = 0.95$. A re-analysis found that the same compound family appeared in train and test under different synthesis labels. The honest $R^2$ was 0.6. The model was fine. The validation was broken."
-- The one point to land: leakage is not an exotic edge case — it is the norm unless you actively prevent it. In EM, it is almost always the group leakage type (correlated crops). The pre-processing and temporal types also occur but are easier to catch.
-- Misconception to preempt: "K-fold CV prevents leakage." Standard random K-fold prevents the split from seeing test-set data — but it does *not* protect against group leakage if crops from the same specimen fall in different folds.
-- EM anchor: a CNN trained to predict HAADF contrast from STEM settings can score $R^2 = 0.98$ with random crop splitting and $R^2 = 0.55$ with specimen-level splitting. The 0.43 gap is the contribution of within-specimen correlation that the model memorises but cannot generalise.
-- Forward link: the next slide shows the EM-specific leakage trap concretely.
-- Transition: "In electron microscopy, group leakage has a specific and very common form — the crop-versus-specimen trap. Let us look at it directly."
+- Open with the reproducibility-crisis framing: Kapoor & Narayanan (Patterns 2023) surveyed ML-based science and found leakage in hundreds of papers across 17 fields; in several re-analyses the "ML beats classical" result disappeared once leakage was removed. Materials science is not exempt — MG U8 catalogues polymorph duplicates, scaler-before-split and post-relaxation features in published benchmarks, each inflating headline MAE by 1.5–3×.
+- The one point to land: leakage is not an exotic edge case. In EM it is most often group leakage (correlated crops), but duplicates, time order and preprocessing are all common.
+- Misconception to preempt: "K-fold CV prevents leakage." Random K-fold does nothing against group, temporal or duplicate leakage, and preprocessing outside the fold loop breaks it too.
+- Transition: "It helps to have names for the four families."
+::::
+
+## A leakage taxonomy for EM data
+
+| Type | What leaks | EM example | Fix |
+|------|-----------|------------|-----|
+| **Duplicate / near-duplicate** | the same information appears in train and test | overlapping crops, repeated acquisitions of one field of view, augmented copies made *before* splitting | deduplicate / crop without overlap; augment *after* splitting |
+| **Temporal** | the future predicts the past | random split of an in-situ video or a drifting session | chronological split, gap between blocks |
+| **Group / specimen** | identity of the physical object | crops of one specimen, spectra of one grain, frames of one tilt series on both sides | `GroupKFold` by specimen / session / grain |
+| **Preprocessing** | test statistics or labels shape the features | scaler, PCA, background fit or *feature selection* fitted on all data | fit every step inside the fold (`Pipeline`) |
+
+. . .
+
+**Bonus — target leakage:** a feature that is a by-product of the label (e.g. a hand-drawn mask outline used as input for the segmentation it defines; post-relaxation volume predicting a relaxation energy, MG U8).
+
+:::: {.notes}
+- This is the organising table for the rest of the section — have students photograph it. Every leakage story you will ever read maps onto one of these rows.
+- Source: MG U8 ("leakage failure modes seen in published benchmarks", "what kind of new is your test set?") translated to EM, plus Kapoor & Narayanan's taxonomy.
+- Duplicate leakage is the sneakiest in EM: sliding-window crops with 50% overlap mean each test crop shares half its pixels with a training crop. Likewise, "augment the dataset 8× with rotations, then split" puts rotated copies of the same crop on both sides.
+- Temporal: adjacent frames of a video are nearly identical, so a random split turns interpolation into a fake "prediction".
+- Preprocessing splits into two strengths: *unsupervised* steps (scaler, PCA) leak a little; *supervised* steps (feature selection by correlation with $y$, target encoding) leak a lot — see the preprocessing figure later in this section.
+- Transition: "The most common EM version is the group row. Let us look at it directly."
 ::::
 
 ## The EM leakage trap: crops from one specimen
@@ -729,8 +692,69 @@ Error
 - The one point to land: always ask "are my data points independent?" If the answer is no (multiple measurements per specimen, multiple frames per tilt-series, multiple crops per image), use GroupKFold. The cost is zero (same number of model trainings); the benefit is scientific credibility.
 - Misconception to preempt: "GroupKFold gives a lower score, so it must be wrong." No — it gives the right score. The random CV score was wrong. The question is always "would this model work on a new specimen I have never seen?" GroupKFold measures exactly that.
 - EM anchor: every miniproject in this course that involves per-specimen data should use GroupKFold. The exam will ask you to identify which CV strategy is appropriate for a given dataset description.
-- Forward link: temporal leakage (time-ordered data) is the other major leakage type.
-- Transition: "One more leakage pattern you will encounter in time-resolved EM experiments."
+- Forward link: grouping solves the group row of the taxonomy; duplicates need their own care.
+- Transition: "Grouping by specimen is one choice of what 'new' means. There are others — and duplicates can hide inside any of them."
+::::
+
+## Duplicates and "what kind of *new* is your test set?"
+
+::: {.columns}
+::: {.column width="50%"}
+**Near-duplicate leakage in practice**
+
+:::: {.incremental}
+- Sliding-window crops with overlap → neighbouring crops share pixels; split **by image** (or by region with a guard band), not by crop.
+- The same field of view recorded twice (focus series, dose series, drift-corrected frames) = one sample, not many.
+- Augment (rotate/flip/noise) **after** splitting and only the training set.
+- Quick check: nearest-neighbour distance from each test sample to the training set — suspiciously small ⇒ duplicate.
+::::
+:::
+::: {.column width="50%"}
+**Axes of "new" (after MG U8)**
+
+:::: {.incremental}
+1. new crop of a seen image
+2. new image of a seen specimen
+3. new specimen, same session
+4. new session / operator / detector settings
+5. new microscope or lab
+6. new material system
+- A random split probes only axis 1. **Choose the split that matches the deployment claim** — and say which axis you tested.
+::::
+:::
+:::
+
+:::: {.notes}
+- The right column is MG U8's "six axes of new" re-cut for microscopy. The point: "generalises" is meaningless without saying *to what*. A segmentation model meant for next week's samples on the same microscope needs axes 3–4; a model shipped to other labs needs axis 5.
+- The one point to land: split design is research-question design. Grouping by specimen answers "does it work on a new specimen?"; grouping by session answers "does it survive a new alignment / new detector gain?". Reporting two splits (e.g. by specimen and by session) is a sign of rigour, not indecision.
+- The nearest-neighbour check is cheap and catches both duplicates and group leakage: compute, for each test crop, the distance to the closest training crop, and compare with the typical distance between training crops.
+- Transition: "The last row of the taxonomy — preprocessing — is subtle enough to need numbers."
+::::
+
+## Preprocessing leakage — measured
+
+::: {layout-ncol=2}
+![Pure-noise experiment ($N=60$ spectra, $D=2000$ channels, target independent of $\mathbf{X}$). Selecting the 20 channels most correlated with $y$ on *all* data before CV fabricates $R^2\approx 0.4$ out of nothing; the same selection inside a `Pipeline` gives the honest $R^2 \le 0$.](img/preproc_leakage.png){width="100%"}
+
+:::: {.incremental}
+- **Supervised preprocessing** (feature selection, target scaling, choosing ROIs by looking at labels) outside the fold loop → **large** inflation.
+- **Unsupervised preprocessing** (scaler, PCA, background models) outside the loop → small, data-dependent bias; still wrong, and it grows for small $N$ and grouped data.
+- **Fix — one rule:** *every* step that learns from data is fitted on the training fold only:
+  ```python
+  pipe = Pipeline([("scale", StandardScaler()),
+                   ("pca", PCA(10)),
+                   ("model", Ridge())])
+  cross_val_score(pipe, X, y, cv=GroupKFold(5), groups=specimen_id)
+  ```
+::::
+:::
+
+:::: {.notes}
+- Walk through the figure: the target is random noise, so no model can have positive held-out $R^2$. Yet selecting the top-20 channels on the full dataset, then cross-validating, reports $R^2 \approx 0.4$ — because the selection step already looked at the test labels and kept the channels that happen to correlate with them.
+- The unsupervised bars in the figure are honest-negative in both cases: the lesson is not that "PCA outside CV always inflates" but that its effect is unpredictable, while supervised steps inflate reliably. Discipline beats case-by-case reasoning — put everything in the `Pipeline`.
+- EM anchor: "I picked the energy window where the map looked best, then trained the classifier" is supervised preprocessing leakage. So is choosing the PCA components to keep by looking at which ones correlate with the labels of the whole dataset.
+- The notebook (Part 7) reproduces this experiment and asks you to fix it with a `Pipeline`.
+- Transition: "Test yourself on three scenarios."
 ::::
 
 ## Spot the leak — three scenarios
@@ -775,37 +799,11 @@ For each of the three setups below, identify the leakage and the fix.
 - The one point to land: all three reduce to "test data saw training." Once you internalise that sentence, you can recognise any new variant of leakage.
 - Misconception to preempt: "these are contrived examples." Scenario (a) is in approximately 30% of ML papers in materials science (recent audit). Scenario (b) is ubiquitous in TEM/SEM segmentation. Scenario (c) is the default mistake in operando EM.
 - EM anchor: in the notebook this week, you will run scenario (b) explicitly and measure the leakage gap. The assert in the notebook will confirm that the group CV score is strictly lower.
-- Forward link: the next slide covers temporal and pre-processing leakage in more detail.
-- Transition: "Let me give you the code patterns that prevent these three mistakes."
-::::
-
-## Temporal leakage and pre-processing leakage
-
-:::: {.incremental}
-- **Temporal leakage:** for time-series data (operando EM, in-situ growth), randomly splitting scrambles time order. The model can use "future" frames to predict "past" ones — impossible in deployment.
-  **Fix:** always split chronologically — train on $t < t_1$, test on $t > t_1$.
-- **Pre-processing leakage:** fitting a StandardScaler on all data (train + test) before splitting.
-  Test-set statistics leak into the scaler. **Fix:**
-  ```python
-  X_tr, X_te, y_tr, y_te = train_test_split(X, y)
-  scaler = StandardScaler().fit(X_tr)   # fit on train only
-  X_tr = scaler.transform(X_tr)
-  X_te = scaler.transform(X_te)         # apply frozen scaler to test
-  ```
-- **`sklearn.pipeline.Pipeline`** does the right thing automatically inside CV.
-::::
-
-:::: {.notes}
-- Temporal leakage is directly relevant to students who do in-situ EM experiments: "If you are filming a nanoparticle growth experiment at 100 frames/second and you randomly split frames into train and test, the test set contains frames from before and after the training frames. A model can exploit short-range temporal autocorrelation — adjacent frames look almost identical — to predict well without understanding the process at all."
-- The one point to land for pre-processing: the scaler's parameters ($\mu, \sigma$) must be learned from training data only. Fitting on all data makes those parameters test-set-aware — a subtle but real leak, especially for small datasets or distributions with outliers.
-- Misconception to preempt: "pre-processing leakage barely matters for large datasets." True that the effect is small for large $N$, but the principle matters — it is a discipline issue. And for small datasets ($N < 50$, common in materials science), it can shift the MSE by 10–30%.
-- EM anchor: in-situ liquid-phase TEM of nanoparticle growth: train on the first 70% of frames, validate on the next 15%, test on the last 15%. Never shuffle.
-- Forward link: now that we can validate honestly, we need metrics to report what we measured.
+- Forward link: with honest validation in hand, we need the right metric to report.
 - Transition: "With honest validation in hand, we need the right metrics to report what we measured."
 ::::
 
 <!-- ===== §8. Metrics ===== -->
-
 ## Regression metrics: MAE, RMSE, $R^2$
 
 ::: {layout-ncol=2}
@@ -827,30 +825,6 @@ For each of the three setups below, identify the leakage and the fix.
 - EM anchor: for predicting EELS edge onset energy from local atomic structure, a good model should have test $R^2 > 0.85$. If the test $R^2$ is 0.3, the features probably do not encode the relevant physics.
 - Forward link: for classification (e.g., defect vs. no defect) we need different metrics.
 - Transition: "For classification tasks — defect detection, phase identification, particle segmentation — we need a different vocabulary."
-::::
-
-## Choosing the right metric — a decision tree
-
-:::: {.incremental}
-- **Is it a regression task?** (continuous target, e.g. composition, temperature, d-spacing)
-  - → Report RMSE (interpretable in physical units) **and** $R^2$ (scale-free, comparable).
-  - → Also plot residuals — look for systematic trends.
-- **Is it a classification task?** (discrete labels, e.g. defect/no defect, phase A/B/C)
-  - Check class balance: are classes roughly equal? → accuracy OK.
-  - Large imbalance (>5:1)? → precision, recall, F1. **Never use accuracy alone.**
-- **Is it a segmentation task?** (pixel-level mask, e.g. grain boundaries, dislocations)
-  - → Report IoU or Dice (both range [0,1]).
-  - Also check: precision = no false alarms, recall = no misses.
-- **Key principle:** the metric should match what you actually care about in the physics.
-::::
-
-:::: {.notes}
-- Walk through the decision tree aloud as a question-and-answer with the class. "What kind of task is grain-boundary segmentation? — segmentation. Which metric? — Dice or IoU. Which error is worse: a pixel falsely flagged as boundary, or a true boundary pixel missed? Depends on the application — that is why you report both precision and recall."
-- The one point to land: metric choice is a design decision encoding the cost of different error types. There is no universal best metric — it depends on the application.
-- Misconception to preempt: "I should report as many metrics as possible to be thorough." Reporting 10 metrics makes the paper hard to read and risks cherry-picking. Report one primary metric (tied to the application goal) and one interpretability metric. Explain why.
-- EM anchor: for atomic column detection in HAADF STEM — primary metric: localisation recall at 0.5 Å (fraction of true columns found within 0.5 Å); interpretability metric: column position RMSE in pm.
-- Forward link: classification and segmentation metrics appear throughout Weeks 5–9 as we move from regression to segmentation with CNNs.
-- Transition: "Now the confusion matrix — the atom of classification metrics."
 ::::
 
 ## Confusion matrix — the foundation of classification metrics
@@ -907,94 +881,168 @@ $$\text{Accuracy} = \frac{\text{TP}+\text{TN}}{\text{TP}+\text{TN}+\text{FP}+\te
 - Misconception to preempt: "IoU and Dice are interchangeable." They rank models identically (same ordering) but the numbers differ. IoU is always smaller. Which one to use depends on the community convention — report the one your benchmark uses.
 - EM anchor: for dislocation line segmentation in bright-field TEM, Dice is the standard metric in published benchmarks. For HAADF atom column detection, precision and recall at 0.5 Å localisation threshold are common. Know which convention your community uses.
 - Forward link: regression and classification metrics are the language in which we report honest validation scores — the culmination of everything in this lecture.
-- Transition: "Let us close by connecting today's tools to what gradient descent cannot do on its own."
+- Transition: "Metrics tell us how well the model predicts. The last question is what its parameters mean — the first step of explainability."
 ::::
 
-<!-- ===== §9. Limits + forward link ===== -->
+<!-- ===== §9b. Reading coefficients: first rungs of the explainability ladder ===== -->
+
+## The explainability ladder — where today fits
+
+::: {.columns}
+::: {.column width="55%"}
+:::: {.incremental}
+- Six levels (E1–E6) from *data* to *decision* [@neuer2024machine]: **E1 data** · **E2 process** · E3 features · E4 model · E5 prediction · E6 decision.
+- **E1 — data:** what data, from which specimens / sessions, how split? *Today's leakage section is E1 work.*
+- **E2 — process:** which physical process and measurement does each feature and the target stand for (units, detector, preprocessing)?
+- A **linear model is its own explanation** — $\hat y = \sum_j w_j x_j$ can be read directly (E3/E4) *if* E1 and E2 are in order.
+- Course thread: W5 permutation importance & SHAP · W7 saliency · W10 attention · W11 uncertainty · W13 the full ladder.
+::::
+:::
+::: {.column width="45%"}
+![The six levels of explainability (E1–E6) [@neuer2024machine]](img/neuer_explainability_levels_e1_e6.png){width="100%"}
+:::
+:::
+
+:::: {.notes}
+- Source: MFML U14 (explainability, limits & trust), which teaches the Neuer E1–E6 ladder. We introduce it now, with the simplest model family, and climb one rung per model week.
+- The one point to land: a coefficient can only be interpreted once you know *what data* (E1) and *what physical quantity* (E2) it refers to. A coefficient on "channel 412" means nothing; a coefficient on "background-subtracted Fe-L3 integral, 705–715 eV, per unit thickness" means something.
+- Connect back: every leakage check we just did is an E1 statement ("the model was validated on unseen specimens from two sessions"). Explanations built on leaked validation are explanations of a memorising model.
+- Transition: "So: how do we read a linear model correctly?"
+::::
+
+## Reading linear coefficients correctly
+
+:::: {.incremental}
+- $w_j$ = change in $\hat y$ per unit change in $x_j$ **with all other features held fixed** — a *conditional*, model-internal statement.
+- **Units matter:** raw $w_j$ are in [target unit / feature unit] and cannot be compared across features. Compare **standardised** coefficients (features scaled to unit variance) — or report both.
+- **Sign and size are only meaningful with uncertainty:** refit on bootstrap resamples or CV folds and report the spread.
+- **Regularisation biases coefficients toward 0** — Ridge/Lasso weights are good for prediction, shrunk as estimates.
+- **Association ≠ causation:** $w_j>0$ says "the model uses $x_j$", not "increasing $x_j$ increases $y$" (that is an E6 claim; Week 13).
+::::
+
+:::: {.notes}
+- Work one example aloud: predicting Fe at% from EELS window intensities. A standardised coefficient of +8 on the Fe-L3 integral means "one standard deviation more Fe-L3 signal, other windows fixed, predicts 8 at% more Fe". The phrase "other windows fixed" is the catch — physically, Fe-L3 and Fe-L2 never move independently.
+- The one point to land: a coefficient is a statement about the *model given all the other features*, not about the material. Adding or removing a correlated feature can change it completely.
+- Misconception to preempt: "a large coefficient means an important feature." Only after standardisation, and only if the feature is not collinear with others. With raw units a thickness in nm and an intensity in counts produce coefficients differing by orders of magnitude for purely unit reasons.
+- Transition: "Here is what collinearity does to coefficients in practice."
+::::
+
+## When coefficients lie: collinearity
+
+![300 bootstrap refits on $N=40$ synthetic EELS spectra. Fe-L3 and Fe-L2 windows are nearly collinear (same element). OLS coefficients slide along a ridge and Fe-L3 flips sign in most refits; Ridge stabilises both; Lasso often zeroes one of the pair.](img/coef_instability.png){width="78%"}
+
+:::: {.incremental}
+- Collinear features ⇒ the data constrain only their **sum**, not each weight — the same flat valley we saw as an ill-conditioned bowl ($\kappa \gg 1$).
+- **Remedies:** check correlations / VIF first; merge collinear features (e.g. total Fe-L$_{2,3}$ integral) or regress on PCA/NMF scores (Week 3); prefer Ridge for stable weights; never over-read which one Lasso kept.
+::::
+
+:::: {.notes}
+- Read the left panel: each dot is one bootstrap refit. The OLS cloud stretches along a line of slope ≈ −1 in coefficient space — raise one weight, lower the other, the predictions barely change. The Fe-L3 coefficient changes sign in a sizeable fraction of refits. Anyone reading a single OLS fit could "discover" that Fe-L3 is anti-correlated with Fe content — nonsense.
+- Middle: Ridge adds curvature in the flat direction (the $+\lambda\mathbf{I}$ from Week 3) and the cloud collapses. Right: Lasso sits on the axis for many refits — which window survives is a coin flip.
+- The one point to land: coefficient instability is the ill-conditioning of §1 seen from the explainability side. Same $\kappa$, same cure.
+- This sets up Week 5: permutation importance and SHAP suffer from the *same* correlated-feature problem — importance gets split or misassigned between correlated descriptors.
+- Transition: "Let us put everything together into one recipe."
+::::
+
+<!-- ===== §10. Recipe + close ===== -->
 
 ## The full picture — an honest EM ML recipe
 
 :::: {.incremental}
-1. **Collect** data: note the specimen structure; record `specimen_id` for every measurement.
-2. **Inspect:** histogram targets, check for duplicates; plot $X$ vs $y$ per specimen — if specimens cluster separately, group leakage is a risk.
-3. **Split:** if `specimen_id` exists → `GroupKFold`; if time-series → chronological split; otherwise 5-fold `KFold`.
-4. **Pipeline:** `StandardScaler` + model inside `Pipeline` — scaler fitted on train folds only.
-5. **Fit:** choose loss (MSE/MAE/Huber) based on noise model; choose optimiser (Adam default); track train and val loss per epoch.
-6. **Report:** test $R^2$ or test Dice/IoU on the held-out fold; pair with residual plot or confusion matrix.
-7. **Sanity check:** is the honest group $R^2$ close to the random $R^2$? Large gap → leakage.
+1. **Collect:** record `specimen_id`, `session`, acquisition time for every measurement (E1).
+2. **Inspect:** histogram targets; look for duplicates / overlapping crops; plot $X$ vs $y$ per specimen.
+3. **Split** to match the deployment claim: specimen → `GroupKFold`; time series → chronological; truly independent → `KFold`. Lock a test set away.
+4. **Pipeline:** every learned preprocessing step (scaler, PCA, feature selection) inside the `Pipeline`.
+5. **Fit:** loss from the noise model; standardise; Adam (or closed form); tune $\lambda$ with the *same* grouped CV.
+6. **Report:** held-out metric ± fold spread, residual plot or confusion matrix, which "axis of new" was tested.
+7. **Interpret with care:** standardised coefficients + bootstrap spread; flag collinear groups.
 ::::
 
 :::: {.notes}
-- This slide is a synthesis of the entire lecture. Use it as a class-participation moment: "For your miniproject dataset, which step do you think is the riskiest? Which step are you most likely to skip?"
-- The one point to land: every step has a purpose; skipping any one creates a specific failure mode. Step 3 (split) and Step 4 (pipeline) are where most real-world mistakes happen.
-- Misconception to preempt: "I can do the steps in a different order." Some flexibility exists, but inspection (Step 2) must come before splitting (Step 3) — you need to know the specimen structure. Splitting must come before preprocessing (Step 4) — otherwise leakage. The order is load-bearing.
-- EM anchor: this recipe is what the miniproject rubric evaluates. Graders will look for `GroupKFold` (if applicable), `Pipeline`, train vs. test metrics, and residual/confusion plots. Knowing the recipe earns the points.
-- Forward link: the notebook this week implements Steps 1–6 for a regression task. Week 5 extends Step 5 to neural networks.
-- Transition: "Now let us close: what are the limits of what we built today, and where does Week 5 take us?"
+- Synthesis of the lecture; use it as a class-participation moment: "For your miniproject dataset, which step is riskiest?"
+- The order is load-bearing: inspection before splitting (you must know the group structure), splitting before any preprocessing (otherwise leakage), and interpretation last (it inherits every earlier mistake).
+- EM anchor: this recipe is what the miniproject rubric evaluates — `GroupKFold` where applicable, `Pipeline`, train vs held-out metrics, residual/confusion plots, and a sentence on what kind of generalisation was tested.
+- Transition: "Summary and must-knows."
 ::::
 
-## What gradient descent alone cannot solve
+## Summary
 
 :::: {.incremental}
-- **Non-linear patterns:** a linear model trained with GD still fits a line to non-linear data. The architecture limits expressivity, not the optimiser.
-- **Bad local minima:** for non-convex losses (any neural network), GD finds *a* minimum — not necessarily the best one. Momentum, random restarts, and SGD noise help.
-- **Overfitting:** minimising training loss does not guarantee good test performance. Cross-validation and regularisation are essential — GD alone cannot tell you if you have overfit.
-- **Data leakage:** a perfectly converged model on a leaked dataset still reports an inflated score. The optimiser cannot fix a broken validation setup.
-- **Scale and ill-conditioning:** ill-scaled features make GD slow regardless of the optimiser choice. Standardise inputs.
+- **Fit = minimise empirical risk.** Loss encodes the noise model; GD needs only gradients.
+- **Landscape:** convex (linear + MSE/Huber/Ridge/Lasso) → one answer; non-convex → saddles, plateaus; conditioning sets the zigzag. Momentum and Adam are fixes for curvature, SGD noise for saddles.
+- **Optimisation ≠ generalisation:** the training-loss minimum is not the goal; bias–variance and regularisation control the gap.
+- **Ridge = disc (shrink), Lasso = diamond (sparse)**; standardise first, tune $\lambda$ by grouped CV.
+- **Honest validation:** train/val/test, K-fold, and the split must match the deployment claim.
+- **Leakage taxonomy:** duplicate · temporal · group · preprocessing (+ target) — one `Pipeline` + the right splitter prevent most of it.
+- **Coefficients** are conditional, unit-dependent and unstable under collinearity — the first rung (E1/E2 → E3) of the explainability ladder.
 ::::
 
 :::: {.notes}
-- This slide is a consolidation — each bullet names a distinct reason why "just run GD" is not enough.
-- The one point to land: gradient descent is the workhorse of modern ML, but it only optimises what it is given. The model architecture, the loss function, the regularisation, and the validation strategy are all *separate* design decisions. Students should leave today knowing those four levers exist.
-- Misconception to preempt: "if the training loss converges, the job is done." Convergence of the training loss means GD has found a stationary point. It says nothing about generalisation, data quality, or whether the validation was honest.
-- EM anchor: in neural-network-assisted EELS phase identification, the classifier converged with training accuracy 99%. The test accuracy on new specimens was 55% — random-split CV had hidden the group leakage entirely.
-- Forward link: Week 5 introduces neural networks, which replace the linear predictor $f_\mathbf{w}$ with a deep non-linear function. All of today's tools — GD, Adam, regularisation, GroupKFold — apply without modification.
-- Transition: "Here is what to do this week."
+- Read these as seven sentences the students should be able to say back. Pause on the last two — they are the new material and the most exam-relevant.
+- Transition: "The compact version for the exam."
+::::
+
+## Must-know takeaways (Week 4)
+
+1. Minimising MSE = maximum likelihood under Gaussian noise; MAE ↔ Laplace, Huber = robust compromise.
+2. GD: $\mathbf{w}_{t+1}=\mathbf{w}_t-\eta\nabla\hat R$; too large $\eta$ diverges, too small crawls; ill-conditioning ($\kappa\gg1$) causes zigzag.
+3. Convex ⇒ every local minimum is global; linear models with MSE/MAE/Huber (+Ridge/Lasso) are convex, neural networks are not.
+4. Momentum damps oscillations; Adam adds per-parameter step sizes; SGD noise helps escape saddles.
+5. Bias–variance: underfit = high bias, overfit = high variance; regularisation trades a little bias for less variance.
+6. Lasso's L1 diamond has corners ⇒ exact zeros; Ridge's disc only shrinks.
+7. The test set is used once; hyperparameters (incl. $\lambda$) are tuned on validation / CV.
+8. Four leakage types: duplicate, temporal, group/specimen, preprocessing — correlated crops ⇒ `GroupKFold`.
+9. Every learned preprocessing step goes inside the CV fold (`Pipeline`); supervised selection outside CV can fake $R^2>0$ on noise.
+10. A linear coefficient is a conditional, unit-dependent statement; compare standardised coefficients with bootstrap spread and distrust collinear pairs.
+
+:::: {.notes}
+- These ten statements are also in `_shared/exam_mustknow.md` (Week 4 section). Every exam question on Week 4 is answerable from them plus the leakage figures.
 ::::
 
 ## Looking ahead — Week 5
 
 :::: {.incremental}
-- **Topic:** "Neural networks from first principles"
-- The linear predictor $\hat{y} = \mathbf{w}^T\mathbf{x}$ is extended by stacking: outputs of one linear layer become inputs to the next, separated by non-linear activations (ReLU, sigmoid).
-- **Gradient descent and Adam** carry over unchanged — we just apply them to a deeper function.
-- **Backpropagation** is the chain rule applied to the composed function: it computes $\nabla_\mathbf{w} \hat{R}$ efficiently without any new mathematics.
-- **Prerequisite:** today's notebook — understand what an honest $R^2$ means and why specimen-level splitting changes it.
+- **Topic:** "From images to features: descriptors & tree ensembles"
+- From EM images to **tabular descriptors**: segmentation → particle / grain properties (area, eccentricity); atom-column finding → local-environment descriptors.
+- **Decision trees, random forests, gradient boosting** — the models that win on tabular data, and the next rung of the baseline ladder (mean → linear → trees → NN).
+- **Explainability, next rung:** permutation importance and SHAP — and why today's collinearity warning applies to them too.
+- **Validation carries over unchanged:** `GroupKFold` by image, `Pipeline`, honest metrics.
 ::::
 
 :::: {.notes}
-- Keep this brief — one slide, one minute. The goal is to create anticipation, not to teach the content early.
-- The one point to land: every concept from today (loss, GD, Adam, overfitting, validation) re-appears in Week 5 with exactly the same role, applied to a more expressive model class. Today's investment pays off immediately.
-- Misconception to preempt: "neural networks are a completely different topic." They are not — they are a more flexible parametric family $f_\mathbf{w}$, plugged into the same ERM framework.
+- One minute. The goal is anticipation: today's linear model becomes the baseline that next week's trees must beat, under the same grouped CV.
+- The one point to land: trees handle non-linearity and feature interactions without us designing them, but they need good descriptors — Week 5 is about turning pixels into those descriptors.
+- Neural networks follow in Week 6; everything from today (GD, Adam, regularisation, leakage) is reused there.
 - Transition: "Here is what to do this week."
 ::::
 
 ## Self-study this week
 
 :::: {.incremental}
-- **Notebook:** `notebooks/week04_leakage_demo.ipynb` — "Data leakage in EM: crop-level vs. specimen-level splitting."
-  - Generate synthetic EM specimens (6 specimens, 20 correlated crops each).
-  - Fit a linear regressor using (a) random crop split and (b) `GroupKFold` on specimen ID.
-  - Confirm that the random-split $R^2$ is inflated and the grouped $R^2$ is lower but honest.
-  - **Exercise:** implement the grouped split yourself and assert that grouped $R^2 <$ random-split $R^2$.
-- **Open in Colab:** no local installation; first cell installs all dependencies.
-- **Goal:** internalise the crop-vs-specimen distinction before Week 5.
-- **Must-know review:** `_shared/exam_mustknow.md` — Week 4 statements are now filled.
+- **Notebook:** `notebooks/week04_leakage_demo.ipynb` — [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ECLIPSE-Lab/public_presentations/blob/main/data_science_for_em/notebooks/week04_leakage_demo.ipynb)
+  - Parts 1–6: 6 synthetic specimens × 20 correlated crops; random split vs `GroupKFold`; the leakage gap vs within-specimen correlation.
+  - **Part 7 (new):** preprocessing leakage — scaler + PCA and feature selection fitted before vs inside the split, on spectra with no signal.
+  - **Exercises:** implement the grouped split; repair the leaky pipeline and assert the honest score.
+- Runs on CPU in < 1 min; first cell installs all dependencies.
+- **Must-know review:** `_shared/exam_mustknow.md` — Week 4 section.
 ::::
 
 :::: {.notes}
-- The notebook is the most important deliverable of the week. Students who skip it will struggle to complete the exam on leakage, which is a guaranteed exam topic.
-- The one point to land: the assert in the notebook (`grouped_r2 < random_r2`) is not just a convenience check — it is the computational proof that leakage inflated the random-split score. Being able to explain why that assert holds, in one sentence, is exam-ready.
-- Misconception to preempt: "the notebook is just the lecture in code." The notebook goes further — it shows the distribution of scores across folds (K-fold), not just the mean. Students should look at the spread and ask "would I trust a single-fold estimate on this dataset?"
-- EM anchor: the miniproject students who choose regression or spectral analysis tasks should treat this notebook as a template for their own CV strategy.
-- Transition: "See you next week for neural networks."
+- The notebook is the most important deliverable of the week — leakage is a guaranteed exam topic.
+- The one point to land: the asserts in the notebook (`grouped_r2 < random_r2`, `honest_r2 < leaky_r2`) are the computational proof of today's claims; being able to explain in one sentence why each holds is exam-ready.
+- Miniproject students: treat the `Pipeline` + `GroupKFold` cells as the template for your own validation.
+- Transition: "See you next week for features and tree ensembles."
 ::::
+
+<!-- BEGIN prev-next -->
 
 ## Continue
 
-- &rarr; Next: [Week 05 — Neural networks from first principles](../05_neural_networks/01_intro.html)
-- &larr; Back: [Week 03 — Linear algebra &amp; PCA](../03_linear_algebra_pca/01_intro.html)
+- &larr; Previous: [Unit 03 &mdash; Linear algebra, PCA & spectral unmixing](../03_linear_algebra_spectral/01_intro.html)
+- &rarr; Next: [Unit 05 &mdash; From images to features: descriptors & tree ensembles](../05_features_trees/01_intro.html)
 - [All courses](../../index.html)
+
+<!-- END prev-next -->
 
 ## References
 
