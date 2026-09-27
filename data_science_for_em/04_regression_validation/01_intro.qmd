@@ -49,7 +49,7 @@ format:
 - The one point to land: the analytic normal-equations solution exists but requires a matrix inversion — fragile for large or ill-conditioned systems. Gradient descent is the scalable alternative, and it is the workhorse of every neural network we will meet from Week 6 onward.
 - Callback that pays off later: NMF's multiplicative updates in Week 3 *were* an iterative optimiser on a non-convex loss. Today names the general machinery.
 - Misconception to preempt: "gradient descent is a neural-network thing, not a regression thing." It applies to *any* differentiable loss — including MSE linear regression.
-- Pacing note: §1–4 (loss, landscape, optimisers) ~35 min; §5 regularisation ~12 min; §6–7 validation and leakage ~25 min (exam-critical, protect it); metrics + reading coefficients ~15 min; close 3 min.
+- Pacing: see the timing plan in the learning-outcomes notes.
 - Transition: "Two questions anchor today."
 ::::
 
@@ -86,6 +86,21 @@ By the end of this lecture you can:
 :::: {.notes}
 - These six outcomes map one-to-one onto the must-know list at the end and onto the Week 4 exam questions.
 - Outcomes 4, 5 and 6 are new this year: Ridge/Lasso geometry, the full leakage taxonomy (from the Materials Genomics course, U8), and the first step of the explainability ladder that runs through the whole course (W5 permutation importance, W7 saliency, W10 attention, W13 synthesis).
+- Timing plan (90 min; lecture path ≈ 85 min + ~5 min slack for questions):
+  - 0–6 min: recap, today's questions, learning outcomes.
+  - 6–11 min: ERM, linear model & normal equations, gradient & GD update.
+  - 11–15 min: MSE / MAE / Huber and their noise models.
+  - 15–25 min: loss landscape & conditioning, convexity, saddles & optimisation ≠ generalisation, learning rate.
+  - 25–31 min: SGD/minibatch, momentum, Adam.
+  - 31–43 min: over/underfitting, bias–variance, regularisation, Ridge vs Lasso geometry, regularisation paths.
+  - 43–47 min: train/val/test, K-fold CV.
+  - 47–63 min: leakage — definition, taxonomy, specimen trap, GroupKFold cure, duplicates & "axes of new", preprocessing leakage, spot-the-leak exercise (exam-critical, protect this block).
+  - 63–67 min: regression and classification/segmentation metrics.
+  - 67–74 min: explainability ladder (E1/E2), reading coefficients, collinearity.
+  - 74–80 min: honest EM recipe, summary, must-know takeaways.
+  - 80–85 min: Week 5 teaser, self-study / notebook.
+  - 85–90 min: slack for questions.
+- Backup slides after "Continue" (optimiser comparison table, full sklearn CV pipeline snippet, confusion matrix) are for questions only.
 - Transition: "Start with the simplest question: what does it mean to predict?"
 ::::
 
@@ -215,17 +230,16 @@ By the end of this lecture you can:
 ![Gradient descent on an ill-conditioned 2D loss bowl. Left: learning rate too large — steps overshoot and bounce back and forth, then diverge. Right: good learning rate — smooth monotone descent to the minimum.](img/loss_landscape.png){width="100%"}
 
 :::: {.incremental}
-- **Loss landscape:** the surface $\hat{R}(\mathbf{w})$ over all possible weight vectors $\mathbf{w}$.
-- For MSE linear regression: a convex bowl — one global minimum, no local traps.
-- **Gradient descent update:** $\mathbf{w}_{t+1} = \mathbf{w}_t - \eta\,\nabla_\mathbf{w}\hat{R}(\mathbf{w}_t)$.
-- $\eta$ = **learning rate** — the step size along the negative gradient.
-- The contour lines are level sets of the loss; GD crosses them at right angles (steepest descent).
+- **Loss landscape:** the surface $\hat{R}(\mathbf{w})$ over weight space; for MSE linear regression a convex bowl.
+- GD steps cross the contours at right angles (steepest descent).
+- **Ill-conditioned bowl** ($\kappa(\mathbf{X}^T\mathbf{X})\gg1$: unscaled or collinear features) → elongated contours → GD zigzags. **Standardise inputs.**
 ::::
 :::
 
 :::: {.notes}
 - Walk through the figure in detail: "Each point in this 2D plane is a candidate weight vector $(w_1, w_2)$. The oval contours are constant-loss contours — the minimum is at the centre. Gradient descent takes steps from the initial orange dot toward the star at the centre."
 - The one point to land: the elongated oval (ill-conditioned bowl) is what happens when two features have very different scales — GD takes many zigzag steps. Standardising the data makes the contours more circular and GD more efficient.
+- Moved off the slide: the GD update is the same $\mathbf{w}_{t+1} = \mathbf{w}_t - \eta\nabla\hat R$ as before; $\eta$ is the learning rate (step size); contour lines are level sets of the loss.
 - Misconception to preempt: "if the loss is convex, GD always finds the global minimum." Correct for infinite steps, but for a finite step budget the learning rate must be chosen carefully.
 - EM anchor: in ptychographic phase retrieval, the loss landscape is non-convex (highly structured patterns of local minima). GD may converge to a poor local minimum — initialisation and momentum help.
 - Forward link: the eigenvalues of this bowl are the eigenvalues of $\mathbf{X}^T\mathbf{X}$ (Week 3) — next slide makes "bowl" precise as convexity.
@@ -282,15 +296,15 @@ By the end of this lecture you can:
 ![Effect of learning rate on 1D gradient descent: too small (slow), just right (smooth), too large (diverges).](img/lr_effects.png){width="100%"}
 
 :::: {.incremental}
-- **Too small** ($\eta \ll 1/L$, $L$ = Lipschitz constant of gradient): correct direction but tiny steps → converges in theory, but takes too long in practice.
-- **About right:** loss decreases monotonically; convergence in tens to hundreds of steps.
-- **Too large** ($\eta > 2/L$): overshoots the minimum repeatedly → oscillates or diverges.
-- **Rule of thumb:** start at $\eta = 0.01$–$0.1$, monitor the loss curve, reduce if it bounces.
-- **Schedules:** large $\eta$ early (explore), small late (fine-tune) — step decay, cosine, or *reduce-on-plateau* (the common EM default).
+- **Too small** ($\eta \ll 1/L$, $L$ = gradient Lipschitz constant): right direction, crawls.
+- **About right:** loss decreases monotonically.
+- **Too large** ($\eta > 2/L$): overshoots → oscillates or diverges.
+- **Practice:** monitor the loss curve; schedules (step decay, cosine, *reduce-on-plateau*) go large early, small late.
 ::::
 :::
 
 :::: {.notes}
+- Rule of thumb (moved off the slide): start at $\eta = 0.01$–$0.1$ for plain GD, reduce if the loss bounces; *reduce-on-plateau* is the common EM default schedule. "About right" typically converges in tens to hundreds of steps.
 - Walk through the three panels. "Orange dots are the iterates; each one follows the gradient of the parabola $\mathcal{L}(w) = w^2$. In the left panel ($\eta = 0.04$), the steps are so small that after 10 steps we have barely moved. In the right panel ($\eta = 0.95$), we overshoot past the minimum and bounce back and forth — eventually diverging."
 - The one point to land: there is a 'Goldilocks' learning rate. Too small wastes computation; too large breaks convergence. Learning rate schedulers (reduce on plateau, cosine annealing) automate the search.
 - Misconception to preempt: "I can always reduce the learning rate if I see the loss bouncing." Correct but slow — adaptive optimisers (Adam, next section) largely solve this automatically.
@@ -300,45 +314,23 @@ By the end of this lecture you can:
 ::::
 
 <!-- ===== §4. SGD → Adam ===== -->
-## Stochastic gradient descent (SGD)
+## Stochastic & minibatch gradient descent
 
 :::: {.incremental}
-- **Full GD cost:** $\nabla\hat{R} = \tfrac{1}{N}\sum_i \nabla L_i$ — $\mathcal{O}(N)$ per step. Expensive for $N \sim 10^6$.
-- **SGD:** pick one sample $i$ at random; use $\nabla L_i(\mathbf{w})$ as the gradient estimate.
-- **Key property:** $\mathbb{E}_i[\nabla L_i] = \nabla\hat{R}$ — unbiased estimate of the true gradient.
-- **Cost:** $\mathcal{O}(1)$ per step — dramatic speedup.
-- **Behaviour:** noisy steps, but rapid early progress; bounces near the minimum.
-- SGD's noise helps escape **saddle points** — a genuine advantage over full GD on non-convex surfaces.
-::::
-
-:::: {.notes}
-- Analogy: "Full GD is like asking every student in a class for feedback before deciding anything. SGD is like asking one random student and acting immediately. You get a noisy answer, but you move fast — and over many steps the noise averages out."
-- The one point to land: SGD is unbiased. On average it takes the right direction. The noise comes from the variance of individual gradient estimates, and this variance can actually help on non-convex surfaces.
-- Misconception to preempt: "SGD is an approximation that is less accurate than full GD." For optimisation purposes, SGD converges to the same minimum as full GD on convex problems (just with more steps). For deep learning it often converges to *better* minima due to its implicit regularisation effect.
-- EM anchor: in neural-network denoising of 4D-STEM datasets, the training set is millions of patches. Full GD would require holding all patches in memory. SGD (or minibatch SGD) processes one patch or a small batch at a time — feasible on a single GPU.
-- Forward link: minibatch SGD reduces the variance of SGD by averaging over $b$ samples.
-- Transition: "In practice we never use single-sample SGD — we use minibatches."
-::::
-
-## Minibatch SGD — the practical default
-
-:::: {.incremental}
-- **Minibatch of size $b$:** average the gradient over $b$ randomly selected samples.
+- **Full GD** averages $\nabla L_i$ over all $N$ samples — $\mathcal{O}(N)$ per step, too expensive for $N \sim 10^6$.
+- **SGD / minibatch:** estimate the gradient from a random batch $\mathcal{B}_t$ of size $b$:
   $$\mathbf{w}_{t+1} = \mathbf{w}_t - \frac{\eta}{b}\sum_{i \in \mathcal{B}_t}\nabla L_i(\mathbf{w}_t)$$
-- **Why $b$ matters:**
-  1. **Variance reduction:** $\text{Var}(\text{gradient estimate}) \propto 1/b$ — larger $b$ = smoother steps.
-  2. **Vectorisation:** modern GPUs process $b$ samples in parallel almost for free ($b = 32$–$256$).
-- **Typical $b$:** 32, 64, 128 — hardware-aligned powers of 2.
-- This is the default training loop for every neural network you will use from Week 6 onwards.
+- **Unbiased but noisy:** $\mathbb{E}[\nabla L_i] = \nabla\hat{R}$; variance $\propto 1/b$. The noise helps escape **saddle points**.
+- **Practical default:** $b = 32$–$256$ (GPU-parallel) — the training loop of every network from Week 6 on.
 ::::
 
 :::: {.notes}
-- Give the GPU intuition: "A GPU is a matrix-multiplication machine. Computing the gradient for $b$ samples simultaneously costs about the same as computing it for 1 sample — the hardware is running $b$ operations in parallel."
-- The one point to land: minibatch SGD is the compromise that makes deep learning tractable. Single-sample SGD is too noisy; full-batch GD is too expensive; minibatch hits the sweet spot.
-- Misconception to preempt: "larger $b$ is always better." Larger $b$ reduces gradient variance (good) but also reduces the implicit regularisation from SGD noise (can lead to sharper minima that generalise slightly worse). Batch size is a regularisation hyperparameter as much as a computational one.
-- EM anchor: in cryo-EM particle picking, a U-Net is trained on minibatches of image patches. Typical batch sizes of 32–64 tiles of 128×128 pixels fit comfortably in GPU memory and give smooth convergence.
-- Forward link: momentum adds memory to the update rule — helping in ill-conditioned landscapes.
-- Transition: "Even with minibatch SGD, ill-conditioned loss landscapes cause slow zigzag convergence. Momentum fixes this."
+- Analogy: "Full GD is like asking every student in a class for feedback before deciding anything. SGD is like asking one random student and acting immediately. You get a noisy answer, but you move fast — and over many steps the noise averages out." Minibatch = ask a small random group: $b=1$ is too noisy, $b=N$ too expensive.
+- The one point to land: the minibatch gradient is unbiased — on average it points the right way. Its variance shrinks like $1/b$, and on non-convex surfaces that variance is useful: it kicks the iterate off saddle ridges (recall the saddle figure).
+- GPU intuition: computing the gradient for $b$ samples costs about the same as for one — the hardware runs them in parallel. Typical $b$: 32, 64, 128 (powers of 2).
+- Misconception to preempt: "SGD is a less accurate approximation of full GD." On convex problems it reaches the same minimum (with more, cheaper steps); in deep learning it often finds minima that generalise *better*. And "larger $b$ is always better" is false — it removes that helpful noise; batch size is partly a regularisation hyperparameter.
+- EM anchor: a denoiser for 4D-STEM trains on millions of patches; full GD would need them all in memory. Minibatches of 32–64 tiles of 128×128 pixels fit on one GPU.
+- Transition: "Even with minibatches, ill-conditioned loss landscapes cause slow zigzag convergence. Momentum fixes this."
 ::::
 
 ## Momentum — the physics intuition
@@ -372,43 +364,19 @@ By the end of this lecture you can:
 :::: {.incremental}
 - **Adam:** tracks both the gradient (momentum term $\hat{\mathbf{v}}_t$) and the squared gradient (adaptive scaling $\hat{\mathbf{s}}_t$):
   $$\mathbf{w}_t \leftarrow \mathbf{w}_{t-1} - \frac{\eta\,\hat{\mathbf{v}}_t}{\sqrt{\hat{\mathbf{s}}_t} + \epsilon}$$
-- **Adaptive scaling:** each parameter gets its own effective learning rate — large for slowly-updated parameters, small for fast ones.
-- **Typical hyperparameters:** $\eta = 0.001$, $\beta_1 = 0.9$ (momentum), $\beta_2 = 0.999$ (RMS), $\epsilon = 10^{-8}$.
-- **For most EM projects:** use Adam at its default settings unless you have a specific reason to change them.
+- **Adaptive scaling:** each parameter gets its own effective step size.
+- **Defaults** ($\eta = 10^{-3}$, $\beta_1 = 0.9$, $\beta_2 = 0.999$) are the practical starting point for most EM projects.
 ::::
 :::
 
 :::: {.notes}
+- Full defaults: $\eta = 0.001$, $\beta_1 = 0.9$ (momentum), $\beta_2 = 0.999$ (RMS), $\epsilon = 10^{-8}$. Adaptive scaling: large effective step for rarely/slowly updated parameters, small for fast ones. Use the defaults unless you have a specific reason. The optimiser comparison table is in the backup slides.
 - Point to the bottom-right panel (Adam) in the figure: "Adam reaches the minimum in fewer steps than any of the others, and the path is nearly straight even though the loss bowl is elongated."
 - The one point to land: Adam is not magic — it is SGD + momentum + per-parameter adaptive learning rate. Understanding those three pieces makes you able to debug it when it fails (e.g. when gradients are very small, $\hat{s}_t$ is also small, and $\epsilon$ prevents division by zero — but if $\epsilon$ is too large, the adaptive scaling is suppressed).
 - Misconception to preempt: "Adam always converges faster than SGD." On some problems (especially transformers), SGD with momentum and a carefully tuned schedule outperforms Adam. Adam is the default because it requires less tuning, not because it is theoretically superior.
 - EM anchor: training a neural-network denoiser for 4D-STEM data at FAU uses Adam with $\eta = 0.001$ out of the box. Changing to SGD with the same $\eta$ results in 10× slower convergence.
 - Forward link: when we meet neural networks in Week 6, Adam will be the default optimiser with no further discussion — you now know what it is doing.
 - Transition: "We now know how to minimise a loss. But minimising the training loss well does not mean the model generalises to new data. That is the second half of today."
-::::
-
-## Optimiser comparison — a visual summary
-
-:::: {.incremental}
-| Optimiser | Per-step cost | Adaptive $\eta$? | Momentum? | Typical use |
-|-----------|---------------|-----------------|-----------|-------------|
-| Full GD | $\mathcal{O}(N)$ | No | No | Tiny datasets, convex |
-| SGD | $\mathcal{O}(1)$ | No | No | Rarely used bare |
-| Minibatch SGD | $\mathcal{O}(b)$ | No | Optional | Many DL papers |
-| SGD + Momentum | $\mathcal{O}(b)$ | No | Yes ($\beta \approx 0.9$) | Fine-tuned vision models |
-| Adam | $\mathcal{O}(b)$ | Per-param | Yes | **Default for most EM projects** |
-
-- **Rule:** start with Adam at its defaults. Switch to SGD+momentum only if you have a specific reason (e.g. matching a published training recipe, or if Adam converges to a sharp minimum that generalises poorly).
-- **Not covered here:** AdaGrad, RMSProp, AdamW, Nesterov — all first-order, all variations on the same theme.
-::::
-
-:::: {.notes}
-- Tell students this table is a reference card, not something to memorise under exam pressure. The exam will ask "what does Adam do?" not "what is $\beta_2$ in Adam?"
-- The one point to land: for EM data science projects (regression, segmentation, denoising), Adam at $\eta = 0.001$ is almost always a good starting point. You can tune from there if needed.
-- Misconception to preempt: "I should always try multiple optimisers." For a miniproject on a small EM dataset, spending time on optimiser comparison is almost never the bottleneck. The bottleneck is almost always the data quality, validation strategy, or model architecture.
-- EM anchor: survey of 20 recent EM ML papers at FAU — 85% used Adam, 10% SGD+momentum, 5% other. Adam is the de facto standard.
-- Forward link: the next section switches from "how do we fit?" to "how do we know if the fit is honest?"
-- Transition: "We can now fit any differentiable model to data. But fitting well on training data is not the same as generalising to new data. That is the second half of today."
 ::::
 
 <!-- ===== §5. Overfitting / underfitting ===== -->
@@ -419,15 +387,15 @@ By the end of this lecture you can:
 ![Three polynomial fits to the same noisy data: degree 1 (underfit), degree 3 (good), degree 12 (overfit). The true signal is $\sin(x)$.](img/overfitting.png){width="100%"}
 
 :::: {.incremental}
-- **Underfit (high bias):** model too simple — cannot capture the pattern. Training and test errors are both high.
-- **Good fit (balanced):** training error ≈ test error; the model captures the signal, not the noise.
-- **Overfit (high variance):** model too flexible — memorises training noise. Training error ≈ 0, test error ≫ 0.
-- **In EM:** a degree-12 polynomial fitted to 18 noisy data points passes through every point but predicts wildly on new samples.
+- **Underfit (high bias):** too simple — train and test errors both high.
+- **Good fit:** train error ≈ test error; captures signal, not noise.
+- **Overfit (high variance):** memorises training noise — train error ≈ 0, test error ≫ 0.
 ::::
 :::
 
 :::: {.notes}
 - Walk through the three panels: "Left panel — a line cannot bend to fit the sine curve; it misses the pattern everywhere. Right panel — a degree-12 polynomial wiggles violently between the training points; it has memorised the noise, not the signal. Middle panel — degree 3 captures the shape without following every bump."
+- The figure: a degree-12 polynomial fitted to 18 noisy points passes through every point but predicts wildly on new samples.
 - The one point to land: train error decreasing to zero is not a goal — it is a warning. A model with training $R^2 = 1$ on a small dataset has almost certainly memorised noise.
 - Misconception to preempt: "adding more model capacity always improves performance." Adding capacity without regularisation or more data only improves *training* error. Test error has a U-shape: high at both extremes (underfit and overfit), minimum in the middle.
 - EM anchor: a very deep neural network fitted to 50 HAADF images of grain boundaries will achieve near-zero training loss — and fail badly on the 51st image. This is exactly what happened in early EM ML papers; cross-validation is the standard fix.
@@ -544,58 +512,23 @@ By the end of this lecture you can:
 - Transition: "A single holdout split is sensitive to which points end up in test by chance. K-fold cross-validation averages over many splits."
 ::::
 
-## The sklearn cross-validation pipeline
-
-:::: {.incremental}
-- **Gold standard:** always wrap preprocessing + model in a `Pipeline` before passing to CV.
-  ```python
-  from sklearn.pipeline import Pipeline
-  from sklearn.preprocessing import StandardScaler
-  from sklearn.linear_model import Ridge
-  from sklearn.model_selection import cross_val_score, KFold, GroupKFold
-
-  pipe = Pipeline([
-      ("scale", StandardScaler()),   # fitted on train fold only — no leakage
-      ("model", Ridge(alpha=1.0))
-  ])
-
-  # Random K-fold (only if data points are independent)
-  scores = cross_val_score(pipe, X, y, cv=KFold(n_splits=5), scoring='r2')
-
-  # Group K-fold (when specimen_id exists)
-  scores = cross_val_score(pipe, X, y, cv=GroupKFold(n_splits=5),
-                            groups=specimen_id, scoring='r2')
-  print(f"R² = {scores.mean():.3f} ± {scores.std():.3f}")
-  ```
-- `Pipeline` reruns `StandardScaler.fit` on each training fold automatically → no leakage.
-::::
-
-:::: {.notes}
-- Live-code or show this snippet carefully. "The key word is 'inside': the scaler is fitted inside the cross-validation loop on each training fold. If you standardise before splitting, you are fitting on test data. Use Pipeline — it makes the right thing the default."
-- The one point to land: `Pipeline` + `cross_val_score` + `GroupKFold` is the complete, leak-proof validation workflow for any EM regression or classification task. Students should be able to write this from memory.
-- Misconception to preempt: "I can standardise outside the pipeline to save computation." You can — if you fit the scaler *only* on training data and apply it to test. But doing it inside the Pipeline is simpler and harder to mess up.
-- EM anchor: the Week 4 notebook uses exactly this pattern. Students who copy the three-line snippet into their miniproject will have a correct validation setup by default.
-- Forward link: GroupKFold is the first thing to use when `specimen_id` is present.
-- Transition: "K-fold CV gives multiple estimates of the test error. Let us see what it looks like."
-::::
-
 ## K-fold cross-validation
 
 ::: {layout-ncol=2}
 ![5-fold cross-validation: each fold serves as the test set exactly once.](img/kfold.png){width="100%"}
 
 :::: {.incremental}
-- **Recipe:** split data into $k$ equal folds. For $i=1,\ldots,k$: train on all folds except $i$; test on fold $i$. Report $\overline{\text{MSE}} \pm \text{std}(\text{MSE})$.
-- **Every data point contributes** to both training and testing — no waste.
-- **The std** tells you how stable the estimate is across splits.
-- **Defaults:** $k=5$ for compute-bound situations; $k=10$ for moderate datasets ($N \sim 10^3$); $k=N$ (LOOCV) for very small datasets ($N < 30$, common in materials science).
-- **Why not one split?** For small EM datasets ($N<200$) a single 80/20 split is a noisy draw — repeated splits can differ by 50% or more.
-- **Cost:** $k$ trainings — skip for slow deep models; use repeated holdout with multiple seeds instead.
+- **Recipe:** $k$ folds; train on $k-1$, test on the held-out one, rotate. Report mean $\pm$ std across folds.
+- Every point is tested once; the std shows how stable the estimate is.
+- **Why not one split?** For small EM datasets ($N<200$) a single 80/20 split is a noisy draw.
+- **Defaults:** $k=5$–$10$; LOOCV for $N<30$; $k$ trainings — use repeated holdout for slow deep models.
 ::::
 :::
 
 :::: {.notes}
 - Walk through the visual: "Row 1: we train on all the blue blocks and test on the red block in position 1. Row 2: train on everything except position 2. And so on. After five runs we have five test-error values; we report their mean and standard deviation."
+- Moved off the slide: every point contributes to both training and testing (no waste). $k=5$ when compute-bound, $k=10$ for $N\sim10^3$, LOOCV ($k=N$) for $N<30$. For $N<200$, repeated 80/20 splits can differ by 50% or more.
+- Scikit-learn: wrap scaler + model in a `Pipeline` and pass it to `cross_val_score` with `KFold` or `GroupKFold` — the full snippet is in the backup slides; the leakage section shows the same pattern.
 - The one point to land: K-fold CV gives a *distribution* of test-error values, not a single number. The standard deviation across folds is a calibrated measure of how much the result depends on which data ended up in the test set.
 - Misconception to preempt: "K-fold CV is always better than holdout." It is more informative, but it requires $k$ trainings. For a 10-hour neural-network training, $k=10$ means 100 hours. Choose $k$ pragmatically.
 - EM anchor: a dataset of 120 STEM images (6 specimens × 20 images) is small enough for $k=10$ fold CV with a fast scikit-learn model. For a CNN on the same dataset, use $k=3$ or $k=5$.
@@ -824,40 +757,7 @@ For each of the three setups below, identify the leakage and the fix.
 - Misconception to preempt: "a high training $R^2$ means a good model." McClarren's 50-parameter model on 50 points has training $R^2 = 1$ and is completely useless. Always report test $R^2$.
 - EM anchor: for predicting EELS edge onset energy from local atomic structure, a good model should have test $R^2 > 0.85$. If the test $R^2$ is 0.3, the features probably do not encode the relevant physics.
 - Forward link: for classification (e.g., defect vs. no defect) we need different metrics.
-- Transition: "For classification tasks — defect detection, phase identification, particle segmentation — we need a different vocabulary."
-::::
-
-## Confusion matrix — the foundation of classification metrics
-
-::: {.columns}
-::: {.column width="50%"}
-For a binary defect-detection task:
-
-|              | Predicted: no defect | Predicted: defect |
-|--------------|---------------------|-------------------|
-| **True: no defect** | TN | FP (false alarm) |
-| **True: defect**    | FN (missed!) | TP |
-
-$$\text{Accuracy} = \frac{\text{TP}+\text{TN}}{\text{TP}+\text{TN}+\text{FP}+\text{FN}}$$
-:::
-::: {.column width="50%"}
-:::: {.incremental}
-- **Imbalanced classes are the norm in EM:** 98% background, 2% defects.
-  A model that always predicts "no defect" scores 98% accuracy — and misses every defect.
-- **Asymmetric costs:** missing a defect (FN) → unsafe part ships; calling a good part bad (FP) → unnecessary scrap. Accuracy hides this asymmetry entirely.
-- **Fix:** use precision and recall (next slide) — they separate the two error types.
-- For multi-class: the confusion matrix is $K \times K$; off-diagonal entries are misclassifications.
-::::
-:::
-:::
-
-:::: {.notes}
-- Give the imbalance example with a concrete number: "If 98% of STEM image patches are background and 2% contain a grain boundary, a model that predicts 'background' for every patch scores 98% accuracy — and is completely useless. You would never catch this with accuracy alone. The confusion matrix shows immediately: all the 'defect' column is zero."
-- The one point to land: accuracy is almost always the wrong metric for EM classification tasks. Default to precision/recall/F1. Accuracy is acceptable only when classes are balanced.
-- Misconception to preempt: "accuracy is fine for a balanced dataset." Technically true, but EM datasets are rarely balanced. Always check the class distribution before choosing a metric.
-- EM anchor: in a benchmark of 10 recent EM defect-detection papers, 6 reported only accuracy. Of those 6, 4 had class ratios above 20:1. All 4 had meaningless accuracy numbers. Precision/recall would have been 0.3–0.5 for the same models.
-- Forward link: precision and recall formalise the two types of error.
-- Transition: "Precision and recall break accuracy into two directional components — how clean are your predictions, and how complete are they?"
+- Transition: "For classification tasks — defect detection, phase identification, particle segmentation — we need a different vocabulary, and accuracy is the first trap."
 ::::
 
 ## Classification and segmentation metrics
@@ -866,16 +766,15 @@ $$\text{Accuracy} = \frac{\text{TP}+\text{TN}}{\text{TP}+\text{TN}+\text{FP}+\te
 ![IoU and Dice for segmentation: good overlap, over-prediction (high recall, low precision), under-prediction (high precision, low recall).](img/iou_dice.png){width="100%"}
 
 :::: {.incremental}
-- **Precision** = TP / (TP + FP) — of what I called positive, how much was correct?
-- **Recall** = TP / (TP + FN) — of what was truly positive, how much did I find?
-- **F1 = Dice** = $2 \cdot P \cdot R / (P + R)$ — harmonic mean; penalises lopsided precision/recall.
-- **IoU (Jaccard)** = $|A \cap B| / |A \cup B|$ — standard for object detection and segmentation.
-- **Rule:** defect detection → maximise recall. Particle picking → balance via F1/Dice.
-- $\text{Dice} = 2\,\text{IoU}/(1 + \text{IoU})$; IoU is always ≤ Dice for the same prediction.
+- **Accuracy misleads on imbalanced EM data:** 98% background → "always background" scores 98%.
+- **Precision** = TP/(TP+FP) — how clean? **Recall** = TP/(TP+FN) — how complete?
+- **F1 = Dice** = $2PR/(P+R)$; **IoU** = $|A \cap B| / |A \cup B|$ (segmentation, detection); IoU ≤ Dice.
+- **Rule:** defect detection → maximise recall; particle picking → balance via F1/Dice.
 ::::
 :::
 
 :::: {.notes}
+- Confusion matrix (backup slide): rows = true class, columns = predicted; FN = missed defect (unsafe part ships), FP = false alarm (unnecessary scrap). Accuracy hides this cost asymmetry; for $K$ classes it is a $K\times K$ table.
 - Walk through the three venn diagrams: "Left: good overlap — both metrics high. Middle: predicted region is too large (over-prediction); every true pixel is found (recall=1) but many false pixels are also flagged (precision < 1). Right: predicted region is too small (under-prediction); no false alarms (precision=1) but many true pixels are missed (recall < 1)."
 - The one point to land: accuracy is almost always the wrong metric for EM classification tasks because most EM datasets are imbalanced (e.g. 98% background, 2% defect). A model that always predicts "background" scores 98% accuracy but does nothing useful. Precision/Recall/F1 reveal the failure immediately.
 - Misconception to preempt: "IoU and Dice are interchangeable." They rank models identically (same ordering) but the numbers differ. IoU is always smaller. Which one to use depends on the community convention — report the one your benchmark uses.
@@ -1043,6 +942,102 @@ $$\text{Accuracy} = \frac{\text{TP}+\text{TN}}{\text{TP}+\text{TN}+\text{FP}+\te
 - [All courses](../../index.html)
 
 <!-- END prev-next -->
+
+## Backup slides {visibility="uncounted"}
+
+Material for questions and self-study — not part of the 90-minute lecture path.
+
+## Optimiser comparison — a visual summary {visibility="uncounted"}
+
+:::: {.incremental}
+| Optimiser | Per-step cost | Adaptive $\eta$? | Momentum? | Typical use |
+|-----------|---------------|-----------------|-----------|-------------|
+| Full GD | $\mathcal{O}(N)$ | No | No | Tiny datasets, convex |
+| SGD | $\mathcal{O}(1)$ | No | No | Rarely used bare |
+| Minibatch SGD | $\mathcal{O}(b)$ | No | Optional | Many DL papers |
+| SGD + Momentum | $\mathcal{O}(b)$ | No | Yes ($\beta \approx 0.9$) | Fine-tuned vision models |
+| Adam | $\mathcal{O}(b)$ | Per-param | Yes | **Default for most EM projects** |
+
+- **Rule:** start with Adam at its defaults. Switch to SGD+momentum only if you have a specific reason (e.g. matching a published training recipe, or if Adam converges to a sharp minimum that generalises poorly).
+- **Not covered here:** AdaGrad, RMSProp, AdamW, Nesterov — all first-order, all variations on the same theme.
+::::
+
+:::: {.notes}
+- Tell students this table is a reference card, not something to memorise under exam pressure. The exam will ask "what does Adam do?" not "what is $\beta_2$ in Adam?"
+- The one point to land: for EM data science projects (regression, segmentation, denoising), Adam at $\eta = 0.001$ is almost always a good starting point. You can tune from there if needed.
+- Misconception to preempt: "I should always try multiple optimisers." For a miniproject on a small EM dataset, spending time on optimiser comparison is almost never the bottleneck. The bottleneck is almost always the data quality, validation strategy, or model architecture.
+- EM anchor: survey of 20 recent EM ML papers at FAU — 85% used Adam, 10% SGD+momentum, 5% other. Adam is the de facto standard.
+- Forward link: the next section switches from "how do we fit?" to "how do we know if the fit is honest?"
+- Transition: "We can now fit any differentiable model to data. But fitting well on training data is not the same as generalising to new data. That is the second half of today."
+::::
+
+## The sklearn cross-validation pipeline {visibility="uncounted"}
+
+:::: {.incremental}
+- **Gold standard:** always wrap preprocessing + model in a `Pipeline` before passing to CV.
+  ```python
+  from sklearn.pipeline import Pipeline
+  from sklearn.preprocessing import StandardScaler
+  from sklearn.linear_model import Ridge
+  from sklearn.model_selection import cross_val_score, KFold, GroupKFold
+
+  pipe = Pipeline([
+      ("scale", StandardScaler()),   # fitted on train fold only — no leakage
+      ("model", Ridge(alpha=1.0))
+  ])
+
+  # Random K-fold (only if data points are independent)
+  scores = cross_val_score(pipe, X, y, cv=KFold(n_splits=5), scoring='r2')
+
+  # Group K-fold (when specimen_id exists)
+  scores = cross_val_score(pipe, X, y, cv=GroupKFold(n_splits=5),
+                            groups=specimen_id, scoring='r2')
+  print(f"R² = {scores.mean():.3f} ± {scores.std():.3f}")
+  ```
+- `Pipeline` reruns `StandardScaler.fit` on each training fold automatically → no leakage.
+::::
+
+:::: {.notes}
+- Live-code or show this snippet carefully. "The key word is 'inside': the scaler is fitted inside the cross-validation loop on each training fold. If you standardise before splitting, you are fitting on test data. Use Pipeline — it makes the right thing the default."
+- The one point to land: `Pipeline` + `cross_val_score` + `GroupKFold` is the complete, leak-proof validation workflow for any EM regression or classification task. Students should be able to write this from memory.
+- Misconception to preempt: "I can standardise outside the pipeline to save computation." You can — if you fit the scaler *only* on training data and apply it to test. But doing it inside the Pipeline is simpler and harder to mess up.
+- EM anchor: the Week 4 notebook uses exactly this pattern. Students who copy the three-line snippet into their miniproject will have a correct validation setup by default.
+- Forward link: GroupKFold is the first thing to use when `specimen_id` is present.
+- Transition: "K-fold CV gives multiple estimates of the test error. Let us see what it looks like."
+::::
+
+## Confusion matrix — the foundation of classification metrics {visibility="uncounted"}
+
+::: {.columns}
+::: {.column width="50%"}
+For a binary defect-detection task:
+
+|              | Predicted: no defect | Predicted: defect |
+|--------------|---------------------|-------------------|
+| **True: no defect** | TN | FP (false alarm) |
+| **True: defect**    | FN (missed!) | TP |
+
+$$\text{Accuracy} = \frac{\text{TP}+\text{TN}}{\text{TP}+\text{TN}+\text{FP}+\text{FN}}$$
+:::
+::: {.column width="50%"}
+:::: {.incremental}
+- **Imbalanced classes are the norm in EM:** 98% background, 2% defects.
+  A model that always predicts "no defect" scores 98% accuracy — and misses every defect.
+- **Asymmetric costs:** missing a defect (FN) → unsafe part ships; calling a good part bad (FP) → unnecessary scrap. Accuracy hides this asymmetry entirely.
+- **Fix:** use precision and recall (see "Classification and segmentation metrics") — they separate the two error types.
+- For multi-class: the confusion matrix is $K \times K$; off-diagonal entries are misclassifications.
+::::
+:::
+:::
+
+:::: {.notes}
+- Give the imbalance example with a concrete number: "If 98% of STEM image patches are background and 2% contain a grain boundary, a model that predicts 'background' for every patch scores 98% accuracy — and is completely useless. You would never catch this with accuracy alone. The confusion matrix shows immediately: all the 'defect' column is zero."
+- The one point to land: accuracy is almost always the wrong metric for EM classification tasks. Default to precision/recall/F1. Accuracy is acceptable only when classes are balanced.
+- Misconception to preempt: "accuracy is fine for a balanced dataset." Technically true, but EM datasets are rarely balanced. Always check the class distribution before choosing a metric.
+- EM anchor: in a benchmark of 10 recent EM defect-detection papers, 6 reported only accuracy. Of those 6, 4 had class ratios above 20:1. All 4 had meaningless accuracy numbers. Precision/recall would have been 0.3–0.5 for the same models.
+- Forward link: precision and recall formalise the two types of error.
+- Transition: "Precision and recall break accuracy into two directional components — how clean are your predictions, and how complete are they?"
+::::
 
 ## References
 

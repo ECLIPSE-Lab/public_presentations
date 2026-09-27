@@ -88,6 +88,17 @@ By the end of this lecture you can:
 - Misconception to preempt: "the loss function is a hyperparameter you pick from a menu." By the end of today, students should see the loss as a *consequence* of the physics of the detector.
 - EM anchor: every outcome is phrased around an EM object — a pixel, a detector, a spectrum image, a metadata header.
 - Forward link: outcome 5 is re-used in Week 4 (regression as loss minimisation), Week 8 (physics decides augmentation) and Weeks 12/13 (forward model decides the inverse method).
+- Timing plan (90 min, ~5 min slack):
+  - 0–6 recap, today's question, outcomes
+  - 6–19 learning vs analysis, models, three learning types, recipe, bias–variance, white/grey/black-box
+  - 19–24 EM data zoo + HAADF (other modalities verbally, from notes)
+  - 24–35 data-formation chain, signal → number, Nyquist, aliasing/Moiré, detectors
+  - 35–45 Poisson vs Gaussian noise, dose simulation, mixed model, noise budget, variance–mean plot
+  - 45–64 noise model → likelihood → loss: ML, MSE, Poisson NLL, weighting, VST, low-count experiment, cheat sheet, MAP preview
+  - 64–72 data quality, metadata, FAIR, pre-flight checklist
+  - 72–77 aleatory vs epistemic, trust teaser
+  - 77–85 summary, must-know, self-study, Week 3 outlook
+  - 85–90 slack / questions (backup slides: regression vs classification, Noise2Noise)
 - Transition: "Let's start by being precise about what learning means."
 ::::
 
@@ -187,64 +198,10 @@ By the end of this lecture you can:
 - Misconception to preempt: "self-supervised is just unsupervised." They both avoid external labels, but self-supervised learning creates an explicit pretext task and produces a model with a defined output type. Unsupervised clustering may not produce a model at all — just groupings.
 - EM anchor: Noise2Noise-style training was quickly adopted in electron microscopy precisely because clean reference images are often unavailable — the only accessible "ground truth" is another noisy image taken at the same dose.
 - Forward link: Week 8 (self-supervised pre-training) and Week 9 (autoencoders) are label-free. Week 7 (CNNs) is usually supervised. Week 3 (PCA) is unsupervised.
-- Transition: "How much label information you have determines which category you work in. Now, what type of model?"
-::::
-
-## Supervised learning: regression vs classification
-
-:::: {.incremental}
-- **Regression:** predict a continuous target $y \in \mathbb{R}$.
-  - Example: predict the local strain value from a 4D-STEM diffraction pattern.
-  - Loss: MSE (Gaussian noise) or Poisson NLL (Poisson noise).
-- **Classification:** predict a discrete class label $y \in \{1,\ldots,K\}$.
-  - Example: classify each EELS spectrum as oxide, metal, or carbide.
-  - Loss: cross-entropy.
-- In EM, many tasks are neither cleanly one nor the other — strain maps are continuous, phase maps are discrete. Think carefully about the output type before choosing a loss.
-::::
-
-:::: {.notes}
-- This is a short definitional slide — the goal is to fix vocabulary, not to teach optimisation theory (that comes in Week 4).
-- The one point to land: the choice between regression and classification is set by the physical quantity you are trying to predict, not by personal preference. Strain is continuous → regression. Crystal phase is categorical → classification. Confusing them leads to models that produce nonsensical outputs (e.g., predicting a phase index of 2.7).
-- Misconception to preempt: "I can always convert regression to classification by binning." Yes, but you lose resolution and introduce arbitrary bin boundaries. Bin at [0–0.5%, 0.5–1%, …] strain? Which atoms fall in which bin near a dislocation core? The physics is continuous; respect that.
-- EM anchor: atomic-column position estimation is a regression task (sub-pixel precision required). Phase identification from EELS is a classification task (categorical output). Both appear in the same miniproject if you are doing automated defect analysis.
-- Transition: "Unsupervised learning finds structure without labels."
-::::
-
-## Unsupervised learning: clustering and structure discovery
-
-:::: {.incremental}
-- **Goal:** find compact representations or groupings of unlabelled data.
-- **Clustering:** partition data into groups by similarity — K-means, DBSCAN.
-- **Dimensionality reduction:** project high-dimensional data to a low-dimensional space — PCA (Week 3), autoencoders and t-SNE/UMAP (Week 9).
-- **EM example:** a 4D-STEM scan of a polycrystalline alloy produces thousands of diffraction patterns. K-means clustering on PCA-compressed patterns automatically segments the image into grains of different orientation.
-- No labels needed — the structure is discovered from the geometry of the data.
-::::
-
-:::: {.notes}
-- The standard pipeline for 4D-STEM phase segmentation is PCA compression followed by K-means clustering — we build this in Week 3.
-- The one point to land: unsupervised learning is not a theoretical curiosity — it is a daily tool in EM labs for phase mapping without manual annotation.
-- Misconception to preempt: "K-means tells you how many phases are present." K-means requires you to specify K in advance; that is a materials science decision, not a mathematical one.
-- EM anchor: clustering EELS spectra or 4D-STEM diffraction patterns automatically segments images into chemically or crystallographically distinct regions.
-- Forward link: Week 3 covers PCA in depth. Week 9 covers autoencoders as a non-linear alternative.
-- Transition: "Self-supervised learning closes the gap between supervised and unsupervised."
-::::
-
-## Self-supervised learning: the Noise2Noise principle
-
-:::: {.incremental}
-- **Idea:** use the data itself to generate supervision signals — no human labels.
-- **Noise2Noise** [@lehtinen2018noise2noise]: train a denoising network using pairs of noisy images of the same scene. The network learns to predict one noisy image from another — and the expectation of Poisson noise is the clean signal.
-- **Why it works for EM:** at the same dose, two independently acquired STEM images have the same signal but independent Poisson noise realisations.
-- **Result:** denoising performance comparable to supervised training against a clean reference image.
-::::
-
-:::: {.notes}
-- Noise2Noise (Lehtinen et al., ICML 2018) is the canonical self-supervised EM method. Its success depended entirely on the fact that Poisson noise is zero-mean conditional on the clean signal — so the network minimising MSE between two noisy images converges to the clean signal anyway.
-- The one point to land: the noise model matters for the theoretical guarantee. Noise2Noise works for zero-mean noise (Poisson, Gaussian, salt-and-pepper). It does not work for structured artefacts (scan drift, Moiré) because those are coherent, not zero-mean, across realisations.
-- Misconception to preempt: "I need a clean reference image to train a denoiser." Noise2Noise proves that you do not, as long as you can acquire two independent noisy measurements of the same scene. In practice, this means two low-dose scans instead of one.
-- EM anchor: cryo-EM movie data is another Noise2Noise-friendly format — each frame pair (odd/even) from a single electron counting movie constitutes a Noise2Noise training pair. This is now standard practice in cryo-EM preprocessing pipelines.
-- Forward link: the formal proof of why Noise2Noise works requires understanding expected loss under a Poisson model — sketched later today (noise model → loss) and revisited in Week 8 (self-supervision).
-- Transition: "With learning types mapped, we can now classify the model by how transparent it is."
+- Supervised splits into **regression** (continuous target, e.g. strain from a 4D-STEM pattern, atomic-column positions; loss MSE or Poisson NLL) and **classification** (discrete label, e.g. oxide / metal / carbide from EELS; loss cross-entropy). The output type is set by the physical quantity — a "phase index of 2.7" is nonsense. (Backup slide.)
+- Unsupervised in practice: PCA compression + K-means on 4D-STEM patterns segments grains without annotation (built in Week 3). K-means needs K in advance — a materials decision, not a mathematical one.
+- Noise2Noise works because the noise is zero-mean given the clean signal: MSE between two noisy realisations converges to the clean image. It fails for coherent artefacts (drift, Moiré). Odd/even frames of a cryo-EM movie are a ready-made training pair. (Backup slide; Week 8.)
+- Transition: "How much label information you have determines which category you work in. What does the supervised workflow look like?"
 ::::
 
 ## The supervised learning recipe
@@ -393,24 +350,7 @@ This is CRISP-DM phases 3–6, mapped onto ML terminology.
 - The one point to land: "each pixel is a count of scattered electrons" is the sentence that leads directly to Poisson statistics. Electrons arrive discretely, at random, at an average rate set by the scattering cross-section. The count is therefore Poisson-distributed.
 - Misconception to preempt: "the HAADF signal is a continuous intensity." It is measured as a continuous voltage, but it originates from discrete electron arrivals. The variance of that voltage is proportional to the mean — the signature of Poisson statistics.
 - EM anchor: this is why low-dose HAADF images of light-element materials (graphene, 2D heterostructures, biological membranes) look grainy — you cannot afford more dose, so the counts per pixel are low, variance is high, and SNR is poor.
-- Transition: "What about 4D-STEM and spectroscopy?"
-::::
-
-## 4D-STEM, EELS, and tomography
-
-:::: {.incremental}
-- **4D-STEM:** each probe position yields a full diffraction pattern. Maps strain, electric fields, magnetic fields, and phase — all from one scan. Shape `(ny, nx, ky, kx)`.
-- **EELS spectrum image:** magnetic prism disperses inelastically scattered electrons by energy loss. Maps chemical bonding at nanometre resolution. Shape `(ny, nx, E)`.
-- **EDS spectrum image:** characteristic X-rays from each pixel. Maps elemental composition. Shape `(ny, nx, E)`.
-- **Tilt-series tomography:** project the object from many angles; reconstruct a 3-D volume. Shape `(n_tilt, ny, nx)` before reconstruction.
-::::
-
-:::: {.notes}
-- This slide fills the "zoo" — students who have done experiments will recognise their modality. Those who haven't get a vocabulary. Keep it short; these modalities will each get their own time later in the course.
-- The one point to land: every modality is a tensor, and the tensor shape embeds the physics of the measurement. Learning the physics = learning the shape.
-- Misconception to preempt: "tomography is 3-D, so it must be more complicated than a 2-D image." Mathematically it is a 3-D reconstruction problem, but the raw data are 2-D projections stacked over tilt angle. The 3-D-ness comes from the inverse step (back-projection), not from the raw data format.
-- EM anchor: 4D-STEM is the most data-intensive routine modality. A single academic 4D-STEM session can easily generate 1 TB of raw data. This is why py4DSTEM was written — to make 4-D array manipulation accessible to non-programmers.
-- Forward link: Week 3 uses PCA to compress EELS spectrum images; Week 7 uses CNNs on HAADF images; Week 10 tokenises 4D-STEM patterns for transformers; Week 11 discusses automated acquisition.
+- The other modalities from the zoo, briefly: 4D-STEM maps strain, fields and phase from one scan (a session easily yields 1 TB — why py4DSTEM exists); EELS disperses inelastic electrons by energy loss (bonding), EDS records characteristic X-rays (composition); tomography raw data are 2-D projections stacked over tilt — the 3-D-ness comes from the inverse step. Forward links: PCA on EELS (Week 3), CNNs on HAADF (Week 7), 4D-STEM tokens for transformers (Week 10), automated acquisition (Week 11).
 - Transition: "Before data reaches the computer, it passes through a sensor. Let's trace that chain."
 ::::
 
@@ -579,7 +519,7 @@ This is CRISP-DM phases 3–6, mapped onto ML terminology.
 - Individual electrons arrive at the detector at random times.
 - Count $N$ in a fixed time window: $N \sim \text{Poisson}(\lambda)$.
 - Variance **equals** the mean: $\text{Var}(N) = \lambda$.
-- SNR $= \lambda / \sqrt{\lambda} = \sqrt{\lambda}$.
+- SNR $= \lambda / \sqrt{\lambda} = \sqrt{\lambda}$ → doubling SNR needs **4× the dose**.
 - Fundamental: cannot engineer away — it is the quantum nature of the electron.
 ::::
 :::
@@ -591,26 +531,8 @@ This is CRISP-DM phases 3–6, mapped onto ML terminology.
 - Misconception to preempt: "I can use Gaussian noise as an approximation for EM — it is close enough." For high counts (λ > ~20) the Poisson distribution looks Gaussian with σ = √λ — so the shapes are similar. But the variance–mean relation is different. A Gaussian model assumes constant variance; a Poisson model has signal-dependent variance. In ML: Gaussian → MSE loss; Poisson → Poisson NLL loss. Using MSE on low-count data is a silent physics error that causes models to underfit the noisy regions.
 - EM anchor: a typical HAADF pixel in a low-dose experiment might have λ = 50 counts → SNR = √50 ≈ 7. A high-dose pixel at λ = 5000 → SNR ≈ 71. The image looks quantitatively different — not just "more noisy," but structured noise with statistics that the denoiser must handle correctly.
 - Forward link: later today we derive the loss from the noise model and compare MSE and Poisson NLL on a simulated low-count fit; the notebook repeats the experiment.
-- Transition: "Let's make the SNR scaling concrete with numbers."
-::::
-
-## Poisson noise and dose: the SNR law
-
-:::: {.incremental}
-- **Signal-to-noise ratio** under Poisson statistics: $\mathrm{SNR} = \sqrt{\lambda}$ where $\lambda$ is the expected count.
-- $\lambda$ is proportional to **electron dose** — electrons per unit area at the sample.
-- To double SNR you must **quadruple** the dose ($\sqrt{4\lambda} = 2\sqrt{\lambda}$).
-- At low dose (beam-sensitive materials): damage limits the dose budget → SNR is fundamentally bounded.
-- **Consequence for data science:** denoising networks trained on EM data must model signal-dependent noise — Poisson, not Gaussian.
-::::
-
-:::: {.notes}
-- Build intuition with specific numbers. Typical STEM doses: 1000 e⁻/Å² for metals (plenty of signal); 10 e⁻/Å² for beam-sensitive 2D materials. At 10 e⁻/Å² and pixel size 0.1 Å, λ ≈ 0.1 counts/pixel — the image is almost pure noise! ML denoising is the only path to usable images at those doses.
-- The one point to land: the √λ law is a hard physical limit. You cannot beat it without changing the probe or the detector physics. You can only use it wisely — by choosing a noise-matched loss function and by denoising with a model that knows the statistics.
-- Misconception to preempt: "deep learning can remove all the noise." Deep learning can denoise well if trained on matching statistics, but it cannot recover information that was never captured (sub-shot-noise features). If λ < 1 count/pixel, individual electron arrivals are sparse — each pixel is either 0 or 1, and structure must be reconstructed from the spatial pattern of arrivals.
-- EM anchor: the "resolution revolution" in cryo-EM (2013, Nobel Prize 2017) was enabled partly by direct-electron detectors that count individual electrons, reducing effective noise well below what scintillator-based cameras could achieve.
-- Forward link: the Week 2 notebook simulates this directly — students will observe how image quality degrades as dose drops and measure the SNR vs dose empirically, confirming the √λ law.
-- Transition: "Let's look at what this looks like in a simulated image."
+- Dose numbers: ~1000 e⁻/Å² for metals, ~10 e⁻/Å² for beam-sensitive 2D materials. At 10 e⁻/Å² and 0.1 Å pixels, λ ≈ 0.1 counts/pixel — almost pure noise. Damage bounds the dose budget, so SNR is fundamentally bounded; denoisers must model signal-dependent (Poisson) noise, and they cannot recover information that was never captured.
+- Transition: "Let's see what this looks like in a simulated image."
 ::::
 
 ## Dose-dependent image quality: a simulation
@@ -1157,6 +1079,49 @@ $$-\log p = \lambda_i - y_i \log\lambda_i + \log(y_i!)$$
 - [All courses](../../index.html)
 
 <!-- END prev-next -->
+
+## Backup slides {visibility="uncounted"}
+
+Material moved out of the 90-minute path; use for questions or self-study.
+
+## Supervised learning: regression vs classification {visibility="uncounted"}
+
+:::: {.incremental}
+- **Regression:** predict a continuous target $y \in \mathbb{R}$.
+  - Example: predict the local strain value from a 4D-STEM diffraction pattern.
+  - Loss: MSE (Gaussian noise) or Poisson NLL (Poisson noise).
+- **Classification:** predict a discrete class label $y \in \{1,\ldots,K\}$.
+  - Example: classify each EELS spectrum as oxide, metal, or carbide.
+  - Loss: cross-entropy.
+- In EM, many tasks are neither cleanly one nor the other — strain maps are continuous, phase maps are discrete. Think carefully about the output type before choosing a loss.
+::::
+
+:::: {.notes}
+- This is a short definitional slide — the goal is to fix vocabulary, not to teach optimisation theory (that comes in Week 4).
+- The one point to land: the choice between regression and classification is set by the physical quantity you are trying to predict, not by personal preference. Strain is continuous → regression. Crystal phase is categorical → classification. Confusing them leads to models that produce nonsensical outputs (e.g., predicting a phase index of 2.7).
+- Misconception to preempt: "I can always convert regression to classification by binning." Yes, but you lose resolution and introduce arbitrary bin boundaries. Bin at [0–0.5%, 0.5–1%, …] strain? Which atoms fall in which bin near a dislocation core? The physics is continuous; respect that.
+- EM anchor: atomic-column position estimation is a regression task (sub-pixel precision required). Phase identification from EELS is a classification task (categorical output). Both appear in the same miniproject if you are doing automated defect analysis.
+- Transition: "Unsupervised learning finds structure without labels."
+::::
+
+## Self-supervised learning: the Noise2Noise principle {visibility="uncounted"}
+
+:::: {.incremental}
+- **Idea:** use the data itself to generate supervision signals — no human labels.
+- **Noise2Noise** [@lehtinen2018noise2noise]: train a denoising network using pairs of noisy images of the same scene. The network learns to predict one noisy image from another — and the expectation of Poisson noise is the clean signal.
+- **Why it works for EM:** at the same dose, two independently acquired STEM images have the same signal but independent Poisson noise realisations.
+- **Result:** denoising performance comparable to supervised training against a clean reference image.
+::::
+
+:::: {.notes}
+- Noise2Noise (Lehtinen et al., ICML 2018) is the canonical self-supervised EM method. Its success depended entirely on the fact that Poisson noise is zero-mean conditional on the clean signal — so the network minimising MSE between two noisy images converges to the clean signal anyway.
+- The one point to land: the noise model matters for the theoretical guarantee. Noise2Noise works for zero-mean noise (Poisson, Gaussian, salt-and-pepper). It does not work for structured artefacts (scan drift, Moiré) because those are coherent, not zero-mean, across realisations.
+- Misconception to preempt: "I need a clean reference image to train a denoiser." Noise2Noise proves that you do not, as long as you can acquire two independent noisy measurements of the same scene. In practice, this means two low-dose scans instead of one.
+- EM anchor: cryo-EM movie data is another Noise2Noise-friendly format — each frame pair (odd/even) from a single electron counting movie constitutes a Noise2Noise training pair. This is now standard practice in cryo-EM preprocessing pipelines.
+- Forward link: the formal proof of why Noise2Noise works requires understanding expected loss under a Poisson model — sketched later today (noise model → loss) and revisited in Week 8 (self-supervision).
+- Transition: "With learning types mapped, we can now classify the model by how transparent it is."
+::::
+
 
 ## References
 

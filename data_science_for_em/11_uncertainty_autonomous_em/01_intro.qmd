@@ -79,6 +79,17 @@ format:
 
 :::: {.notes}
 - One minute. Gesture at the structure: quantify → certify → act → guard.
+- **Timing plan (90 min, ~5 min slack):**
+  - 0–4: recap + road map
+  - 4–14: why uncertainty · aleatoric vs epistemic · predictive distribution / law of total variance
+  - 14–22: ensembles, MC dropout, MetalDAM case study, reject-for-review
+  - 22–32: calibration + ECE + temperature scaling · split conformal, CQR · who-guarantees-what table
+  - 32–46: GPs — definition, prior → posterior, the two formulas, balloon, length-scale, marginal likelihood, scorecard
+  - 46–57: BO — explore/exploit, experiment design, loop, acquisition functions, snapshots, BO vs random
+  - 57–64: DKL + automated 4D-STEM + choosing the tool
+  - 64–73: OOD trust gate (3 slides) · RL / agents outlook
+  - 73–84: notebook, key results, summary, must-know, Week 12 teaser
+  - 84–90: slack / questions (backup slides: GP σ-map, acquisition-function comparison)
 - The learning outcomes are the exam targets. The two GP formulas and the split-conformal recipe are the two "write it down from memory" items.
 - The notebook has three parts matching the lecture: Part A GP regression, Part B split conformal & CQR, Part C BO loop. Recommend students do Part A before next week's lecture at the latest.
 - Transition: "Why do we even need error bars?"
@@ -100,14 +111,16 @@ format:
 ## When point predictions fail in electron microscopy
 
 :::: {.incremental}
-- **Phase identification:** a CNN predicts "Fe₂O₃" for a boundary pixel. Clean decision or coin-flip? Without a confidence, misidentifications propagate silently into phase maps.
-- **Extrapolation without warning:** a model trained on 200–500 °C specimens predicts 600 °C with the same apparent confidence. It does not know it is extrapolating [@bishop2006pattern].
-- **New instrument or session:** a segmentation net trained on SEM #1 is run on SEM #2 after a detector swap — confident, smooth-looking, wrong maps. Errors are *silent*.
-- **Expensive experiment design:** 8 h of instrument time on a composition you already know well is wasted. Honest error bars tell you what is *worth* measuring.
-- **Root cause:** empirical-risk minimisation rewards average accuracy on the training distribution — it gives the model no incentive to express ignorance.
+- **Phase identification:** "Fe₂O₃" at a boundary pixel — clean decision or coin-flip?
+- **Extrapolation without warning:** trained on 200–500 °C, predicts 600 °C with the same confidence [@bishop2006pattern].
+- **New instrument or session:** detector swap → confident, smooth-looking, wrong maps. Errors are *silent*.
+- **Expensive experiment design:** honest error bars tell you what is *worth* measuring.
+- **Root cause:** empirical-risk minimisation gives the model no incentive to express ignorance.
 ::::
 
 :::: {.notes}
+- Examples in full: a CNN labels a boundary pixel "Fe₂O₃" and misidentifications propagate silently into phase maps; a model trained on 200–500 °C specimens does not know it is extrapolating at 600 °C; a net trained on SEM #1 runs on SEM #2 after a detector swap; 8 h of instrument time on a composition you already know well is wasted.
+- ERM rewards average accuracy on the training distribution — nothing more.
 - "Silent failure" is the key phrase: a model that returns NaN is safe — you know it failed. A model that returns a confident wrong number is the dangerous one.
 - The ERM point links back to Week 4: MSE/cross-entropy measure accuracy, not calibration. A model can have great test MSE and terrible practical safety.
 - The four bullets map to today's four tools: classification confidence (ensembles/MC dropout), extrapolation (GP variance, OOD), instrument shift (calibration, OOD gate), experiment design (BO).
@@ -342,22 +355,13 @@ $$f \sim \mathcal{GP}\big(m(\mathbf{x}),\ k(\mathbf{x},\mathbf{x}')\big)$$
 - At $|x-x'| = \ell$ the kernel is $e^{-0.5}\approx0.6$; at $3\ell$ it is $\approx0.01$ — nearly independent.
 ::::
 
-## GP prior: plausible functions before seeing data
-
-![GP prior with RBF kernel (ℓ=1, σ_f=1): six random function samples and the ±2σ prior envelope. Before any EM data, every composition is equally uncertain.](img/gp_prior_samples.png){width="78%"}
-
-:::: {.notes}
-- Each coloured curve is one plausible "model" of Fe³⁺ fraction vs composition. All smooth (RBF), all on the same vertical scale (σ_f), all disagreeing — we have seen no data.
-- The width of the cloud at any x is the prior variance σ_f². After conditioning, curves are forced near the observations.
-- Transition: "Now condition on data."
-::::
-
 ## Conditioning on data: prior → posterior
 
 ![Left: GP prior — plausible curves before any EM data. Right: posterior after 6 EELS measurements (black) — curves pass near the observations; beyond x=1.0 (red shading) the band widens back toward the prior.](img/gp_prior_to_posterior.png){width="84%"}
 
 :::: {.notes}
-- The central picture of the GP block. Tight bundle at the data, fanning out to the right: "the GP knows what it doesn't know — and says so."
+- Left panel first (prior): each coloured curve is one plausible "model" of Fe³⁺ fraction vs composition — all smooth (RBF), all on the same vertical scale (σ_f), all disagreeing because we have seen no data. The width of the cloud at any x is the prior variance σ_f².
+- Right panel: the central picture of the GP block. Tight bundle at the data, fanning out to the right: "the GP knows what it doesn't know — and says so."
 - Conditioning a joint Gaussian on some of its components gives another Gaussian: the posterior is again a GP, no approximation. This closure is why GPs are "exact Bayesian" regressors.
 - Ask: "where would the GP tell you to measure next?" → the red region. That is the BO hook for later today.
 ::::
@@ -383,16 +387,6 @@ $$\boxed{\sigma_*^2(\mathbf{x}_*) = k(\mathbf{x}_*,\mathbf{x}_*) - \mathbf{k}_*^
 - Variance as a sentence: "prior uncertainty minus the variance explained by the N observations."
 - The "depends only on x locations" property is the theoretical basis for active learning and experimental design.
 - $\sigma_n^2 \mathbf{I}$ is also the regulariser: without it the GP interpolates exactly through noisy points (and the matrix can be ill-conditioned — Week 3 conditioning callback).
-::::
-
-## GP posterior in pictures
-
-![Left: posterior mean and ±2σ band for 4 EELS measurements. Right: posterior standard deviation σ*(x) alone — near zero at the measurement locations, rising toward the prior σ_f in unexplored regions. This σ-map is what active learning and BO consume.](img/gp_posterior_formulas.png){width="84%"}
-
-:::: {.notes}
-- Right panel: the "uncertainty map". No y-values are needed to draw it — only the x locations.
-- It approaches but does not reach σ_f exactly within the plotted range; far enough away it does.
-- Transition: "Here is the balloon effect on the notebook-style example."
 ::::
 
 ## The key intuition: uncertainty balloons away from data
@@ -517,15 +511,6 @@ $$\alpha_{\text{EI}}(\mathbf{x}) = (\mu_* - f^+ - \xi)\,\Phi(Z) + \sigma_*\,\phi
 - ξ in EI/PI plays the role of κ in UCB.
 ::::
 
-## Three acquisition functions on the same GP posterior
-
-![Top: GP surrogate after 3 measurements. Bottom: UCB (κ=2), EI and PI. All agree on the promising region but differ in how sharply they peak; each is maximised on a dense grid.](img/acquisition_functions.png){width="72%"}
-
-:::: {.notes}
-- The choice of acquisition function rarely changes the qualitative outcome on smooth problems; the *amount of exploration* does (next slide).
-- Point at where each function peaks and why: UCB rewards σ more broadly, EI concentrates where improvement over f⁺ is plausible.
-::::
-
 ## The BO loop in action on a multi-modal objective
 
 ![Four snapshots of BO (UCB, κ=3, SEED=42) on a synthetic 4D-STEM SNR vs convergence-angle curve with a broad deceptive local optimum (x≈0.25, orange) and a narrow global peak (x≈0.78, green). Blue: GP ±2σ; dashed red: next query. The loop escapes the local optimum and concentrates measurements on the global peak.](img/bo_loop_snapshots.png){width="88%"}
@@ -565,15 +550,15 @@ $$\alpha_{\text{EI}}(\mathbf{x}) = (\mu_* - f^+ - \xi)\,\Phi(Z) + \sigma_*\,\phi
 ## Deep kernel learning: GP uncertainty for image inputs
 
 :::: {.incremental}
-- **Problem:** in 4D-STEM we want to predict a property at an *unvisited probe position* from its HAADF patch (e.g. 32×32 = 1024-D). RBF on raw pixels measures noise, not structure → useless surrogate.
-- **Deep kernel** [@wilson2016deep]: pass inputs through a neural feature map $g(\mathbf{x};\mathbf{w})$, then apply a base kernel in the learned space:
+- **Problem:** predict a property at an *unvisited probe position* from its HAADF patch (1024-D). RBF on raw pixels measures noise, not structure.
+- **Deep kernel** [@wilson2016deep]: a neural feature map $g(\mathbf{x};\mathbf{w})$, then a base kernel in the learned space:
 $$k_{\text{DKL}}(\mathbf{x},\mathbf{x}') = k_{\text{RBF}}\big(g(\mathbf{x};\mathbf{w}),\ g(\mathbf{x}';\mathbf{w})\big)$$
-- **Joint training:** network weights $\mathbf{w}$ and GP hyperparameters maximise the *same* log marginal likelihood — backprop through the GP formulas (Week 6 autograd).
-- **Result:** NN representation power + GP posterior mean *and* σ → acquisition functions work unchanged on image inputs.
-- **Caveat:** needs enough data to learn $g$ (tens–hundreds of points); tiny datasets overfit the feature map and σ becomes unreliable.
+- **Joint training:** weights $\mathbf{w}$ and GP hyperparameters maximise the *same* log marginal likelihood.
+- **Result:** GP mean *and* σ on image inputs → acquisition functions work unchanged. **Caveat:** needs enough data to learn $g$.
 ::::
 
 :::: {.notes}
+- Joint training = backprop through the GP formulas (Week 6 autograd). Needs tens–hundreds of points; tiny datasets overfit the feature map and σ becomes unreliable.
 - MacKay's old question (SS25 lecture): can we combine the representation learning of NNs with the calibrated uncertainty of GPs? DKL is one answer.
 - The feature extractor decides which aspects of the patch matter for the target; the GP measures similarity in that space. They learn together.
 - Architecture thread: the CNN from Week 7 becomes the *kernel* of a GP.
@@ -606,14 +591,15 @@ $$k_{\text{DKL}}(\mathbf{x},\mathbf{x}') = k_{\text{RBF}}\big(g(\mathbf{x};\math
 ## Choosing the right tool for acquisition
 
 :::: {.incremental}
-- **Standard BO (GP + RBF/Matérn):** 1–5 scalar knobs (voltage, convergence angle, dwell time, annealing temperature), 10–100 measurements.
-- **DKL active learning:** image-patch or spectral inputs, spatial field mapping, $10^2$–$10^4$ candidate positions.
-- **Sparse GPs:** many measurements ($N > 10^3$), streaming data.
-- **Always log the trajectory:** where the agent measured *and* where it chose not to — otherwise the dataset carries an invisible selection bias.
-- **Before trusting the loop:** is the surrogate calibrated on this specimen? Does the new region still look like what the model was trained on? → next section.
+- **Standard BO (GP + RBF/Matérn):** 1–5 scalar knobs, 10–100 measurements.
+- **DKL active learning:** image-patch or spectral inputs, $10^2$–$10^4$ candidate positions.
+- **Sparse GPs:** $N > 10^3$, streaming data.
+- **Always log the trajectory:** where the agent measured *and* where it did not — else invisible selection bias.
+- **Before trusting the loop:** calibrated on this specimen? Still in-distribution? → next section.
 ::::
 
 :::: {.notes}
+- Examples of scalar knobs: voltage, convergence angle, dwell time, annealing temperature. DKL covers spatial field mapping.
 - Most common student mistake in miniprojects: DKL on 5 data points. The feature map overfits and σ is meaningless.
 - The selection-bias point is scientific integrity: if the agent skipped a region that contained the interesting defect, the published statistics are biased. Archive the full acquisition history.
 - Transition: "An autonomous loop is only as trustworthy as its uncertainty. When does σ lie?"
@@ -682,13 +668,14 @@ $$k_{\text{DKL}}(\mathbf{x},\mathbf{x}') = k_{\text{RBF}}\big(g(\mathbf{x};\math
 :::: {.incremental}
 - **RL:** learn a policy $\pi(a\mid s)$ maximising $\mathbb{E}\big[\sum_t \gamma^t r_t\big]$ from rewards — no labels [@bishop2006pattern].
 - **Time scales:** BO for slow loops (one measurement per minutes–hours); RL policies for fast control (autofocus, stigmation, drift — every 0.1–10 s); DKL in between.
-- **Agents:** LLM-based orchestrators that call BO, segmentation and analysis tools and plan sessions — an active research frontier.
-- **Risks:** reward hacking (a "sharp" image of contamination), sim-to-real gap, silent OOD — every agent needs today's trust gate.
+- **Agents:** LLM orchestrators calling BO, segmentation and analysis tools.
+- **Risks:** reward hacking, sim-to-real gap, silent OOD, selection bias — every agent needs today's trust gate.
 ::::
 :::
 ::::
 
 :::: {.notes}
+- Agents: LLM-based orchestrators that plan sessions — an active research frontier (callback to the Week 10 LLM agents). Reward hacking example in one phrase: a "sharp" image of contamination.
 - Keep this brief — an outlook, not examined in depth beyond the vocabulary (state, action, reward, policy) and the time-scale distinction.
 - Control hierarchy: level 1 real-time corrections (autofocus RL, deployed in commercial software), level 2 session setup (alignment), level 3 experiment-level optimisation (BO, DKL). Level 1 failing silently corrupts level-3 measurements — monitor all levels.
 - Reward hacking example: an autofocus agent maximising Laplacian variance can prefer sharp noise or contamination edges. Test policies on out-of-distribution images before deployment.
@@ -787,6 +774,28 @@ $$k_{\text{DKL}}(\mathbf{x},\mathbf{x}') = k_{\text{RBF}}\big(g(\mathbf{x};\math
 - [All courses](../../index.html)
 
 <!-- END prev-next -->
+
+## Backup slides {visibility="uncounted"}
+
+Material moved out of the 90-minute lecture path; useful for questions and self-study.
+
+## GP posterior in pictures {visibility="uncounted"}
+
+![Left: posterior mean and ±2σ band for 4 EELS measurements. Right: posterior standard deviation σ*(x) alone — near zero at the measurement locations, rising toward the prior σ_f in unexplored regions. This σ-map is what active learning and BO consume.](img/gp_posterior_formulas.png){width="84%"}
+
+:::: {.notes}
+- Right panel: the "uncertainty map". No y-values are needed to draw it — only the x locations.
+- It approaches but does not reach σ_f exactly within the plotted range; far enough away it does.
+::::
+
+## Three acquisition functions on the same GP posterior {visibility="uncounted"}
+
+![Top: GP surrogate after 3 measurements. Bottom: UCB (κ=2), EI and PI. All agree on the promising region but differ in how sharply they peak; each is maximised on a dense grid.](img/acquisition_functions.png){width="72%"}
+
+:::: {.notes}
+- The choice of acquisition function rarely changes the qualitative outcome on smooth problems; the *amount of exploration* does (BO vs random slide).
+- Point at where each function peaks and why: UCB rewards σ more broadly, EI concentrates where improvement over f⁺ is plausible.
+::::
 
 ## References
 

@@ -36,14 +36,14 @@ format:
 ## Recap: where we left off
 
 :::: {.incremental}
-- **Week 9:** unsupervised learning — k-means and GMMs, autoencoders, the VAE (ELBO, reparameterisation), rVAE for atomic-resolution images, t-SNE/UMAP and how latent spaces mislead.
-- Key insight from Week 9: a good *representation* is most of the work — once spectra or patterns sit in a well-structured latent space, clustering and anomaly detection become easy.
+- **Week 9:** clustering, autoencoders, the VAE and rVAE, t-SNE/UMAP — a good *representation* is most of the work.
 - **The architecture thread so far:** MLP (Week 6) — every input talks to every hidden unit with a *fixed* weight; CNN (Week 7) — only *neighbouring pixels* talk, with shared weights.
 - **Gap:** many EM signals are not "local grids": Friedel pairs sit on opposite sides of a diffraction pattern, EELS edges couple over hundreds of eV, atom columns form an irregular *set* with vacancies.
 - **Today's question:** how do we build networks whose connectivity matches *that* structure — learned from content (attention) or given by physics (graphs)?
 ::::
 
 :::: {.notes}
+- Week 9 in detail: k-means and GMMs, the VAE (ELBO, reparameterisation), rVAE for atomic-resolution images, and how t-SNE/UMAP latent spaces mislead. Once data sit in a well-structured latent space, clustering and anomaly detection become easy.
 - Open with the Week 9 notebook: the VAE latent space separated the phases nicely — but the encoder was an MLP or a CNN. Today we ask whether those encoders were the right *shape* for the data.
 - The one point to land: every architecture encodes an assumption about *which inputs are allowed to interact*. MLP: all, with fixed weights. CNN: only neighbours. Today: attention (all, with input-dependent weights) and graphs (whoever is connected by physics).
 - Misconception to preempt: "transformers are a new paradigm that replaces everything before." They are one more point on the inductive-bias axis; the ERM loop from Week 4 and backprop from Week 6 are unchanged.
@@ -57,7 +57,7 @@ format:
 - **Why does a CNN struggle to tell a square from a rectangular lattice in a rotated diffraction pattern — and why does one attention layer help?**
 - **What does an attention map actually tell you — and why is it not an explanation?**
 - **How do you learn on a set of atom columns whose number and order change from image to image?**
-- **Road map:** architecture as inductive bias (3) · attention: Q/K/V, scaled dot product, multi-head (8) · positional encoding (3) · transformer block & ViT (4) · tokenising EM data, 4D-STEM ViT/MAE, DiffractGPT (7) · attention maps and why attention ≠ explanation (4) · graphs: atom columns, message passing, permutation invariance, GNNs for defects (8) · sequences for in-situ EM (3) · the unifying picture + decision guide (3) · wrap-up (4).
+- **Road map:** inductive bias · attention (Q/K/V, $\sqrt{d_k}$, multi-head) · positional encoding · transformer block & ViT · tokenising EM data, 4D-STEM/MAE, DiffractGPT · attention ≠ explanation · graphs & message passing · sequences · unifying picture · wrap-up.
 - **Self-study:** `notebooks/week10_attention_gnn.ipynb` — self-attention from scratch, a mini-ViT on synthetic diffraction patterns (with a positional-encoding ablation), and a hand-written message-passing layer on an atom-column graph.
 ::::
 
@@ -66,6 +66,20 @@ format:
 - The one point to land: we will see the *same* operation — "update each element from a weighted sum of others" — three times: CNN (grid neighbours, fixed weights), GNN (graph neighbours), transformer (everyone, weights from content).
 - Misconception to preempt: "I need a GPU for transformers." The notebook trains a transformer with ~60 k parameters on a laptop CPU in about a minute. Scale is not the concept.
 - Pacing: 2 minutes, do not read every road-map item.
+- **Timing plan (90 min, lecture path ≈ 85 min + 5 min questions):**
+  - 0–6 min: recap, questions/road map, learning outcomes
+  - 6–11: architecture = inductive bias; when CNN locality fails
+  - 11–25: attention — soft dictionary, matrix view, hand-traced example, $\sqrt{d_k}$, multi-head
+  - 25–32: permutation equivariance, sinusoidal/learned PE, PE for EM axes
+  - 32–39: transformer block, ViT, ViT vs CNN
+  - 39–48: tokenising EM data, 4D-STEM disc-token transformer + MAE, spectra/XRD/DiffractGPT, mini-ViT notebook results
+  - 48–56: attention maps, attention ≠ explanation, occlusion check, responsible use
+  - 56–67: atom-column graphs, graph construction, message passing, permutation invariance, depth/over-smoothing, GNN defect results
+  - 67–70: sequences for in-situ EM
+  - 70–75: unifying picture, decision guide
+  - 75–85: notebook pointer, summary, must-know, next week
+  - 85–90: slack / questions
+- Backup slides after "Continue": 4D-STEM benchmark, ViT for XRD, transformer anti-patterns, GNNs beyond the microscope, practical sequence-model checklist.
 - Transition: "Let's start with what we already know — architectures as assumptions."
 ::::
 
@@ -135,30 +149,6 @@ By the end of this week you can:
 - Misconception to preempt: "CNNs cannot do global things." They can — ResNets classify ImageNet — but through many layers and pooling. The question is efficiency and data, not possibility.
 - EM anchor: Friedel symmetry makes "long-range" exact: the two discs of a Friedel pair are physically coupled by construction.
 - Transition: "So what would a layer look like whose connections are decided by the content?"
-::::
-
-## The motivating question
-
-:::: {.incremental}
-- **CNN:** combine each position with its spatial neighbours — *fixed, local* weights.
-- **MLP:** combine each position with every other — *fixed, global* weights.
-- **What if the combination weights were computed per input, from the content?**
-- That is attention: $\mathbf{z}_i = \sum_j a_{ij}(\mathbf{X})\,\mathbf{v}_j$, where the weights $a_{ij}$ depend on how *similar* tokens $i$ and $j$ are.
-::::
-
-. . .
-
-| | who interacts | weights |
-|---|---|---|
-| MLP | everyone | fixed after training |
-| CNN | spatial neighbours | fixed, shared |
-| Attention | everyone | **computed from the input** |
-
-:::: {.notes}
-- Build the three-row table on the board and keep it up; every later formula answers "how do we compute those input-dependent weights?"
-- The one point to land: *per input*. A CNN applies the same kernel to every image; attention builds a different connectivity pattern for every diffraction pattern.
-- Misconception to preempt: "input-dependent weights = a bigger MLP." No — the number of parameters of an attention layer does not depend on the number of tokens, so the same layer works for 16 spectral windows or 256 image patches.
-- Transition: "Here is the cleanest way to think about the mechanism: a soft dictionary."
 ::::
 
 <!-- ===== §2. Attention ===== -->
@@ -283,6 +273,7 @@ $$
 - $H$ heads with $d_k = d/H$ each → same cost as one full-width head.
 - Each head learns its own notion of similarity: one head may pair Friedel partners, another group discs on the same lattice row, another attend to the central beam.
 - Typical: ViT-Tiny $d = 192$, $H = 3$; our notebook $d = 48$, $H = 4$.
+- Heads have **no guaranteed interpretable role** — do not over-read one head.
 ::::
 ::::
 :::: {.column width="45%"}
@@ -484,10 +475,10 @@ class Block(nn.Module):
 :::: {.columns}
 :::: {.column width="45%"}
 :::: {.incremental}
-- **4D-STEM:** a diffraction pattern at every probe position — $10^5$–$10^6$ patterns per scan.
-- **Je et al. (2026):** each **Bragg disc is a token** (radius $k_r$, angle $k_\theta$, intensity $I$ embedded and summed); a transformer encoder mixes the discs; mean pooling + MLP head predicts orientation and phase [@dstem_transformer2024].
-- Trained with a symmetry-aware geodesic loss on orientations — the crystal symmetry enters the *loss* (Week 2 thread: physics → loss).
-- **Result:** orientation maps up to ~100× faster than template matching, with comparable maps.
+- **4D-STEM:** $10^5$–$10^6$ diffraction patterns per scan.
+- **Je et al. (2026):** each **Bragg disc is a token** $(k_r, k_\theta, I)$; encoder + mean pooling → orientation and phase; symmetry-aware loss [@dstem_transformer2024].
+- **Amortised inference:** ~14× (CPU) to ~100× (GPU) faster than template matching.
+- **Few labels?** **Masked autoencoder** pretext [@he2022mae]: hide ~75 % of patches, reconstruct them — no labels; then fine-tune on a few hundred labelled positions.
 ::::
 ::::
 :::: {.column width="55%"}
@@ -500,65 +491,20 @@ class Block(nn.Module):
 - The one point to land: **amortised inference** — one forward pass per pattern replaces a per-pattern search over a template library. That is why it scales to millions of patterns.
 - Note that disc tokens with no positional index form a *set*; the geometry is in the token features $(k_r, k_\theta)$. Permutation-invariance is exactly right here — the order in which a peak finder lists discs is meaningless.
 - Honest validation: hold out *whole scans*, not random probe positions — neighbouring positions are nearly identical (Week 4 leakage).
-- This is a 2026 arXiv preprint; treat numbers as preliminary.
+- This is a 2026 arXiv preprint; treat numbers as preliminary. Benchmark figure: backup slide.
+- MAE (Week 8 link): a 4D-STEM scan has $10^5$+ patterns but zero labels; reconstructing masked discs from visible ones forces the encoder to learn the lattice. Pretraining on your own scans is fine if evaluation scans are held out and the pretraining data are reported.
+- Transition: "Spectra and 1-D diffraction work the same way — and transformers can also *generate*."
 ::::
 
-## 4D-STEM transformer: speed and the MAE pretext
-
-:::: {.columns}
-:::: {.column width="45%"}
-:::: {.incremental}
-- **Speed:** at $10^6$ patterns, ~14× (CPU) to ~98× (GPU) faster than template matching [@dstem_transformer2024].
-- **The label problem:** orientation labels need simulation or slow indexing; phase labels need expert annotation.
-- **Masked autoencoder (MAE) pretext** [@he2022mae]: hide 75 % of patches, reconstruct them from the rest — *no labels*. The unlabelled 4D-STEM stack itself is the pretraining corpus.
-- Then fine-tune (or linear-probe, Week 8) on the few hundred labelled positions you can afford.
-::::
-::::
-:::: {.column width="55%"}
-![Template matching (b) vs transformer (c) with identical inputs and outputs; wall time vs number of patterns (d) and per-step GPU timing (e) [@dstem_transformer2024].](img/dstem_fig3_benchmark.png){width="100%"}
-::::
-::::
-
-:::: {.notes}
-- Connect to Week 8: MAE is the masked-modelling flavour of self-supervision; here it becomes the natural pretraining for diffraction and spectra.
-- The one point to land: a 4D-STEM scan contains $10^5$+ patterns but typically zero labels. MAE turns that asymmetry into an advantage.
-- Why MAE is plausible physically: diffraction patterns are highly redundant (symmetry, Friedel pairs) — reconstructing masked discs from visible ones forces the encoder to learn the lattice.
-- Misconception to preempt: "pretraining on my own scan is cheating." It is not, as long as the evaluation scans are held out from the labelled fine-tuning *and* you report which data was used for pretraining.
-- Transition: "Spectra and 1-D diffraction work the same way."
-::::
-
-## Spectra and XRD as token sequences
-
-:::: {.columns}
-:::: {.column width="45%"}
-:::: {.incremental}
-- Cut the 1-D pattern into fixed-length segments → tokens; prepend [CLS]; add positional encoding; transformer encoder; linear head.
-- Phase identification depends on the *set* of peak positions and their ratios across the whole $2\theta$ (or energy) axis — a relational, long-range task.
-- **Multimodal:** elemental priors (known chemistry) enter as extra tokens — no bolted-on branch needed [@vit_xrd2024].
-- **EELS/EDS analogue:** windows along the energy axis; edge onset + fine structure coupled in one layer. Poisson noise (Week 2) still dictates the loss.
-::::
-::::
-:::: {.column width="55%"}
-![ViT for XRD: the 1-D pattern is sliced into segments (tokens), a CLS token and spectral + positional embeddings are added, a transformer encoder mixes the segments, and a head outputs phase identification/quantification [@vit_xrd2024].](img/vitxrd_fig1_architecture.png){width="100%"}
-::::
-::::
-
-:::: {.notes}
-- The one point to land: the same ViT recipe works on 1-D signals; "patch" becomes "energy window".
-- EM anchor: an EELS spectrum image is a 2-D grid of 1-D spectra — you can token along energy (per-pixel classification) or across pixels (spatial context). Same choice as 4D-STEM.
-- Misconception to preempt: "a 1-D CNN cannot do this." It can, with enough depth; the transformer's advantage is one-layer coupling of distant peaks and easy fusion of extra modalities.
-- Pitfall: if energy calibration drifts between sessions, absolute-energy positional encodings bake in the drift. Align spectra (Week 3 preprocessing) first.
-::::
-
-## DiffractGPT and the LLM outlook
+## Spectra, XRD and DiffractGPT
 
 :::: {.columns}
 :::: {.column width="48%"}
 :::: {.incremental}
-- **DiffractGPT** [@choudhary2025diffractgpt]: a *generative* pretrained transformer maps a powder XRD pattern → atomic structure, written as a text sequence; optional chemistry conditioning; candidate structures relaxed with a force field.
-- Structure determination as **conditional sequence generation** — an inverse problem (Weeks 12–13) solved by amortised generation instead of search.
-- **LLMs in the EM lab:** literature mining, code generation for analysis pipelines, agents that call instrument APIs (Week 11: autonomous EM).
-- Caveat: generated structures are *candidates* — physics validation (refinement, DFT, simulation vs. measurement) is non-negotiable.
+- **1-D signals:** XRD/EELS windows along $2\theta$ or energy → tokens; one layer couples distant peaks [@vit_xrd2024].
+- **DiffractGPT** [@choudhary2025diffractgpt]: a *generative* transformer maps powder XRD → atomic structure as a token sequence — an inverse problem (Weeks 12–13) solved by generation.
+- **LLM outlook:** literature mining, analysis code, agents calling instrument APIs (Week 11).
+- Caveat: outputs are *candidates* — physics validation is non-negotiable.
 ::::
 ::::
 :::: {.column width="52%"}
@@ -567,6 +513,8 @@ class Block(nn.Module):
 ::::
 
 :::: {.notes}
+- ViT-for-XRD details (segment tokens, elemental priors as extra tokens, energy-calibration pitfall): backup slide. For EELS, absolute-energy positional encodings bake in calibration drift — align spectra first (Week 3).
+- DiffractGPT: optional chemistry conditioning; candidate structures relaxed with a force field.
 - Contrast discriminative (ViT: pattern → label) with generative (GPT: pattern → structure tokens). Both are transformers; the decoder uses a causal mask.
 - The one point to land: once everything is a token sequence — patterns, structures, text — one architecture can map between modalities. That is the real reason transformers took over.
 - Misconception to preempt: "an LLM can solve structures by reading the pattern." DiffractGPT is trained on paired pattern/structure data from a database; outside that distribution (new chemistries, multiphase samples, strong texture) expect failures. Week 11 (uncertainty, OOD) is the safety net.
@@ -590,23 +538,6 @@ class Block(nn.Module):
 - Misconception to preempt: "high accuracy on a synthetic test set means it works on real data." Real patterns have dynamical intensities, thickness effects, detector artefacts — the synthetic test set shares the generator with training, which is the most optimistic split imaginable.
 - Dose shift: the drop at 10× lower dose is a preview of Week 11 — a model has no way to tell you it is out of distribution unless you build that in.
 - Transition: "The model also gives us attention maps. What do they mean?"
-::::
-
-## Anti-patterns for transformers on EM data
-
-:::: {.incremental}
-- **Data hunger:** from-scratch ViT on 500 micrographs → overfit; a ResNet or U-Net wins. Fix: pretraining (MAE/DINO, Week 8) or a smaller model.
-- **Positional embedding forgotten or shuffled:** the model silently becomes a bag of patches. Fix: ablate and check the drop.
-- **Patch seams through discs:** accuracy caps. Fix: smaller/overlapping patches or disc tokens.
-- **Dose / detector mismatch:** trained at high dose, deployed on beam-sensitive samples → confident and wrong. Fix: dose augmentation (Week 8), validate at deployment dose, uncertainty (Week 11).
-- **Leaky splits:** random probe positions of the same scan in train and test → inflated accuracy. Fix: split by scan / specimen (Week 4).
-::::
-
-:::: {.notes}
-- Each item is a real lab failure; ask students which ones they would detect with the standard train/val/test protocol (only the last one — and only if the split is grouped).
-- The one point to land: most transformer failures in EM are *data* failures, not architecture failures.
-- War story: a strain-mapping model trained on robust inorganic data, deployed at a tenth of the dose on a battery cathode, produced smooth, plausible — and wrong — maps with no warning.
-- Transition: "Now to explainability — the thread we pick up in every model week."
 ::::
 
 <!-- ===== §5. Attention maps and explainability ===== -->
@@ -641,7 +572,7 @@ class Block(nn.Module):
 - **Values matter, not just weights:** $\mathbf{z}_i = \sum_j a_{ij}\mathbf{v}_j$ — a large $a_{ij}$ on a token with a tiny $\mathbf{v}_j$ contributes nothing; a small weight on a huge value can dominate.
 - **Residual stream bypass:** $X' = X + \mathrm{MHA}(\cdot)$ — information flows around attention; the head output is only part of the story.
 - **Mixing through depth:** after layer 1, token $j$ already contains information from all other patches; "attention to patch $j$" in layer 3 is not attention to the *pixels* of patch $j$.
-- **Non-uniqueness:** Jain & Wallace found attention weights often correlate weakly with gradient/leave-one-out importance, and different attention distributions can yield the same prediction [@jain2019attention]; Wiegreffe & Pinter showed the claim depends on the test — attention can be informative, but must be *validated* [@wiegreffe2019attention].
+- **Non-uniqueness:** different attention patterns can give the same prediction [@jain2019attention]; attention *can* be informative, but must be validated [@wiegreffe2019attention].
 ::::
 
 . . .
@@ -649,6 +580,7 @@ class Block(nn.Module):
 > Attention is a hypothesis about what matters. An intervention (occlusion, ablation, counterfactual) is the test.
 
 :::: {.notes}
+- Literature: Jain & Wallace found attention weights often correlate weakly with gradient/leave-one-out importance; Wiegreffe & Pinter showed the conclusion depends on the test.
 - This is the Week 10 entry in the explainability ladder: attention sits with saliency (Week 7) as a *descriptive* tool, below interventional evidence.
 - The one point to land: "the model attends to X" ≠ "the prediction depends on X". Only an intervention measures dependence.
 - Misconception to preempt: "the debate was settled — attention is useless." No: the correct position is that attention can be informative, but you must check it against an intervention on your task.
@@ -659,6 +591,8 @@ class Block(nn.Module):
 ## Checking attention against occlusion (notebook)
 
 ![Top: last-layer CLS attention (head mean) overlaid on three test patterns. Bottom: occlusion sensitivity — the drop in predicted-class probability when each 4×4 patch is blanked. Spearman rank correlation per pattern in the titles; mean over 100 test patterns in the header.](img/attention_vs_occlusion.png){width="62%"}
+
+**Mean Spearman correlation, attention vs occlusion (100 patterns): ≈ 0.04 — essentially none.**
 
 :::: {.notes}
 - Explain occlusion: blank one patch, re-run the model, record how much the probability of the predicted class drops. That is a (crude) intervention — it measures dependence.
@@ -762,7 +696,7 @@ $$
 - After $L$ layers, node $i$ has seen all nodes within $L$ hops — the GNN analogue of the CNN receptive field (Week 7).
 - **Too shallow:** a label that depends on the second shell cannot be learned with one layer.
 - **Too deep:** repeated neighbour averaging makes all node embeddings converge — **over-smoothing**; the GNN forgets which column is which.
-- **Practical recipe (materials):** 2–4 message-passing layers + residual connections + RBF-expanded distances.
+- **Practical recipe (materials):** 2–4 layers + residuals + RBF-expanded *relative* distances/displacements (not absolute positions → translation invariance).
 - Long-range effects (elastic fields of a dislocation, charge) are hard for local GNNs — add a global node (MEGNet-style) or attention layers → graph transformers.
 ::::
 
@@ -794,24 +728,9 @@ $$
 - The one point to land: the task is designed so that information *must* come from neighbours. A per-node model is stuck at 0.5 by construction; one hop of message passing is exactly what the label needs.
 - Honest validation: we split by *image*, not by node. Nodes in the same image share noise and lattice realisation — a node-level random split would leak (Week 4).
 - Real EM extension: node labels from simulation (known dopant positions), edge features = measured displacements → strain classification or dopant identification. Real-data caveat: column-finding errors propagate into graph errors.
-- Misconception to preempt: "the second layer always helps." Here it barely changes anything (0.99 → 1.00) because the label is 1-hop. Depth should match the physics of the label.
-::::
-
-## GNNs for materials beyond the microscope
-
-:::: {.incremental}
-- **CGCNN** — crystal graph, gated convolution on bonds, sum/mean pooling → formation energy, band gap [@xie2018cgcnn].
-- **SchNet** — continuous-filter convolutions on interatomic distances, rotation/translation invariant by construction [@schutt2018schnet].
-- **Equivariant GNNs** (NequIP, MACE) — vector/tensor features, machine-learned interatomic potentials (MG U09).
-- **Where EM meets them:** atom positions from STEM/tomography → graph → GNN predicts local energy/strain; or GNN potentials generate structures for simulation-based training data (Week 8: sim-to-real).
-- Beyond atoms: grain graphs from EBSD/SEM (grains = nodes, boundaries = edges) → property prediction from microstructure topology.
-::::
-
-:::: {.notes}
-- Keep this brief — these architectures are treated in detail in Materials Genomics (U07, U09). The DSEM message: the same message-passing template underlies all of them.
-- The one point to land: graphs are the natural representation whenever your data are *objects with relations* — atoms, columns, grains, particles.
-- EM anchor: grain-boundary networks from EBSD are graphs; grain-growth or crack-path models on those graphs are an active research area.
+- CGCNN, SchNet, equivariant GNNs and grain graphs: backup slide ("GNNs for materials beyond the microscope"); covered in depth in Materials Genomics U07/U09.
 - Transition: "One more structure we see in EM: time."
+- Misconception to preempt: "the second layer always helps." Here it barely changes anything (0.99 → 1.00) because the label is 1-hop. Depth should match the physics of the label.
 ::::
 
 <!-- ===== §7. Sequences ===== -->
@@ -821,11 +740,10 @@ $$
 :::: {.columns}
 :::: {.column width="50%"}
 :::: {.incremental}
-- In-situ heating, biasing, liquid-cell or environmental TEM produce **movies**: frame $t$ depends on frames $t-1, t-2, \dots$
-- **RNN / LSTM:** carry a hidden state $\mathbf{s}_t = f(\mathbf{s}_{t-1}, \mathbf{x}_t)$ with shared weights across time; the LSTM's gates mitigate vanishing gradients [@hochreiter1997lstm].
-- Limits: sequential computation (slow), long-range memory still fades.
-- **Transformer with causal mask:** every frame attends to all *earlier* frames in one layer; parallel training. Positional encoding = time stamp.
-- Typical EM tasks: drift/tracking, nucleation-event detection, forecasting a phase transformation, anomaly flags during automated acquisition.
+- In-situ heating, biasing, liquid-cell TEM → **movies**: frame $t$ depends on earlier frames.
+- **RNN / LSTM:** hidden state $\mathbf{s}_t = f(\mathbf{s}_{t-1}, \mathbf{x}_t)$, weights shared over time; gates mitigate vanishing gradients [@hochreiter1997lstm]. Sequential and slow; memory fades.
+- **Causal transformer:** each frame attends to all *earlier* frames in one layer; parallel training.
+- **Start frame-wise** (Week 7 per-frame segmentation + tracking); add temporal context only when the label needs history.
 ::::
 ::::
 :::: {.column width="50%"}
@@ -834,26 +752,12 @@ $$
 ::::
 
 :::: {.notes}
-- Keep this to ~4 minutes: it is a pointer, not a full treatment (ML-PC U07 covers sequences and probabilistic forecasting in depth).
+- Keep this to ~3 minutes: it is a pointer, not a full treatment (ML-PC U07 covers sequences and probabilistic forecasting in depth). The practical checklist (factorised space/time attention, latent sequences, cumulative dose as covariate) is on a backup slide.
+- Typical EM tasks: drift/tracking, nucleation-event detection, forecasting a phase transformation, anomaly flags during automated acquisition.
 - The one point to land: a sequence is a 1-D grid with a *causal* arrow. RNNs are "recurrent CNNs along time"; transformers with a causal mask are "complete graphs restricted to the past".
 - Misconception to preempt: "for video, just stack frames as channels in a CNN." That fixes the temporal window and ignores variable-lag effects.
 - Honest validation for time series: split by *time* (train on early runs, test on later runs), never randomly across frames — neighbouring frames are nearly identical (temporal leakage, Week 4).
-::::
-
-## Practical: when does a sequence model pay off?
-
-:::: {.incremental}
-- **Frame-wise model first:** if each frame can be analysed alone (segmentation per frame, Week 7), do that and post-process (tracking, smoothing).
-- **Add temporal context** when the label depends on history: "is this a nucleation event or noise?", "will this particle coalesce?"
-- **Cost:** attention over $T$ frames × $L$ patches per frame is $\mathcal{O}((TL)^2)$ — factorise: spatial attention within a frame, temporal attention across frames per location.
-- **Latent sequences:** encode each frame with the Week 9 autoencoder, then model the trajectory of latent codes — cheap and interpretable.
-- **Beam effects:** the electron dose itself changes the specimen over time — include cumulative dose as a covariate, or you will "discover" beam damage as physics.
-::::
-
-:::: {.notes}
-- The one point to land: start simple (frame-wise), add temporal modelling only when the question requires history.
-- EM anchor: in liquid-cell TEM, growth rates depend on the beam-induced radiolysis — cumulative dose is a confounder that any temporal model must see.
-- Forward link: Week 11 uses exactly these streaming settings for autonomous experiments — the model decides the next acquisition.
+- Forward link: Week 11 uses exactly these streaming settings for autonomous experiments.
 - Transition: "Let's put all architectures into one picture."
 ::::
 
@@ -916,10 +820,10 @@ $$
 
 :::: {.columns}
 :::: {.column width="60%"}
-- **Part 1 — self-attention from scratch:** NumPy implementation of $\mathrm{softmax}(QK^\top/\sqrt{d_k})V$, check against the hand-traced example, verify permutation equivariance, see softmax saturation without $\sqrt{d_k}$.
-- **Part 2 — mini-ViT on synthetic diffraction patterns (CPU, ~1–2 min):** patchify, train, positional-embedding ablation, low-dose test, attention map vs occlusion.
-- **Part 3 — (optional) message passing by hand:** build atom-column graphs, write a message-passing layer with `index_add_`, compare 0/1/2 layers, check equivariance.
-- **Exercises:** TODO cells with solutions — implement multi-head attention, change the patch size, add displacement edge features.
+- **Part 1 — self-attention from scratch** in NumPy: hand-traced example, equivariance, softmax saturation.
+- **Part 2 — mini-ViT** on synthetic diffraction: PE ablation, low-dose test, attention vs occlusion.
+- **Part 3 — (optional) message passing by hand** on atom-column graphs.
+- **Exercises:** multi-head attention, patch size, displacement edge features.
 ::::
 :::: {.column width="40%"}
 `notebooks/week10_attention_gnn.ipynb`
@@ -931,6 +835,7 @@ Runs on CPU in under 5 minutes; only NumPy, matplotlib, scikit-learn and PyTorch
 ::::
 
 :::: {.notes}
+- Part 2 runs on CPU in ~1–2 min; Part 3 uses `index_add_`, compares 0/1/2 layers and checks equivariance. Exercises are TODO cells with solutions.
 - Recommend doing Part 1 before the next lecture — writing attention in 10 lines of NumPy removes all mystery.
 - Part 3 is optional but strongly recommended for anyone whose miniproject involves atomic-resolution images.
 - Remind students: the notebook numbers match today's slides; if yours differ a lot, check the seed and the positional-embedding flag.
@@ -994,6 +899,104 @@ Runs on CPU in under 5 minutes; only NumPy, matplotlib, scikit-learn and PyTorch
 - [All courses](../../index.html)
 
 <!-- END prev-next -->
+
+## Backup slides {visibility="uncounted"}
+
+Material beyond the 90-minute lecture path, for self-study and questions.
+
+## 4D-STEM transformer: speed and the MAE pretext {visibility="uncounted"}
+
+:::: {.columns}
+:::: {.column width="45%"}
+:::: {.incremental}
+- **Speed:** at $10^6$ patterns, ~14× (CPU) to ~98× (GPU) faster than template matching [@dstem_transformer2024].
+- **The label problem:** orientation labels need simulation or slow indexing; phase labels need expert annotation.
+- **Masked autoencoder (MAE) pretext** [@he2022mae]: hide 75 % of patches, reconstruct them from the rest — *no labels*. The unlabelled 4D-STEM stack itself is the pretraining corpus.
+- Then fine-tune (or linear-probe, Week 8) on the few hundred labelled positions you can afford.
+::::
+::::
+:::: {.column width="55%"}
+![Template matching (b) vs transformer (c) with identical inputs and outputs; wall time vs number of patterns (d) and per-step GPU timing (e) [@dstem_transformer2024].](img/dstem_fig3_benchmark.png){width="100%"}
+::::
+::::
+
+:::: {.notes}
+- Connect to Week 8: MAE is the masked-modelling flavour of self-supervision; here it becomes the natural pretraining for diffraction and spectra.
+- The one point to land: a 4D-STEM scan contains $10^5$+ patterns but typically zero labels. MAE turns that asymmetry into an advantage.
+- Why MAE is plausible physically: diffraction patterns are highly redundant (symmetry, Friedel pairs) — reconstructing masked discs from visible ones forces the encoder to learn the lattice.
+- Misconception to preempt: "pretraining on my own scan is cheating." It is not, as long as the evaluation scans are held out from the labelled fine-tuning *and* you report which data was used for pretraining.
+::::
+
+## Spectra and XRD as token sequences {visibility="uncounted"}
+
+:::: {.columns}
+:::: {.column width="45%"}
+:::: {.incremental}
+- Cut the 1-D pattern into fixed-length segments → tokens; prepend [CLS]; add positional encoding; transformer encoder; linear head.
+- Phase identification depends on the *set* of peak positions and their ratios across the whole $2\theta$ (or energy) axis — a relational, long-range task.
+- **Multimodal:** elemental priors (known chemistry) enter as extra tokens — no bolted-on branch needed [@vit_xrd2024].
+- **EELS/EDS analogue:** windows along the energy axis; edge onset + fine structure coupled in one layer. Poisson noise (Week 2) still dictates the loss.
+::::
+::::
+:::: {.column width="55%"}
+![ViT for XRD: the 1-D pattern is sliced into segments (tokens), a CLS token and spectral + positional embeddings are added, a transformer encoder mixes the segments, and a head outputs phase identification/quantification [@vit_xrd2024].](img/vitxrd_fig1_architecture.png){width="100%"}
+::::
+::::
+
+:::: {.notes}
+- The one point to land: the same ViT recipe works on 1-D signals; "patch" becomes "energy window".
+- EM anchor: an EELS spectrum image is a 2-D grid of 1-D spectra — you can token along energy (per-pixel classification) or across pixels (spatial context). Same choice as 4D-STEM.
+- Misconception to preempt: "a 1-D CNN cannot do this." It can, with enough depth; the transformer's advantage is one-layer coupling of distant peaks and easy fusion of extra modalities.
+- Pitfall: if energy calibration drifts between sessions, absolute-energy positional encodings bake in the drift. Align spectra (Week 3 preprocessing) first.
+::::
+
+## Anti-patterns for transformers on EM data {visibility="uncounted"}
+
+:::: {.incremental}
+- **Data hunger:** from-scratch ViT on 500 micrographs → overfit; a ResNet or U-Net wins. Fix: pretraining (MAE/DINO, Week 8) or a smaller model.
+- **Positional embedding forgotten or shuffled:** the model silently becomes a bag of patches. Fix: ablate and check the drop.
+- **Patch seams through discs:** accuracy caps. Fix: smaller/overlapping patches or disc tokens.
+- **Dose / detector mismatch:** trained at high dose, deployed on beam-sensitive samples → confident and wrong. Fix: dose augmentation (Week 8), validate at deployment dose, uncertainty (Week 11).
+- **Leaky splits:** random probe positions of the same scan in train and test → inflated accuracy. Fix: split by scan / specimen (Week 4).
+::::
+
+:::: {.notes}
+- Each item is a real lab failure; ask students which ones they would detect with the standard train/val/test protocol (only the last one — and only if the split is grouped).
+- The one point to land: most transformer failures in EM are *data* failures, not architecture failures.
+- War story: a strain-mapping model trained on robust inorganic data, deployed at a tenth of the dose on a battery cathode, produced smooth, plausible — and wrong — maps with no warning.
+::::
+
+## GNNs for materials beyond the microscope {visibility="uncounted"}
+
+:::: {.incremental}
+- **CGCNN** — crystal graph, gated convolution on bonds, sum/mean pooling → formation energy, band gap [@xie2018cgcnn].
+- **SchNet** — continuous-filter convolutions on interatomic distances, rotation/translation invariant by construction [@schutt2018schnet].
+- **Equivariant GNNs** (NequIP, MACE) — vector/tensor features, machine-learned interatomic potentials (MG U09).
+- **Where EM meets them:** atom positions from STEM/tomography → graph → GNN predicts local energy/strain; or GNN potentials generate structures for simulation-based training data (Week 8: sim-to-real).
+- Beyond atoms: grain graphs from EBSD/SEM (grains = nodes, boundaries = edges) → property prediction from microstructure topology.
+::::
+
+:::: {.notes}
+- Keep this brief — these architectures are treated in detail in Materials Genomics (U07, U09). The DSEM message: the same message-passing template underlies all of them.
+- The one point to land: graphs are the natural representation whenever your data are *objects with relations* — atoms, columns, grains, particles.
+- EM anchor: grain-boundary networks from EBSD are graphs; grain-growth or crack-path models on those graphs are an active research area.
+::::
+
+## Practical: when does a sequence model pay off? {visibility="uncounted"}
+
+:::: {.incremental}
+- **Frame-wise model first:** if each frame can be analysed alone (segmentation per frame, Week 7), do that and post-process (tracking, smoothing).
+- **Add temporal context** when the label depends on history: "is this a nucleation event or noise?", "will this particle coalesce?"
+- **Cost:** attention over $T$ frames × $L$ patches per frame is $\mathcal{O}((TL)^2)$ — factorise: spatial attention within a frame, temporal attention across frames per location.
+- **Latent sequences:** encode each frame with the Week 9 autoencoder, then model the trajectory of latent codes — cheap and interpretable.
+- **Beam effects:** the electron dose itself changes the specimen over time — include cumulative dose as a covariate, or you will "discover" beam damage as physics.
+::::
+
+:::: {.notes}
+- The one point to land: start simple (frame-wise), add temporal modelling only when the question requires history.
+- EM anchor: in liquid-cell TEM, growth rates depend on the beam-induced radiolysis — cumulative dose is a confounder that any temporal model must see.
+- Forward link: Week 11 uses exactly these streaming settings for autonomous experiments — the model decides the next acquisition.
+::::
 
 ## References
 

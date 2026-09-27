@@ -20,7 +20,7 @@
 7. **Indexing is 0-based and slice stop is exclusive:** `arr[1:3]` returns elements at indices 1 and 2; `arr[-1]` is the last element; applies to all axes of an ndarray.
 8. **Tensor = n-dimensional array:** a scalar is 0-D, a spectrum is 1-D, an image is 2-D, an EELS map is 3-D (x, y, energy), a 4D-STEM scan is 4-D (x, y, kx, ky); NumPy ndarray and PyTorch Tensor are both tensors.
 9. **Min-max normalisation:** `(x − x.min()) / (x.max() − x.min())` scales any array to [0, 1]; standard pre-processing step before displaying or comparing EM images; implemented as a one-liner or a documented `def normalize(image)` function.
-10. **Assessment structure:** 40% miniproject (reproducible notebook + report, CRISP-DM pipeline, uncertainty + explainability required) + 60% written exam; miniproject proposal due ≈ Week 6; a notebook that does not execute end-to-end scores zero on the reproducibility criterion (15% of miniproject grade).
+10. **ROI and line profile:** a region of interest is a 2-D slice `img[r0:r1, c0:c1]` (rows first, then columns); a line profile is a 1-D slice `img[row, :]` of an image; plotting a profile across atom columns is the basic quantitative check of intensities, spacings and noise level in HAADF-STEM.
 
 ---
 
