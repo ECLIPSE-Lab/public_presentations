@@ -14,7 +14,7 @@ Public Quarto site that hosts RevealJS slide decks for ECLIPSE Lab (FAU Erlangen
   - Linux/macOS: `QUARTO_PYTHON=.venv/bin/python quarto preview <unit_path>/<deck>.qmd --no-browser --no-watch-inputs`
   - Windows: `run_quarto.bat` (currently hardcoded to `conference_talks/2025_MC/template.qmd`; edit before reuse).
 - Deployment: pushes to `main` trigger `.github/workflows/quarto-deploy.yml`, which runs `quarto publish gh-pages`. The `static.yml` workflow then publishes the `gh-pages` branch to GitHub Pages. Don't run `quarto publish` locally — let CI own `gh-pages`.
-- Top-level `_quarto.yml` sets `execute.enabled: false`, so notebook/Python cells do **not** run during site render. Individual decks override this in their YAML header when they need executed code (see `data_science_for_em/01_intro/template.qmd`).
+- Top-level `_quarto.yml` sets `execute.enabled: false`, so notebook/Python cells do **not** run during site render. Individual decks override this in their YAML header when they need executed code (see `data_science_for_em/_archive_ss25/01_intro/template.qmd`).
 
 ## Slide deck anatomy
 
