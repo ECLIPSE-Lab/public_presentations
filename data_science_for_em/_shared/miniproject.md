@@ -23,12 +23,12 @@ The pipeline must be fully **reproducible**: a grader running `jupyter nbconvert
 
 | Milestone | When | How |
 |-----------|------|-----|
-| Briefed + topic selection open | Week 1 lecture | — |
+| Briefed + topic selection open | Early in the semester (announced in the lecture) | — |
 | **Proposal check-in** (≤1 page: dataset, task, planned pipeline) | ≈ Week 6 (off lecture time — submit to course email) | Written submission |
 | **Progress check-in** (draft notebook, at least data + model sections complete) | ≈ Week 10 (off lecture time — submit to course email) | Written submission |
-| **Final submission** | Exam period (exact date announced in Week 1) | Notebook + report PDF |
+| **Final submission** | Exam period (exact date announced during the semester) | Notebook + report PDF |
 
-All check-ins are off lecture time (email/Moodle upload). There are no in-class presentation slots for the miniproject.
+All check-ins are off lecture time (email or StudOn upload). There are no in-class presentation slots for the miniproject.
 
 ---
 
@@ -57,7 +57,7 @@ Choose **one** of the five options below. If you have a compelling alternative f
 
 **Suggested datasets / sources:**
 - Synthetic low-count EELS spectra: Poisson-noisy Gaussian peaks at known positions (generate in-notebook — zero download required, explicitly labelled synthetic).
-- `hyperspy` example datasets (installed in course environment): `hs.datasets.example_signals` (e.g. `hs.datasets.example_signals.EDS_TEM_Spectrum()`).
+- `hyperspy` example datasets (`pip install hyperspy`): `hs.datasets.example_signals` (e.g. `hs.datasets.example_signals.EDS_TEM_Spectrum()`).
 - Public EELS Atlas spectra from <https://eelsdb.eu> for reference validation.
 
 **Deliverable:** A denoising + clustering notebook (spectra loading or generation → PCA / NMF (Week 3) / autoencoder or VAE (Week 9) → latent-space t-SNE/UMAP → phase map → comparison with ground-truth positions; uncertainty: reconstruction error distribution per phase).
@@ -106,7 +106,7 @@ Choose **one** of the five options below. If you have a compelling alternative f
 1. **Notebook** (`miniproject_<surname>.ipynb`): self-contained, fully executable. All figures must be generated inside the notebook. Target runtime: ≤ 5 min on a laptop CPU for Options B, C, D and E; image-segmentation submissions (Option A) using a small CNN should target ≤ 10 min (or use a pretrained backbone / Google Colab GPU).
 2. **Report** (`miniproject_<surname>.pdf`): ≈4–6 pages (A4, ≥11 pt font, figures included in the page count). Sections: Introduction / Dataset & Preprocessing / Methods / Results & Uncertainty / Explainability / Conclusion. References in any consistent style.
 
-Both files submitted as a single ZIP to Moodle by the deadline.
+Both files submitted as a single ZIP to StudOn by the deadline.
 
 ---
 
