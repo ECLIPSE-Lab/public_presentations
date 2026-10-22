@@ -1,6 +1,6 @@
 # DSEM Exam "Must-Know" Reference (WS 26/27)
 
-> **Purpose:** This document defines the examinable surface for the written exam (60% of final grade).  
+> **Purpose:** This document defines the examinable surface for the exam (100% of the final grade; oral if fewer than 5 students take it, written if 5 or more).  
 > Each section lists ≤10 statements that a student must be able to reproduce, explain, or apply  
 > under exam conditions.
 >
