@@ -15,15 +15,17 @@ def title(mo):
 
     **Data Science for Electron Microscopy** · Prof. Dr. Philipp Pelz · FAU Erlangen-Nürnberg · WS 26/27
 
-    This notebook follows **slides 26–55** of the Unit 1 deck, one section per slide.
-    Each section has the code from the slide, an explanation, and an EM example where one helps.
+    This notebook follows sections 2.1 and 2.5 of *Dive into Deep Learning* (d2l). We run and discuss it
+    together in the lecture. Each section has the code, an explanation, and an EM example where one helps.
 
-    | part | slides | content |
+    | part | sections | content |
     |---|---|---|
-    | Course outline | 26 | the 13 weeks |
-    | **Data manipulation** | 27–42 | PyTorch tensors: create, reshape, index, compute, broadcast, save memory, convert |
-    | **Automatic differentiation** | 43–53 | gradients, accumulation, non-scalar outputs, `detach`, control flow, exercises |
-    | Wrap-up | 54–55 | next week, references |
+    | **1 · Data manipulation** | 1.1–1.14 | PyTorch tensors: create, reshape, index, compute, broadcast, save memory, convert |
+    | **2 · Automatic differentiation** | 2.1–2.7 | gradients, accumulation, non-scalar outputs, `detach`, control flow, exercises |
+
+    **To edit and run this notebook:** a shared molab link opens as a read-only preview.
+    Sign in to molab (free, with Google or an e-mail address) and click **Fork**: you get your own copy,
+    saved in your workspace. **Run it now** also works, but it does not save your changes.
 
     Cells marked ✏️ are exercises. A check under each exercise tells you if your answer is correct.
     Solutions are in closed boxes: open them only after you have tried.
@@ -103,7 +105,7 @@ def device_info(mo, torch):
 def s26(mo):
     mo.md(r"""
     ---
-    ## Slide 26 · Course outline
+    ## Course outline
 
     | Wk | Date | Topic | Wk | Date | Topic |
     |---|---|---|---|---|---|
@@ -126,9 +128,9 @@ def s26(mo):
 def s27(mo):
     mo.md(r"""
     ---
-    # Part 1 · Data manipulation (slides 27–42)
+    # Part 1 · Data manipulation (d2l section 2.1)
 
-    ## Slide 27 · Why a tensor class?
+    ## 1.1 · Why a tensor class?
 
     Every data-science task has two steps: **get** the data and **process** it. The basic container for
     both is the *n*-dimensional array, which deep-learning frameworks call a **tensor**
@@ -171,7 +173,7 @@ def s27_gpu(mo, time, torch):
 def s28(mo):
     mo.md(r"""
     ---
-    ## Slide 28 · Getting started 1: axes and orders
+    ## 1.2 · Getting started 1: axes and orders
 
     `import torch` gives you the library. A tensor with **one axis** is a *vector*, with **two axes**
     a *matrix*, and with **k > 2 axes** a *k-th order tensor*. EM data has all of them:
@@ -202,7 +204,7 @@ def s28_orders(mo, torch):
 def s29(mo):
     mo.md(r"""
     ---
-    ## Slide 29 · Getting started 2: `arange`, `numel`, `shape`, `reshape`
+    ## 1.3 · Getting started 2: `arange`, `numel`, `shape`, `reshape`
 
     `torch.arange(12)` makes the values 0, 1, …, 11. By default a new tensor lives in main memory
     and is processed by the CPU. `numel()` gives the number of elements, and `shape` the length of each axis.
@@ -246,7 +248,7 @@ def s29_view_code(X, mo, x):
 def s30(mo):
     mo.md(r"""
     ---
-    ## Slide 30 · Getting started 3: shape inference and initialisation
+    ## 1.4 · Getting started 3: shape inference and initialisation
 
     Write `-1` for one axis, and PyTorch computes its length: for *n* elements and *h* rows,
     the number of columns is *w = n / h*. **Try it:** choose a number of rows.
@@ -301,7 +303,7 @@ def s30_init_code(plt, show_tensor, torch):
 def s31(mo):
     mo.md(r"""
     ---
-    ## Slides 31–32 · Indexing and slicing
+    ## 1.5 · Indexing and slicing
 
     Indexing works as for Python lists: the first element is **0**, `-1` is the last one, and
     `start:stop` is a slice that **excludes** `stop`. One index or slice acts on **axis 0** (the rows).
@@ -310,7 +312,7 @@ def s31(mo):
     changes the first two rows (`:` means "all elements along this axis").
 
     The cell below works on a copy, `X.clone()`. Assignment changes a tensor *in place*: without the
-    copy, it would also change `X` and `x` (they share memory, see slide 29).
+    copy, it would also change `X` and `x` (they share memory, see section 1.3).
     """)
     return
 
@@ -432,10 +434,10 @@ def ex_roi_sol(mo):
 def s33(mo):
     mo.md(r"""
     ---
-    ## Slide 33 · Operations 1: elementwise functions
+    ## 1.6 · Operations 1: elementwise functions
 
     A *unary* elementwise operation applies a function $f:\mathbb{R}\rightarrow\mathbb{R}$ to every
-    element. The slide's example is $e^x$:
+    element. The example is $e^x$:
     """)
     return
 
@@ -476,10 +478,10 @@ def s33_fft(mo, plt, stem_image, torch):
 def s34(mo):
     mo.md(r"""
     ---
-    ## Slide 34 · Operations 2: elementwise binary operators
+    ## 1.7 · Operations 2: elementwise binary operators
 
     A *binary* elementwise operation, $f:\mathbb{R},\mathbb{R}\rightarrow\mathbb{R}$, takes the
-    elements at the same position in two tensors of the same shape. The slide calls the tensors `x` and `y`;
+    elements at the same position in two tensors of the same shape. We call the tensors `x` and `y`;
     here they are `p` and `q`, because `x` is already defined.
     """)
     return
@@ -511,7 +513,7 @@ def s34_code(mo, torch):
 def s35(mo):
     mo.md(r"""
     ---
-    ## Slide 35 · Operations 3: concatenation
+    ## 1.8 · Operations 3: concatenation
 
     `torch.cat` joins tensors along an existing axis. Along `dim=0` the row counts add up
     (3 + 3 = 6 rows); along `dim=1` the column counts add up (4 + 4 = 8 columns).
@@ -572,7 +574,7 @@ def s35_frames(N, make_stem_image, mo, n_frames, plt, torch):
 def s36(mo):
     mo.md(r"""
     ---
-    ## Slide 36 · Operations 4: logical operations and sums
+    ## 1.9 · Operations 4: logical operations and sums
 
     A comparison such as `X == Y` gives a tensor of `True`/`False` values, one per element.
     `X.sum()` adds all elements and gives a tensor with a single element.
@@ -626,7 +628,7 @@ def s36_thr(clean_image, mo, plt, stem_image, threshold):
 def s37(mo):
     mo.md(r"""
     ---
-    ## Slide 37 · Broadcasting
+    ## 1.10 · Broadcasting
 
     Broadcasting lets an elementwise operation combine tensors of **different shapes**, in two steps:
 
@@ -716,7 +718,7 @@ def s37_stripes(plt, torch):
 def s38(mo):
     mo.md(r"""
     ---
-    ## Slides 38–39 · Saving memory
+    ## 1.11 · Saving memory
 
     `Y = X + Y` computes a **new** tensor, puts it into **new memory**, and then points the name `Y`
     at it. Python's `id()` shows this: it changes. This is a problem when
@@ -768,7 +770,7 @@ def s38_note(mo):
 def s40(mo):
     mo.md(r"""
     ---
-    ## Slide 40 · Conversion to other Python objects
+    ## 1.12 · Conversion to other Python objects
 
     - `X.numpy()` turns a (CPU) tensor into a NumPy array, and `torch.from_numpy(A)` does the reverse.
       Both **share memory**: no data is copied.
@@ -806,7 +808,7 @@ def s40_note(mo):
 def s41(mo):
     mo.md(r"""
     ---
-    ## Slide 41 · Summary of Part 1
+    ## 1.13 · Summary of Part 1
 
     | task | code |
     |---|---|
@@ -820,7 +822,7 @@ def s41(mo):
     | convert | `t.numpy()`, `torch.from_numpy(a)`, `t.item()` |
 
     ---
-    ## Slide 42 · Exercises
+    ## 1.14 · Exercises
 
     **Exercise 1: other comparisons.** Pick an operator. Look at the values and at the dtype of the result.
     """)
@@ -898,9 +900,9 @@ def ex2_check(a3, b3, checklist, mo, predicted_shape):
 def s43(mo):
     mo.md(r"""
     ---
-    # Part 2 · Automatic differentiation (slides 43–53)
+    # Part 2 · Automatic differentiation (d2l section 2.5)
 
-    ## Slide 43 · Why automatic differentiation?
+    ## 2.1 · Why automatic differentiation?
 
     Training a model means changing its parameters so that a loss gets smaller. For that you need
     the **derivative of the loss with respect to every parameter**. By hand this is tedious and error-prone,
@@ -933,7 +935,7 @@ def s43_graph(mo):
 def s44(mo):
     mo.md(r"""
     ---
-    ## Slides 44–45 · A simple function
+    ## 2.2 · A simple function
 
     Goal: the gradient of $y = 2\,\mathbf{x}^\top\mathbf{x}$ with respect to $\mathbf{x}$.
     By hand: $\partial y / \partial \mathbf{x} = 4\mathbf{x}$.
@@ -990,7 +992,7 @@ def s45_code(torch):
 def s46(mo):
     mo.md(r"""
     ---
-    ## Slide 46 · Backward for non-scalar variables
+    ## 2.3 · Backward for non-scalar variables
 
     If `y` is a **vector**, its derivative with respect to the vector `x` is a matrix, the **Jacobian**
     $J_{ij} = \partial y_i / \partial x_j$. In deep learning you usually want the gradient of a *sum*
@@ -1020,7 +1022,7 @@ def s46_code(show_tensor, torch):
 def s47(mo):
     mo.md(r"""
     ---
-    ## Slide 47 · Detaching computation
+    ## 2.4 · Detaching computation
 
     Sometimes a value must be used **without** passing gradients through it. Example: `y = x * x` and
     `z = y * x`. If you want only the *direct* influence of `x` on `z`, treat `y` as a constant:
@@ -1053,7 +1055,7 @@ def s47_code(torch):
 def s48(mo):
     mo.md(r"""
     ---
-    ## Slides 48–49 · Gradients and Python control flow
+    ## 2.5 · Gradients and Python control flow
 
     The graph is built **while the code runs**. So autograd also works through `while` loops, `if`
     branches and function calls, even when the path depends on the data. Each input gets its own graph.
@@ -1066,7 +1068,7 @@ def s48(mo):
 def s48_f(torch):
     def f(a):
         b = a * 2
-        while torch.linalg.vector_norm(b) < 1000:    # the slide writes b.norm()
+        while torch.linalg.vector_norm(b) < 1000:    # d2l writes b.norm()
             b = b * 2
         if b.sum() > 0:
             c = b
@@ -1119,7 +1121,7 @@ def s49_code(f, mo, new_a, torch):
 def s50(mo):
     mo.md(r"""
     ---
-    ## Slide 50 · Discussion
+    ## 2.6 · Discussion
 
     Automatic differentiation is a large productivity gain: you write the *forward* computation, and
     the framework gives you the derivatives. You can then design complex models and spend your time on
@@ -1142,7 +1144,7 @@ def s50(mo):
 def s51(mo):
     mo.md(r"""
     ---
-    ## Slides 51–53 · Exercises
+    ## 2.7 · Exercises
 
     ### Exercise 1: run the backward pass twice
     """)
@@ -1173,7 +1175,7 @@ def ex_bw_why(mo):
     mo.accordion({"💡 Explanation": mo.md(r"""
     To save memory, PyTorch **frees the graph** after `backward()`. A second `backward()` on the same
     `y` finds no graph and raises an error. With `retain_graph=True` the graph stays, and the second
-    call **adds** its gradient to `x.grad` (slide 45), so you get $4x + 4x = 8x$.
+    call **adds** its gradient to `x.grad` (section 2.2), so you get $4x + 4x = 8x$.
     """)})
     return
 
@@ -1206,7 +1208,7 @@ def ex_vec(f, torch):
 @app.cell(hide_code=True)
 def ex_vec_why(mo):
     mo.accordion({"💡 Explanation": mo.md(r"""
-    `d` is a vector, so `d.backward()` needs a `gradient` argument (slide 46); `d.sum().backward()` works.
+    `d` is a vector, so `d.backward()` needs a `gradient` argument (section 2.3); `d.sum().backward()` works.
     The loop now checks the norm of the **whole vector**, and the `if` checks the **sum** of all elements.
     So all elements share one factor *k*: $\mathbf{d} = k\,\mathbf{a}$, and every entry of `a.grad` is *k*.
     `d / a` gives *k* for each element again, so the two agree.
@@ -1342,7 +1344,7 @@ def ex_chain_sol(mo):
 def s54(mo):
     mo.md(r"""
     ---
-    ## Slides 54–55 · Next week and references
+    ## Next week and references
 
     **Next: Unit 2, *Learning from EM data: signal formation, noise & loss*.** You will see why the
     Poisson noise in today's images decides which loss function is correct.
@@ -1353,7 +1355,7 @@ def s54(mo):
     **References**
 
     - A. Zhang, Z. C. Lipton, M. Li, A. J. Smola, *Dive into Deep Learning*, Cambridge University Press (2023),
-      sections 2.1 (Data manipulation) and 2.5 (Automatic differentiation), <https://d2l.ai>. Slides 27–53 follow these sections.
+      sections 2.1 (Data manipulation) and 2.5 (Automatic differentiation), <https://d2l.ai>. Parts 1 and 2 follow these sections.
     """)
     return
 
