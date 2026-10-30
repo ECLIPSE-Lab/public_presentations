@@ -406,10 +406,10 @@ register("ptc", (el) => {
   { const r = rng(5); for (let i = 0; i < NPX; i++) z[i] = r.normal(); }
   let g = 2.5, sr = 6, p = 0.01;
 
-  const lin = chart({ width: 830, height: 470, x: { domain: [0, 1], label: "mean signal x̄ (DN)", tickCount: 4 },
-    y: { domain: [0, 1], label: "variance (DN²)", tickCount: 5 }, margin: { l: 96 }, title: "linear: the fitted points" });
-  const lg = chart({ width: 860, height: 470, x: { domain: [0.1, 1e6], type: "log", label: "mean signal x̄ (DN)" },
-    y: { domain: [0.1, 1e10], type: "log", label: "variance (DN²)" }, margin: { l: 96 }, title: "log-log: three regimes" });
+  const lin = chart({ width: 830, height: 470, x: { domain: [0, 1], label: "mean signal x̄ (ADU)", tickCount: 4 },
+    y: { domain: [0, 1], label: "variance (ADU²)", tickCount: 5 }, margin: { l: 96 }, title: "linear: the fitted points" });
+  const lg = chart({ width: 860, height: 470, x: { domain: [0.1, 1e6], type: "log", label: "mean signal x̄ (ADU)" },
+    y: { domain: [0.1, 1e10], type: "log", label: "variance (ADU²)" }, margin: { l: 96 }, title: "log-log: three regimes" });
   const ro = readout();
   const TERMS = [["read noise", T.gauss], ["shot noise", T.pois], ["fixed pattern", T.warn]];
 
@@ -434,8 +434,8 @@ register("ptc", (el) => {
     lin.clear();
     lin.line([[0, a], [xF, a + b * xF]], { stroke: T.thread, width: 3 });
     lin.dots(F.map((q) => [q.m, q.v]), { r: 7, fill: T.data, strokeWidth: 0 });
-    lin.note(`fit: slope = ${fmt(b, 2)} DN/e⁻`, { corner: "tl", fill: T.thread });
-    lin.note(`intercept = ${fmt(a, 1)} DN²`, { corner: "tl", line: 1, fill: T.thread });
+    lin.note(`fit: slope = ${fmt(b, 2)} ADU/e⁻`, { corner: "tl", fill: T.thread });
+    lin.note(`intercept = ${fmt(a, 1)} ADU²`, { corner: "tl", line: 1, fill: T.thread });
     lin.note(`${F.length} of ${pts.length} levels: (p·x̄)² < 2 % of g·x̄`, { corner: "br", fill: T.muted, size: 19 });
 
     const P = pts.filter((q) => q.m > 0 && q.v > 0);
@@ -467,19 +467,19 @@ register("ptc", (el) => {
     lg.dots(P.filter((q) => !q.fit).map((q) => [q.m, q.v]), { r: 6, fill: "none", stroke: T.data, strokeWidth: 2.5 });
 
     const where = segs.map((sg, i) => `<b style="color:${TERMS[sg.k][1]}">${TERMS[sg.k][0]}</b> ` +
-      (i === 0 ? `below ${big(sg.b)} DN` : i === segs.length - 1 ? `above ${big(sg.a)} DN` : `from ${big(sg.a)} to ${big(sg.b)} DN`)).join(", ");
+      (i === 0 ? `below ${big(sg.b)} ADU` : i === segs.length - 1 ? `above ${big(sg.a)} ADU` : `from ${big(sg.a)} to ${big(sg.b)} ADU`)).join(", ");
     const biased = p > 0 && Math.abs(b - g) > 3 * db, good = F.length >= 3 && Math.abs(b / g - 1) < 0.05 && !biased;
     ro.set(`Weighted fit on <b>${F.length}</b> of ${pts.length} levels (left out: (p·x̄)² ≥ 2 % of g·x̄): ` +
-      `g = <span class="${good ? "good" : "warn"}">${pmErr(b, db)}</span> DN/e⁻ (true ${fmt(g, 2)}), ` +
-      `σr² = <b>${pmErr(a, da)}</b> DN² (true ${fmt(sr * sr, 1)}).` +
+      `g = <span class="${good ? "good" : "warn"}">${pmErr(b, db)}</span> ADU/e⁻ (true ${fmt(g, 2)}), ` +
+      `σr² = <b>${pmErr(a, da)}</b> ADU² (true ${fmt(sr * sr, 1)}).` +
       (biased ? ` <span class="warn">Leftover fixed-pattern noise lifts the slope.</span>` : "") + `<br>` +
-      `Crossovers σr²/g = <b>${big(sr * sr / g)}</b> DN, g/p² = <b>${p > 0 ? big(g / (p * p)) : "∞"}</b> DN. ` +
+      `Crossovers σr²/g = <b>${big(sr * sr / g)}</b> ADU, g/p² = <b>${p > 0 ? big(g / (p * p)) : "∞"}</b> ADU. ` +
       `Dominant: ${where}.`);
     ro.dataset.ms = (performance.now() - t0).toFixed(1);
   }
   const ctl = controls(
-    slider({ label: "gain g", min: 0.5, max: 10, value: g, digits: 1, unit: "DN/e⁻", onInput: (v) => { g = v; update(); } }),
-    slider({ label: "read noise σr", min: 0.5, max: 20, value: sr, digits: 1, unit: "DN", onInput: (v) => { sr = v; update(); } }),
+    slider({ label: "gain g", min: 0.5, max: 10, value: g, digits: 1, unit: "ADU/e⁻", onInput: (v) => { g = v; update(); } }),
+    slider({ label: "read noise σr", min: 0.5, max: 20, value: sr, digits: 1, unit: "ADU", onInput: (v) => { sr = v; update(); } }),
     slider({ label: "fixed-pattern noise p", min: 0, max: 3, value: p * 100, digits: 2, unit: "%", onInput: (v) => { p = v / 100; update(); } }),
   );
   const key = legend([[T.data, "measured (hollow: left out of the fit)", "dot"], [T.thread, "linear fit"], [T.gauss, "σr²", "dash"],
