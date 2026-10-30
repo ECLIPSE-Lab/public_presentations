@@ -109,7 +109,7 @@ function fft2c(re, im, n, inverse = false) {
 // 1. artefacts — failure-mode explorer
 // Specimen: square lattice of atom columns, a = 2.0 Å, rotated 4°, Gaussian columns σ = 0.35 Å,
 // point-sampled (STEM) on 128 x 128 probe positions, pixel 0.25 Å (aliasing case: 1.7 Å).
-// Counts: λ = 30 + 220·column e⁻ per pixel, Poisson. Detector: DN = 100 + 8·counts, 12-bit ADC (max 4095).
+// Counts: λ = 30 + 220·column e⁻ per pixel, Poisson. Detector: ADU = 100 + 8·counts, 12-bit ADC (max 4095).
 // Each mode adds one artefact and computes the diagnostic that reveals it from the simulated data.
 // ---------------------------------------------------------------------------------------------
 const NA = 128, PIX = 0.25, A_LAT = 2.0, SIG = 0.35, THETA = 4 * Math.PI / 180;
@@ -218,7 +218,7 @@ const squareChart = (o) => chart({ width: 76 + 390 + 22, height: 470, ...o });
 function histChart(img, title) {
   const nb = 64, w = 4096 / nb, cnt = new Array(nb).fill(0);
   for (const v of img) cnt[Math.min(nb - 1, Math.floor(v / w))]++;
-  const c = wideChart({ x: { domain: [0, 4096], label: "pixel value (DN)", ticks: [0, 1000, 2000, 3000, 4095] },
+  const c = wideChart({ x: { domain: [0, 4096], label: "pixel value (ADU)", ticks: [0, 1000, 2000, 3000, 4095] },
     y: { domain: [0.7, 3e4], type: "log", label: "pixels (log)" }, title });
   c.bars(cnt.map((v, i) => [i * w, (i + 1) * w, v || NaN]), { fill: T.data, opacity: 0.9 });
   c.ruleX(ADC, { stroke: T.warn, dash: "8 6" });
@@ -247,7 +247,7 @@ const BUILD = {
       marks.push({ x: i % NA, y: Math.floor(i / NA), color: hot ? T.warn : T.gauss });
     }
     const nDead = img.filter((v) => v === 0).length, nHot = img.filter((v) => v === ADC).length;
-    return { img, vmin: OFFSET, vmax: 2300, imLabel: "one frame (DN)", marks,
+    return { img, vmin: OFFSET, vmax: 2300, imLabel: "one frame (ADU)", marks,
       diag() {
         const { c } = histChart(img, "histogram of pixel values");
         if (nDead) c.text(0, 3e4, `${nDead} at 0`, { fill: T.gauss, dx: 8, dy: 26, size: 20, weight: 700 });
@@ -261,15 +261,15 @@ const BUILD = {
   sat(on) {
     const img = detect(lattice({ scale: on ? 2.6 : 1 }), rng(12));
     const nSat = img.filter((v) => v >= ADC).length, mx = Math.max(...img), frac = 100 * nSat / img.length;
-    return { img, vmin: OFFSET, vmax: ADC, imLabel: `one frame (DN), dose ×${on ? 2.6 : 1}`, marks: [],
+    return { img, vmin: OFFSET, vmax: ADC, imLabel: `one frame (ADU), dose ×${on ? 2.6 : 1}`, marks: [],
       diag() {
         const { c } = histChart(img, "histogram of pixel values");
         if (nSat) c.text(ADC, 3e4, `pile-up: ${nSat} px`, { fill: T.thread, anchor: "end", dx: -8, dy: 52, size: 20, weight: 700 });
-        else c.text(mx, 3e4, `max ${mx} DN`, { fill: T.truth, dx: 10, dy: 52, size: 20, weight: 700 });
+        else c.text(mx, 3e4, `max ${mx} ADU`, { fill: T.truth, dx: 10, dy: 52, size: 20, weight: 700 });
         return c.el;
       },
       found: nSat > 0, nums: nSat ? [[`${fmt(frac, 1)} %`, `pixels clipped at ${ADC} (12-bit max)`]] : [[`${fmt(100 * (1 - mx / ADC), 0)} %`, "headroom below the ADC max"]],
-      check: `histogram → ${nSat ? `<span class="bad">${fmt(frac, 1)} % of pixels pile up at ${ADC}</span>: the column peaks are cut off` : `<span class="good">max ${mx} DN, ${fmt(100 * (1 - mx / ADC), 0)} % headroom</span>`}`,
+      check: `histogram → ${nSat ? `<span class="bad">${fmt(frac, 1)} % of pixels pile up at ${ADC}</span>: the column peaks are cut off` : `<span class="good">max ${mx} ADU, ${fmt(100 * (1 - mx / ADC), 0)} % headroom</span>`}`,
       fix: "lower the beam current or the gain; clipped pixels carry no information — mask them." };
   },
   drift(on) {
@@ -313,7 +313,7 @@ const BUILD = {
     };
     const ratio = band(0) / band(6), Lsort = Float64Array.from(L).sort();
     const jitter = rows ? stdev(rows) * PIX : 0;
-    return { img, vmin: OFFSET, vmax: 2300, imLabel: "one frame (DN)", marks: [],
+    return { img, vmin: OFFSET, vmax: 2300, imLabel: "one frame (ADU)", marks: [],
       diag() {
         const kmax = 1 / (2 * PIX), dk = 1 / (NA * PIX), K = 1.05;
         const c = squareChart({ x: { domain: [-K, K], label: "kx (Å⁻¹)", ticks: [-1, -0.5, 0, 0.5, 1] },
@@ -335,7 +335,7 @@ const BUILD = {
     }
     const dk = 1 / (NA * p), kpk = Math.hypot((bi % NA - NA / 2) * dk, (Math.floor(bi / NA) - NA / 2) * dk);
     const per = 1 / kpk, nyq = 1 / (2 * p), Lsort = Float64Array.from(L).sort(), bad = Math.abs(per - A_LAT) > 0.1;
-    return { img, vmin: OFFSET, vmax: 2300, imLabel: `one frame (DN), pixel ${fmt(p, 2)} Å`, marks: [],
+    return { img, vmin: OFFSET, vmax: 2300, imLabel: `one frame (ADU), pixel ${fmt(p, 2)} Å`, marks: [],
       diag() {
         const K = 0.65, kmax = nyq;
         const c = squareChart({ x: { domain: [-K, K], label: "kx (Å⁻¹)", ticks: [-0.5, 0, 0.5] },
@@ -369,7 +369,7 @@ const BUILD = {
       ...blobs.map((c) => ({ x: xy(c)[0], y: xy(c)[1], color: T.truth, r: 6 }))];
     const sp = spikes[0], bl = blobs[0];
     const desc = (c) => `z = ${fmt(c.zmax, 0)}, ${c.area} px`;
-    return { img, vmin: OFFSET, vmax: 2300, imLabel: "one frame (DN)", marks,
+    return { img, vmin: OFFSET, vmax: 2300, imLabel: "one frame (ADU)", marks,
       diag() {
         const c = squareChart({ x: { domain: [-0.5, NA - 0.5], label: "x (px)", ticks: [0, 32, 64, 96] },
           y: { domain: [NA - 0.5, -0.5], label: "y (px)", ticks: [0, 32, 64, 96] }, title: "z = (pixel − lattice average) / σ", grid: false });
@@ -395,7 +395,7 @@ const BUILD = {
     const off = []; let pair = null;
     for (let a = 0; a < nf; a++) for (let b = a + 1; b < nf; b++) { off.push(M[a * nf + b]); if (M[a * nf + b] > 0.999) pair = [a, b]; }
     const others = off.filter((v) => v < 0.999), lo = Math.min(...others), typ = mean(others);
-    return { img: frames[9], vmin: OFFSET, vmax: 700, imLabel: `frame 9 of ${nf} (DN)`, marks: [],
+    return { img: frames[9], vmin: OFFSET, vmax: 700, imLabel: `frame 9 of ${nf} (ADU)`, marks: [],
       diag() {
         const c = squareChart({ x: { domain: [-0.5, nf - 0.5], label: "frame", ticks: [0, 3, 6, 9] },
           y: { domain: [nf - 0.5, -0.5], label: "frame", ticks: [0, 3, 6, 9] }, title: "frame-similarity matrix ρ", grid: false });
@@ -424,7 +424,7 @@ const BUILD = {
     tot.forEach((v, f) => { sxy += (f - fbar) * (v - ybar); sxx += (f - fbar) ** 2; });
     const slope = sxy / sxx, a0 = ybar - slope * fbar, first = tot[0];
     const drop = Math.round(-1000 * slope * (nf - 1) / a0) / 10 || 0, sDrop = 100 * Math.sqrt(ybar / sxx) * (nf - 1) / a0, sig = drop > 3 * sDrop;
-    return { img: last, vmin: OFFSET, vmax: 700, imLabel: `frame ${nf} of ${nf} (DN)`, marks: [],
+    return { img: last, vmin: OFFSET, vmax: 700, imLabel: `frame ${nf} of ${nf} (ADU)`, marks: [],
       diag() {
         const c = wideChart({ x: { domain: [0, nf - 1], label: "frame index" }, y: { domain: [0, 1.1 * first / 1e3], label: "total counts per frame (×10³ e⁻)" },
           title: "total counts per frame" });
@@ -518,7 +518,7 @@ const FIELDS = [
 const lambdaPm = (V) => { const h0 = 6.62607e-34, m = 9.10938e-31, e = 1.602177e-19, c = 2.99792e8;
   return 1e12 * h0 / Math.sqrt(2 * m * e * V * (1 + e * V / (2 * m * c * c))); };
 const TASKS = [
-  { name: "convert DN → electron counts (Poisson NLL)", needs: ["gain", "ref"], res: () => `counts = (DN − dark) ÷ ${fmt(MD.gain, 1)}` },
+  { name: "convert ADU → electron counts (Poisson NLL)", needs: ["gain", "ref"], res: () => `counts = (ADU − dark) ÷ ${fmt(MD.gain, 1)}` },
   { name: "dose in e⁻/Å²", needs: ["cur", "dwell", "px"],
     res: () => { const d = MD.cur * MD.dwell / 1.602177e-19 / MD.px ** 2, e = Math.floor(Math.log10(d)); return `dose = ${fmt(d / 10 ** e, 2)} × 10${sup(e)} e⁻/Å²`; } },
   { name: "Nyquist check: lattice or alias?", needs: ["px"], res: () => `trust periods ≥ 2p = ${fmt(2 * MD.px, 2)} Å` },
@@ -581,7 +581,7 @@ register("metadata", (el) => {
 // 3. preflight — the six checks before training, as an aviation checklist
 // ---------------------------------------------------------------------------------------------
 const CHECKS = [
-  { t: "UNITS & COUNTS", what: "offset subtracted, ÷ gain", how: "Average a dark frame → offset. Subtract it, divide by the gain (DN per e⁻). Pixels are now electrons." },
+  { t: "UNITS & COUNTS", what: "offset subtracted, ÷ gain", how: "Average a dark frame → offset. Subtract it, divide by the gain (ADU per e⁻). Pixels are now electrons." },
   { t: "NOISE MODEL", what: "variance–mean plot → loss chosen", how: "Plot variance vs mean of a flat series. Slope 1 (in e⁻) → Poisson NLL; flat variance → MSE." },
   { t: "SAMPLING", what: "pixel vs smallest feature, FFT checked", how: "Pixel ≤ half the smallest period. FFT spots at the expected k, inside the Nyquist box." },
   { t: "DEFECTS", what: "dead/hot/saturated masked, drift checked", how: "Histogram (log y): spikes at 0 or the ADC max → mask. Cross-correlate frames → drift." },
@@ -635,7 +635,7 @@ register("preflight", (el) => {
 // ---------------------------------------------------------------------------------------------
 // 4. uncertainty — aleatoric vs epistemic
 // Left: counts in one pixel, Poisson λ = 25, from N frames. The spread stays √λ = 5 for any N.
-// Right: gain g = 4 DN/e⁻ estimated as ĝ = variance / mean of N flat calibration frames (8 x 8 patch,
+// Right: gain g = 4 ADU/e⁻ estimated as ĝ = variance / mean of N flat calibration frames (8 x 8 patch,
 // λc = 100 e⁻, offset subtracted). Theory: std(ĝ)/g ≈ √(2 / (64N − 1)). Dots: 300 simulated
 // calibrations per N, computed in chunks in the background.
 // ---------------------------------------------------------------------------------------------
