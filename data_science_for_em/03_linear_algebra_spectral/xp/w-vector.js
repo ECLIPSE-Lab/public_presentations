@@ -39,8 +39,10 @@ register("projection", (el) => {
     const A0 = two(d.refs.Fe2), B0 = two(d.refs.Fe23);
     let a = A0.slice(), b = B0.slice();
     const W = 820, H = 640, M = 70, R = 1.15 * Math.max(...A0, ...B0, ...two(d.refs.Fe3));
-    const X = (v) => M + (v / R) * (W - 2 * M), Y = (v) => H - M - (v / R) * (H - 2 * M);
-    const iX = (p) => ((p - M) / (W - 2 * M)) * R, iY = (p) => ((H - M - p) / (H - 2 * M)) * R;
+    // one scale for both axes, so that right angles look like right angles
+    const SC = Math.min(W - 2 * M, H - 2 * M) / R;
+    const X = (v) => M + v * SC, Y = (v) => H - M - v * SC;
+    const iX = (p) => (p - M) / SC, iY = (p) => (H - M - p) / SC;
     const svg = s("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: "xp-chart xp-vec-svg", style: "overflow:hidden" });
     svg.append(s("defs", {}, ...[["pa", T.gauss], ["pb", T.thread], ["pp", T.truth]].map(([id, c]) =>
       s("marker", { id: `xpv${id}`, viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 5, markerHeight: 5, orient: "auto" }, s("path", { d: "M0 0 L10 5 L0 10 Z", fill: c })))));
@@ -62,13 +64,13 @@ register("projection", (el) => {
       const ext = R * 1.6;
       g.append(s("line", { x1: X(-ext * ah[0]), y1: Y(-ext * ah[1]), x2: X(ext * ah[0]), y2: Y(ext * ah[1]), stroke: T.gauss, "stroke-width": 1.5, "stroke-dasharray": "4 8", opacity: 0.6 }));
       const arrow = (v, c, id, w = 6, dash) => s("line", { x1: X(0), y1: Y(0), x2: X(v[0]), y2: Y(v[1]), stroke: c, "stroke-width": w, "marker-end": id ? `url(#xpv${id})` : null, "stroke-dasharray": dash });
-      g.append(arrow(p, T.truth, "pp", 9));
+      g.append(arrow(a, T.gauss, "pa", 12));                          // a first (wide), the projection on top of it
       g.append(s("line", { x1: X(p[0]), y1: Y(p[1]), x2: X(b[0]), y2: Y(b[1]), stroke: T.pois, "stroke-width": 4, "stroke-dasharray": "9 7" }));
       // right-angle mark
       const q = 0.045 * R, rn = norm(r) || 1, rh = [r[0] / rn, r[1] / rn];
       const c1 = [p[0] - q * ah[0], p[1] - q * ah[1]], c2 = [c1[0] + q * rh[0], c1[1] + q * rh[1]], c3 = [p[0] + q * rh[0], p[1] + q * rh[1]];
       if (norm(r) > 2 * q) g.append(s("path", { d: `M${X(c1[0])},${Y(c1[1])} L${X(c2[0])},${Y(c2[1])} L${X(c3[0])},${Y(c3[1])}`, fill: "none", stroke: T.pois, "stroke-width": 2.5 }));
-      g.append(arrow(a, T.gauss, "pa"), arrow(b, T.thread, "pb"));
+      g.append(arrow(p, T.truth, "pp", 5), arrow(b, T.thread, "pb"));
       const lab = (v, t, c, dy = -18) => g.append(s("text", { x: X(v[0]) + 14, y: Y(v[1]) + dy, fill: c, "font-size": 26, "font-weight": 700, class: "xp-ctext" }, t));
       lab(a, "a = Fe²⁺ (FeO)", T.gauss, 30); lab(b, "b = magnetite", T.thread);
       lab([p[0] / 2, p[1] / 2], "c â", T.truth, 36);

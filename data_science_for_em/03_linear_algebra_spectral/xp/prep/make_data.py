@@ -203,9 +203,9 @@ def zlp():
         T[:, 0], Vt[0], r = -T[:, 0], -Vt[0], -r
     c = np.dot(Vt[0], dmu) / np.linalg.norm(dmu)
     print("ZLP drift: std %.3f eV, corr(PC1 score, shift) = %.3f, cos(PC1, dI/dE) = %.3f" % (shift.std(), r, c))
-    zs = Z.max() / 65000                                         # the raw (normalised) stack, for the notebook
-    save("zlp", {"E": arr(e), "mean": arr(mu), "dmean": arr(dmu), "shift": arr(shift),
-                 "cube": arr(np.round(Z / zs), "u2"), "cube_scale": zs,
+    zs = np.abs(Z).max() / 32000                                 # the raw (normalised) stack, for the notebook;
+    save("zlp", {"E": arr(e), "mean": arr(mu), "dmean": arr(dmu), "shift": arr(shift),   # signed: dark-subtracted
+                 "cube": arr(np.round(Z / zs), "i2"), "cube_scale": zs,
                  "raw": {"sv": arr(sv[:20]), "V": arr(Vt[:3]), "T1": arr(T[:, 0])},
                  "aligned": {"sv": arr(sva[:20]), "V": arr(Vta[:3]), "T1": arr(Ta[:, 0])},
                  "shape": list(shift.shape)})

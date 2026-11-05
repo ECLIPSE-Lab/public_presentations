@@ -53,7 +53,7 @@ register("pca-cloud", (el) => {
     const a = cu.edgeMap(512, 530, [478, 508]), b = cu.edgeMap(878, 910, [840, 875]);
     const idx = [...a.keys()].filter((i) => !cu.vacuum[i]);
     let ang = 20, stdz = true;
-    const cP = chart({ width: 700, height: 640, x: { domain: [-3, 3], label: "V-L₂,₃ signal" }, y: { domain: [-3, 3], label: "Ce-M₄,₅ signal" } });
+    const cP = chart({ width: 658, height: 640, x: { domain: [-3, 3], label: "V-L₂,₃ signal" }, y: { domain: [-3, 3], label: "Ce-M₄,₅ signal" } });
     const cV = chart({ width: 620, height: 300, x: { domain: [0, 180], label: "direction of v (degrees)" }, y: { domain: [0, 1], label: "Var(vᵀx)" } });
     const im = pickImage(nx, ny, 300, "score map vᵀx");
     const out = readout();
