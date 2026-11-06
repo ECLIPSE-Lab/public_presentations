@@ -2,6 +2,7 @@
 //   projection : dot product and projection in 2-D; the axes are two channels of the real Fe-L spectra
 //   fe-match   : a spectrum projected onto the span of real Fe2+ / Fe3+ standards (least squares)
 //   datacube   : the CeVO3 / Al2O3 EELS spectrum image; one pixel = one row, one energy window = one column
+//   lsq-line   : least squares by hand: squared residuals and the error bowl (real pre-edge points)
 //   bg-fit     : the power-law background as a linear least-squares problem in log-log space
 import { register, T, rng, fmt, clamp, h, s, row, col, card, controls, readout, slider, toggle, button, legend, chart, imageCanvas } from "./core.js";
 import { loadData } from "./data.js";
@@ -263,6 +264,123 @@ register("datacube", (el) => {
       onChange: (v) => { sub = v === "sub"; update(); } });
     el.append(controls(wt, st), row(col(im, h("div", { class: "xp-caption" }, "click a pixel · map = sum over the window"), src(SRC_CEVO3)), col(cS.el, mat, card(out))));
     update();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// lsq-line. Least squares by hand, before the matrix form. Real points: the pre-edge window of the
+// CeVOx region in log-log space (every 3rd channel). Model y = b + m·u with u = log E − mean, so that
+// the two unknowns do not trade off (the error bowl is round, not a long valley). Drag the two line
+// handles or click into the bowl; "solve" moves to the bottom, where Σr = 0 and Σu·r = 0, i.e. Xᵀr = 0.
+// ---------------------------------------------------------------------------------------------
+register("lsq-line", (el) => {
+  const wait = waiting(el);
+  loadData("cevo3_eels").then((d) => {
+    wait.remove();
+    const cu = eelsCube(d), { ny, nx, ne, E } = cu;
+    const sp = new Float64Array(ne); let cnt = 0;
+    for (let y = 26; y < 32; y++) for (let x = 33; x < 38; x++) { const v = cu.spec(y * nx + x); for (let k = 0; k < ne; k++) sp[k] += v[k]; cnt++; }
+    const idx = E.map((e, i) => i).filter((i) => E[i] >= 470 && E[i] <= 508).filter((i, k) => k % 3 === 0);
+    const lx = idx.map((i) => Math.log(E[i])), ly = idx.map((i) => Math.log(sp[i] / cnt)), n = lx.length;
+    const xm = lx.reduce((a, b) => a + b, 0) / n, u = lx.map((v) => v - xm);
+    const suu = u.reduce((a, v) => a + v * v, 0);
+    const bHat = ly.reduce((a, v) => a + v, 0) / n, mHat = u.reduce((a, v, i) => a + v * ly[i], 0) / suu;
+    const sse = (b, m) => ly.reduce((a, y, i) => a + (y - b - m * u[i]) ** 2, 0), sMin = sse(bHat, mHat);
+    const yr = Math.max(...ly) - Math.min(...ly), uMax = Math.max(...u);
+    const DB = 0.9 * yr, DM = 0.9 * yr / uMax;
+    const B0 = bHat + 0.12 * DB, M0 = mHat + 0.6 * DM;
+    let b = B0, m = M0, anim = null;
+
+    // left: the data and the line, with each residual drawn as a real square (area = r²)
+    const pad = 0.006, ypad = 0.35 * yr;
+    const cD = chart({ width: 860, height: 580, x: { domain: [lx[0] - pad, lx[n - 1] + pad], label: "log E   (E = energy loss in eV)" },
+      y: { domain: [Math.min(...ly) - ypad, Math.max(...ly) + ypad], label: "log I" }, margin: { l: 96 } });
+    cD.setDomain();
+    const gL = s("g"); cD.gPlot.append(gL);
+    const u0 = lx[0] - pad - xm, u1 = lx[n - 1] + pad - xm;
+    const mkH = (c) => s("circle", { r: 15, fill: c, stroke: "#fff", "stroke-width": 3, style: "cursor:grab" });
+    const hL = mkH(T.truth), hR = mkH(T.truth); cD.gTop.append(hL, hR);
+    // right: the error bowl SSE(b, m)
+    const cB = chart({ width: 560, height: 470, x: { domain: [mHat - DM, mHat + DM], label: "slope m  (= −r)" },
+      y: { domain: [bHat - DB, bHat + DB], label: "level b" }, title: "sum of squared residuals: a bowl", margin: { l: 96 } });
+    cB.setDomain();
+    const pw = cB.width - cB.m.l - cB.m.r, ph = cB.height - cB.m.t - cB.m.b, G = 160;
+    const cv = document.createElement("canvas"); cv.width = G; cv.height = G;
+    const ctx = cv.getContext("2d"), img = ctx.createImageData(G, G);
+    const lmax = Math.log(sse(bHat + DB, mHat + DM) / sMin);
+    for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+      const mm = mHat - DM + 2 * DM * (i + 0.5) / G, bb = bHat + DB - 2 * DB * (j + 0.5) / G;
+      const t = Math.sqrt(Math.min(1, Math.log(sse(bb, mm) / sMin) / lmax)), band = Math.floor(t * 12) % 2 ? 0.86 : 1;
+      const o = 4 * (j * G + i);
+      img.data[o] = band * (8 + 150 * t); img.data[o + 1] = band * (12 + 110 * t); img.data[o + 2] = band * (30 + 160 * t); img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    cB.gPlot.append(s("image", { href: cv.toDataURL(), x: cB.m.l, y: cB.m.t, width: pw, height: ph, preserveAspectRatio: "none", style: "image-rendering:pixelated" }));
+    const gB = s("g"); cB.gTop.append(gB);
+    const out = readout();
+
+    function draw() {
+      gL.replaceChildren();
+      const r = ly.map((y, i) => y - b - m * u[i]);
+      const pxPerY = Math.abs(cD.y(0) - cD.y(1));
+      r.forEach((ri, i) => {
+        const X = cD.x(lx[i]), Y0 = cD.y(ly[i]), Y1 = cD.y(b + m * u[i]), side = Math.abs(Y1 - Y0);
+        gL.append(s("rect", { x: X, y: Math.min(Y0, Y1), width: side, height: side, fill: T.pois, opacity: 0.22, stroke: T.pois, "stroke-width": 1.5 }));
+        gL.append(s("line", { x1: X, x2: X, y1: Y0, y2: Y1, stroke: T.pois, "stroke-width": 3 }));
+      });
+      gL.append(s("line", { x1: cD.x(u0 + xm), x2: cD.x(u1 + xm), y1: cD.y(b + m * u0), y2: cD.y(b + m * u1), stroke: T.truth, "stroke-width": 4 }));
+      lx.forEach((x, i) => gL.append(s("circle", { cx: cD.x(x), cy: cD.y(ly[i]), r: 7, fill: "#fff" })));
+      hL.setAttribute("cx", cD.x(u0 + xm)); hL.setAttribute("cy", cD.y(b + m * u0));
+      hR.setAttribute("cx", cD.x(u1 + xm)); hR.setAttribute("cy", cD.y(b + m * u1));
+      gB.replaceChildren(
+        s("path", { d: `M${cB.x(mHat) - 12},${cB.y(bHat) - 12} L${cB.x(mHat) + 12},${cB.y(bHat) + 12} M${cB.x(mHat) - 12},${cB.y(bHat) + 12} L${cB.x(mHat) + 12},${cB.y(bHat) - 12}`, stroke: "#fff", "stroke-width": 3, opacity: 0.8 }),
+        s("circle", { cx: cB.x(m), cy: cB.y(b), r: 11, fill: T.truth, stroke: "#fff", "stroke-width": 3 }));
+      const S = sse(b, m), g1 = r.reduce((a, v) => a + v, 0), g2 = r.reduce((a, v, i) => a + u[i] * v, 0);
+      const at = S < 1.0005 * sMin;
+      out.set(`Σ rᵢ² = <b>${(S / sMin).toFixed(2)} ×</b> the minimum ${at ? "<span class='good'>✓</span>" : ""} &nbsp; r = −m = <b>${fmt(-m, 2)}</b><br>` +
+        `Σ rᵢ = ${fmt(g1, 4)} &nbsp; &nbsp; Σ uᵢ rᵢ = ${fmt(g2, 5)}<br>` +
+        (at ? `<span class="good">both 0: the bowl is flat ⇒ Xᵀr = 0 ⇒ XᵀX ŵ = Xᵀy</span>`
+            : `at the bottom both sums are 0: the bowl is flat`));
+    }
+    const svgPt = (svg, ev) => { const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); };
+    const invY = (py) => { const a = cD.y(0), c = cD.y(1); return (py - a) / (c - a); };
+    function drag(hd, which) {
+      hd.addEventListener("pointerdown", (e) => {
+        stop(); hd.setPointerCapture(e.pointerId);
+        const mv = (ev) => {
+          const yv = invY(svgPt(cD.el, ev).y);
+          const yl = which === "L" ? yv : b + m * u0, yrr = which === "R" ? yv : b + m * u1;
+          m = (yrr - yl) / (u1 - u0); b = yl - m * u0; draw();
+        };
+        const up = () => { hd.removeEventListener("pointermove", mv); hd.removeEventListener("pointerup", up); };
+        hd.addEventListener("pointermove", mv); hd.addEventListener("pointerup", up);
+      });
+    }
+    drag(hL, "L"); drag(hR, "R");
+    const bowlSet = (ev) => {
+      const q = svgPt(cB.el, ev), a0 = cB.x(0), a1 = cB.x(1), c0 = cB.y(0), c1 = cB.y(1);
+      m = clamp((q.x - a0) / (a1 - a0), mHat - DM, mHat + DM); b = clamp((q.y - c0) / (c1 - c0), bHat - DB, bHat + DB); draw();
+    };
+    cB.el.style.cursor = "crosshair"; cB.el.style.touchAction = "none";
+    cB.el.addEventListener("pointerdown", (e) => { stop(); cB.el.setPointerCapture(e.pointerId); bowlSet(e);
+      const up = () => { cB.el.removeEventListener("pointermove", bowlSet); cB.el.removeEventListener("pointerup", up); };
+      cB.el.addEventListener("pointermove", bowlSet); cB.el.addEventListener("pointerup", up); });
+    function stop() { if (anim) cancelAnimationFrame(anim); anim = null; }
+    function solve() {
+      stop();
+      const step = () => {               // gradient descent with a fixed fraction: a visible slide to the bottom
+        b += 0.12 * (bHat - b); m += 0.12 * (mHat - m);
+        if (Math.abs(b - bHat) < 1e-5 && Math.abs(m - mHat) < 1e-4) { b = bHat; m = mHat; draw(); anim = null; return; }
+        draw(); anim = requestAnimationFrame(step);
+      };
+      anim = requestAnimationFrame(step);
+    }
+    el.append(controls(button("go to the bottom of the bowl", solve), button("bad start", () => { stop(); b = B0; m = M0; draw(); }),
+      h("span", { class: "xp-slider-label" }, "drag the two green handles, or click into the bowl")),
+      row(col(cD.el, legend([["#fff", "data (log I)"], [T.truth, "line b + m·u"], [T.pois, "residual rᵢ and its square rᵢ²"]]),
+          src(SRC_CEVO3 + " Pre-edge window 470–508 eV, every 3rd channel.")),
+        h("div", { class: "xp-vec-side", style: { width: "600px" } }, cB.el, card(out))));
+    draw();
   });
 });
 

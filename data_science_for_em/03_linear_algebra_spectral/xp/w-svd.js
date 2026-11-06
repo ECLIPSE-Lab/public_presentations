@@ -209,3 +209,111 @@ register("lowrank-image", (el, api) => {
     update();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// strain-4d. Real 4D-STEM strain map of ion-irradiated Al ([001], 40 x 40 positions; Mills et al.
+// 2023, Zenodo 7041997, CC BY 4.0). Per position the disk positions were fitted by least squares,
+// p = c + h g1 + k g2 (xp/prep/make_strain.py). Here, live: A = G G_ref⁻¹, F = A⁻ᵀ, SVD of F.
+// Click a scan position: its pattern with the fitted lattice, and F drawn as an exaggerated ellipse.
+// ---------------------------------------------------------------------------------------------
+const STRAIN_SRC = "Data: ion-irradiated Al, [001], 4D-STEM; Mills et al., Acta Mater. 2023; Zenodo 7041997, CC BY 4.0.";
+register("strain-4d", (el) => {
+  const wait = h("div", { class: "xp-caption" }, "loading data …"); el.append(wait);
+  loadData("strain4d").then((d) => {
+    wait.remove();
+    const N = 1600, n = 40, G = d.G, Gr = d.Gref, C = d.c, ok = d.ok;
+    // physical frame: flip the pattern y axis (pixels go down), P = diag(1, −1)
+    const inv = (m) => { const det = m[0] * m[3] - m[1] * m[2]; return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det]; };
+    const flip = (m) => [m[0], -m[1], -m[2], m[3]];                       // P m P
+    const tr = (m) => [m[0], m[2], m[1], m[3]];
+    const GrInv = inv(flip([Gr[0], Gr[1], Gr[2], Gr[3]]));
+    const Fs = [];
+    for (let i = 0; i < N; i++) {
+      const A = mul(flip([G[4 * i], G[4 * i + 1], G[4 * i + 2], G[4 * i + 3]]), GrInv);
+      Fs.push(tr(inv(A)));                                                  // F = A⁻ᵀ
+    }
+    const avg = (i) => {                                                    // 3 x 3 mean of the valid neighbours
+      const y = Math.floor(i / n), x = i % n, o = [0, 0, 0, 0]; let c = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const yy = y + dy, xx = x + dx; if (yy < 0 || xx < 0 || yy >= n || xx >= n || !ok[yy * n + xx]) continue;
+        const f = Fs[yy * n + xx]; for (let k = 0; k < 4; k++) o[k] += f[k]; c++;
+      }
+      return o.map((v) => v / Math.max(1, c));
+    };
+    let mapKey = "rot", smooth = false, sel = 4 * n + 16;          // start inside the rotated region (top)
+    const Fof = (i) => (smooth ? avg(i) : Fs[i]);
+    const MAPS = {
+      bf: { label: "bright field", f: (i) => d.bf[i], cmap: "gray" },
+      exx: { label: "ε<sub>xx</sub>", f: (i) => 100 * (Fof(i)[0] - 1), unit: "%" },
+      eyy: { label: "ε<sub>yy</sub>", f: (i) => 100 * (Fof(i)[3] - 1), unit: "%" },
+      exy: { label: "ε<sub>xy</sub>", f: (i) => 100 * (Fof(i)[1] + Fof(i)[2]) / 2, unit: "%" },
+      rot: { label: "rotation", f: (i) => deg((Fof(i)[2] - Fof(i)[1]) / 2), unit: "°" },
+      shear: { label: "max shear (σ₁−σ₂)/2", f: (i) => { const v = svd2(...Fof(i)); return 100 * (v.s1 - v.s2) / 2; }, unit: "%", cmap: "magma" },
+    };
+    const imM = imageCanvas({ n, size: 430, label: "" });
+    const mk = s("svg", { width: 430, height: 430, viewBox: "0 0 430 430", style: "position:absolute;left:0;bottom:0;pointer-events:none" });
+    const mkR = s("rect", { width: 430 / n * 2, height: 430 / n * 2, fill: "none", stroke: T.truth, "stroke-width": 3 }); mk.append(mkR);
+    imM.style.position = "relative"; imM.append(mk); imM.canvas.style.cursor = "crosshair";
+    const PS = 430, pat = imageCanvas({ n: 96, size: PS, label: "diffraction pattern + least-squares lattice" });
+    const ov = s("svg", { width: PS, height: PS, viewBox: `0 0 ${PS} ${PS}`, style: "position:absolute;left:0;bottom:0;pointer-events:none" });
+    pat.style.position = "relative"; pat.append(ov);
+    const EW = 330, ex = s("svg", { width: EW, height: EW, viewBox: `0 0 ${EW} ${EW}`, class: "xp-chart", style: "border-radius:14px;background:rgba(5,8,15,0.55)" });
+    const out = readout();
+    const [ox, oy] = d.pat_origin, bin = d.pat_bin, sc = PS / 96;
+    const P = (x, y) => [(x - ox) / bin * sc, (y - oy) / bin * sc];
+    function drawMap() {
+      const M = MAPS[mapKey], v = new Float64Array(N);
+      for (let i = 0; i < N; i++) v[i] = ok[i] || mapKey === "bf" ? M.f(i) : NaN;
+      const fin = Array.from(v).filter(Number.isFinite).sort((a, b) => a - b), q = (p) => fin[Math.floor(p * (fin.length - 1))];
+      let lo, hi, cm = M.cmap || "div";
+      if (cm === "div") { const m = Math.max(Math.abs(q(0.02)), Math.abs(q(0.98))); lo = -m; hi = m; } else { lo = q(0.01); hi = q(0.99); }
+      imM.draw(v.map((x) => (Number.isFinite(x) ? x : (lo + hi) / 2)), lo, hi, cm);
+      imM.setLabel(`${M.label}${M.unit ? ` &nbsp;(${cm === "div" ? "±" + fmt(hi, 2) : fmt(lo, 2) + "–" + fmt(hi, 2)} ${M.unit})` : ""}${smooth && mapKey !== "bf" ? " · 3×3 mean" : ""}`);
+    }
+    function drawSel() {
+      const iy = Math.floor(sel / n) & ~1, ix = (sel % n) & ~1, i = iy * n + ix, k = (iy / 2) * 20 + ix / 2;
+      mkR.setAttribute("x", ix * 430 / n); mkR.setAttribute("y", iy * 430 / n);
+      pat.draw(d.pat.subarray(k * 9216, (k + 1) * 9216), 0, 255, "gray");
+      ov.replaceChildren();
+      const g = [G[4 * i], G[4 * i + 1], G[4 * i + 2], G[4 * i + 3]], c = [C[2 * i], C[2 * i + 1]];
+      const at = (hh, kk) => P(c[0] + g[0] * hh + g[1] * kk, c[1] + g[2] * hh + g[3] * kk);
+      for (const [hh, kk] of [[0, 0], ...d.hk]) {
+        const [x, y] = at(hh, kk); if (x < 0 || y < 0 || x > PS || y > PS) continue;
+        ov.append(s("circle", { cx: x, cy: y, r: 38 / bin * sc, fill: "none", stroke: T.truth, "stroke-width": 2, opacity: 0.85 }));
+      }
+      const [x0, y0] = at(0, 0);
+      for (const [hh, kk, lab] of [[1, 0, "g₁"], [0, 1, "g₂"]]) {
+        const [x1, y1] = at(hh, kk);
+        ov.append(s("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: T.thread, "stroke-width": 4 }),
+          s("text", { x: x1 + 10, y: y1 - 10, fill: T.thread, "font-size": 24, "font-weight": 700, class: "xp-ctext" }, lab));
+      }
+      // F as an ellipse, exaggerated: I + X (F − I)
+      const F = Fof(i), X = 100, Fx = [1 + X * (F[0] - 1), X * F[1], X * F[2], 1 + X * (F[3] - 1)];
+      const v = svd2(...F), vx = svd2(...Fx), R0 = 90, cx = EW / 2, cy = EW / 2;
+      const circ = [], ell = [];
+      for (let t = 0; t <= 64; t++) { const a = 2 * Math.PI * t / 64, p = [Math.cos(a), Math.sin(a)], q = app(Fx, p);
+        circ.push(`${cx + R0 * p[0]},${cy - R0 * p[1]}`); ell.push(`${cx + R0 * q[0]},${cy - R0 * q[1]}`); }
+      const U = rot(vx.phi), ax = [[U[0], U[2]], [U[1], U[3]]];
+      ex.replaceChildren(
+        s("polyline", { points: circ.join(" "), fill: "none", stroke: T.faint, "stroke-width": 2, "stroke-dasharray": "6 6" }),
+        s("polyline", { points: ell.join(" "), fill: "rgba(52,211,153,0.12)", stroke: T.truth, "stroke-width": 3 }),
+        ...ax.map((u, j) => { const sv = j ? vx.s2 : vx.s1; return s("line", { x1: cx - R0 * sv * u[0], y1: cy + R0 * sv * u[1], x2: cx + R0 * sv * u[0], y2: cy - R0 * sv * u[1], stroke: j ? T.gauss : T.thread, "stroke-width": 3 }); }),
+        s("text", { x: 12, y: 28, fill: T.muted, "font-size": 19 }, "F on the unit circle, strain × 100"));
+      const fm = (m) => `<span class="xp-svd-mat"><span>${fmt(m[0], 4)}</span><span>${fmt(m[1], 4)}</span><span>${fmt(m[2], 4)}</span><span>${fmt(m[3], 4)}</span></span>`;
+      out.set(`position (${ix}, ${iy}): ${d.n[i]} disks, fit rms ${fmt(d.rms[i], 2)} px<br>` +
+        `F = A⁻ᵀ = ${fm(F)}<br>` +
+        `SVD: <span style="color:${T.thread}">σ₁ − 1 = ${fmt(100 * (v.s1 - 1), 2)} %</span> &nbsp; <span style="color:${T.gauss}">σ₂ − 1 = ${fmt(100 * (v.s2 - 1), 2)} %</span><br>` +
+        `rotation U Vᵀ = <b>${fmt(deg(v.phi + v.theta), 3)}°</b>${smooth ? " &nbsp;(3×3 mean)" : ""}`);
+    }
+    imM.canvas.addEventListener("pointerdown", (e) => {
+      const r = imM.canvas.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * n), y = Math.floor((e.clientY - r.top) / r.height * n);
+      sel = clamp(y, 0, n - 1) * n + clamp(x, 0, n - 1); drawSel();
+    });
+    const mt = toggle({ label: "map", options: Object.entries(MAPS).map(([k, m]) => ({ value: k, label: m.label })), value: mapKey, onChange: (k) => { mapKey = k; drawMap(); } });
+    const st = toggle({ label: "pixels", options: [{ value: "1", label: "single" }, { value: "3", label: "3×3 mean" }], value: "1", onChange: (v) => { smooth = v === "3"; drawMap(); drawSel(); } });
+    el.append(controls(mt, st),
+      row(col(imM, h("div", { class: "xp-src" , style: { fontSize: "17px", color: "#64748b", maxWidth: "430px" }, html: STRAIN_SRC })), pat,
+        h("div", { class: "xp-svd-side", style: { width: "620px" } }, row(ex, legend([[T.thread, "σ₁ axis"], [T.gauss, "σ₂ axis"], [T.faint, "unstrained", "dash"]])), card(out))));
+    drawMap(); drawSel();
+  });
+});
