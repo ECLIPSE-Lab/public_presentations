@@ -96,7 +96,7 @@ register("projection", (el) => {
     drag(hA, (v) => { a = v; }); drag(hB, (v) => { b = v; });
     const preset = toggle({ label: "b =", options: [{ value: "Fe23", label: "magnetite" }, { value: "Fe3", label: "Fe³⁺ glass" }, { value: "Fe0", label: "Fe metal" }, { value: "Fe2", label: "FeO" }],
       value: "Fe23", onChange: (k) => { a = A0.slice(); b = two(d.refs[k]); draw(); } });
-    note.innerHTML = "A spectrum with only two channels is an arrow in the plane. A real Fe-L spectrum has 301 channels here: the same formulas, in ℝ³⁰¹.";
+    note.innerHTML = "A spectrum with only two channels is a vector in the plane. A real Fe-L spectrum has 301 channels here: the same formulas, in ℝ³⁰¹.";
     el.append(controls(preset), row(svg, h("div", { class: "xp-vec-side" }, card(out), card(note),
       legend([[T.gauss, "a"], [T.thread, "b"], [T.truth, "projection"], [T.pois, "residual", "dash"]]), src(SRC_CYMES))));
     draw();
