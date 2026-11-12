@@ -2,6 +2,7 @@
 //   gd-bowl   : gradient descent on the power-law background fit (log I = b + m log E, CeVOx region,
 //               470-508 eV). Features raw / centred / standardised change the shape of the bowl.
 //               data-mode="gd" (one optimiser, learning-rate slider) | "race" (GD, momentum, Adam, SGD)
+//               | "newton" (GD against Newton's method, which uses the curvature H)
 //   align     : aligning a Fe-L spectrum to the FeO standard by its energy shift: a non-convex loss.
 import { register, T, fmt, clamp, rng, h, s, row, col, card, controls, readout, slider, toggle, button, legend, chart } from "./core.js";
 import { loadData } from "./data.js";
@@ -51,7 +52,9 @@ const OPT = {
   mom: { label: "momentum", color: T.warn },
   adam: { label: "Adam", color: T.truth },
   sgd: { label: "SGD (4 points, 0.3 η)", color: T.pink },
+  newton: { label: "Newton", color: T.violet },
 };
+const KINDS = { gd: ["gd"], race: ["gd", "mom", "adam", "sgd"], newton: ["gd", "newton"] };
 function stepper(kind, P, eta, seed = 3) {
   const R = rng(seed);
   let v = [0, 0], m = [0, 0], q = [0, 0], t = 0;
@@ -59,6 +62,8 @@ function stepper(kind, P, eta, seed = 3) {
     t++;
     if (kind === "sgd") { const I = Array.from({ length: 4 }, () => Math.floor(R.u() * P.n)); const g = P.grad(w, I); return [w[0] - eta * g[0], w[1] - eta * g[1]]; }
     const g = P.grad(w);
+    // Newton: w − H⁻¹ g. The loss is quadratic, thus one step reaches the minimum for every scaling.
+    if (kind === "newton") { const H = P.H, det = H[0] * H[3] - H[1] * H[2]; return [w[0] - (H[3] * g[0] - H[1] * g[1]) / det, w[1] - (H[0] * g[1] - H[2] * g[0]) / det]; }
     if (kind === "gd") return [w[0] - eta * g[0], w[1] - eta * g[1]];
     if (kind === "mom") { v = [0.9 * v[0] + g[0], 0.9 * v[1] + g[1]]; return [w[0] - eta * v[0], w[1] - eta * v[1]]; }
     // Adam: per-parameter step sizes
@@ -113,7 +118,7 @@ register("gd-bowl", (el, api) => {
     }
     function reset() {
       stop(); it = 0;
-      const kinds = mode === "race" ? Object.keys(OPT) : ["gd"];
+      const kinds = KINDS[mode] || KINDS.gd;
       const eta = etaRel * 2 / P.lmax;
       runs = Object.fromEntries(kinds.map((k) => [k, { w: start.slice(), path: [start.slice()], hist: [P.loss(start) - P.Lmin], step: stepper(k, P, k === "sgd" ? 0.3 * eta : eta), done: null }]));
       draw();
@@ -151,10 +156,10 @@ register("gd-bowl", (el, api) => {
       }
       gT.append(s("circle", { cx: X(start), cy: Y(start), r: 7, fill: "none", stroke: "#fff", "stroke-width": 2 }));
       const g = runs.gd, eta = etaRel * 2 / P.lmax;
-      const sum = (R) => (R.done ? `<b class="good">${R.done}</b> steps` : !Number.isFinite(R.w[0]) || R.hist[R.hist.length - 1] > 1e3 * R.hist[0] ? `<b class="bad">diverged</b>` : `not yet (${it})`);
+      const sum = (R) => (R.done ? `<b class="good">${R.done}</b> step${R.done === 1 ? "" : "s"}` : !Number.isFinite(R.w[0]) || R.hist[R.hist.length - 1] > 1e3 * R.hist[0] ? `<b class="bad">diverged</b>` : `not yet (${it})`);
       out.set(`features: <b>${scaling}</b> &nbsp; Hessian eigenvalues ${P.lmax.toExponential(1)}, ${P.lmin.toExponential(1)} → κ = <b>${P.kappa < 1e4 ? fmt(P.kappa, 0) : P.kappa.toExponential(1)}</b><br>` +
         `η = ${fmt(etaRel, 2)} × 2/λ<sub>max</sub> = ${eta.toExponential(2)}${etaRel > 1 ? ' &nbsp;<span class="bad">above the stability limit</span>' : ""}<br>` +
-        (mode === "race" ? Object.entries(runs).map(([k, R]) => `<span style="color:${OPT[k].color}">${OPT[k].label}</span>: ${sum(R)}`).join(" &nbsp; ")
+        (mode !== "gd" ? Object.entries(runs).map(([k, R]) => `<span style="color:${OPT[k].color}">${OPT[k].label}</span>: ${sum(R)}`).join(" &nbsp; ")
           : `GD to 10⁻⁴ of the start error: ${sum(g)} &nbsp; (theory: ${(() => { const q = Math.max(Math.abs(1 - eta * P.lmin), Math.abs(1 - eta * P.lmax)); return q >= 1 ? "never" : "≈ " + fmt(Math.log(1e4) / (-2 * Math.log(q)), 0); })()})`));
     }
     const st = toggle({ label: "features", options: [{ value: "raw", label: "raw log E" }, { value: "centred", label: "centred" }, { value: "std", label: "standardised" }], value: scaling, onChange: (v) => { scaling = v; setup(); } });
@@ -164,7 +169,7 @@ register("gd-bowl", (el, api) => {
       const pt = cB.el.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(cB.el.getScreenCTM().inverse());
       start = [cB.y.invert(q.y), cB.x.invert(q.x)]; reset();
     });
-    const leg = mode === "race" ? legend(Object.values(OPT).map((o) => [o.color, o.label])) : legend([[T.gauss, "GD path"], ["#fff", "minimum ×"]]);
+    const leg = mode !== "gd" ? legend(KINDS[mode].map((k) => [OPT[k].color, OPT[k].label])) : legend([[T.gauss, "GD path"], ["#fff", "minimum ×"]]);
     el.append(controls(st, es, button("run", run), button("reset", reset), h("span", { class: "xp-slider-label" }, "click the bowl: new start")),
       row(col(cB.el), h("div", { class: "xp-desc-side" }, cL.el, card(out), leg, src(SRC_CEVO3 + " Fit of log I = w₀ + w₁·f(log E), 470–508 eV."))));
     setup();
