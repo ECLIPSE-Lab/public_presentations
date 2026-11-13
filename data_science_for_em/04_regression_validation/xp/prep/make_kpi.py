@@ -61,7 +61,7 @@ ax.imshow(d["pat"][0], cmap="gray", extent=[ox, ox + 96 * b, oy + 96 * b, oy])
 ok = res <= 2
 ax.scatter(p[ok, 0], p[ok, 1], s=45, c="#fbbf24", edgecolors="white", linewidths=1, zorder=5)
 ax.scatter(p[~ok, 0], p[~ok, 1], s=90, c="#f43f5e", edgecolors="white", linewidths=1.2, zorder=6)
-ax.set_aspect("equal")
+ax.set_aspect("equal"); ax.set_xlim(ox - 26, ox + 96 * b); ax.set_ylim(oy + 96 * b, oy)
 f.savefig(OUT / "kpi_disks.png", transparent=True); plt.close(f); print("kpi_disks.png")
 
 # 2. the background bowl in raw log E (a thin valley) and standardised (round)

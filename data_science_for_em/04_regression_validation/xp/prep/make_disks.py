@@ -34,6 +34,11 @@ mx = D.max(0)
 hp = lambda im: im - gaussian_filter(im, 12)
 yy, xx = np.mgrid[:512, :512]
 cy, cx, R = 264, 265, 38
+# The template window is not centred on the disk: in the max image the disk centre is at (x, y) = (cx - 10.2, cy + 1.8),
+# and the disk radius is 35 px (circle fit of the disk edge in the example frames). The correlation peak therefore
+# marks a point that is displaced from the disk centre by the same vector in every frame. A constant shift does not
+# change the lattice fit, the residuals or the strain. It is removed from the exported positions, for the display.
+OFF = np.array([-10.2, 1.8])
 win = (np.hypot(yy - cy, xx - cx) < R).astype(np.float32)
 t = hp(mx) * win
 t[win > 0] -= t[win > 0].mean()
@@ -122,10 +127,10 @@ for i in ex:
     lp = np.log1p(pp); lo, hi = np.percentile(lp, [1, 99.7])
     pats.append(np.clip(255 * (lp - lo) / (hi - lo), 0, 255).round())
     p, hk, w = frames[i]
-    exd.append({"frame": i, "p": p.round(3).tolist(), "hk": hk.tolist(), "w": (w / w.max()).round(4).tolist()})
+    exd.append({"frame": i, "p": (p + OFF).round(3).tolist(), "hk": hk.tolist(), "w": (w / w.max()).round(4).tolist()})
 # reference lattice in (x, y): columns g1, g2
 Gref = G0[::-1].copy()
-obj = {"resid": arr(R), "residH": arr(RH), "thr": THR, "examples": exd, "pat": arr(np.array(pats), "u1"), "pat_origin": [x0, y0], "pat_bin": 4,
+obj = {"resid": arr(R), "residH": arr(RH), "thr": THR, "examples": exd, "pat": arr(np.array(pats), "u1"), "pat_origin": [x0 - 0.5, y0 - 0.5], "pat_bin": 4, "disk_r": 35,
        "Gref": Gref.round(4).tolist(), "n_frames": int(sum(f is not None for f in frames))}
 (OUT / "disks.json").write_text(json.dumps(obj, separators=(",", ":")))
 print("disks.json %.2f MB" % ((OUT / "disks.json").stat().st_size / 1e6))

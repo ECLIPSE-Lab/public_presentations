@@ -81,7 +81,7 @@ register("robust-fit", (el) => {
         for (const [hh, kk] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1], [2, 0], [0, 2], [-2, 0], [0, -2], [2, 1], [1, 2], [-2, -1], [-1, -2], [2, -1], [-1, 2], [-2, 1], [1, -2]]) {
           const [u, v] = P(f.c[0] + f.G[0] * hh + f.G[1] * kk, f.c[1] + f.G[2] * hh + f.G[3] * kk);
           if (u < -20 || v < -20 || u > PS + 20 || v > PS + 20) continue;
-          ov.append(s("circle", { cx: u, cy: v, r: 38 / bin * sc, fill: "none", stroke: col, "stroke-width": 2.5, "stroke-dasharray": dash, opacity: 0.9, "pointer-events": "none" }));
+          ov.append(s("circle", { cx: u, cy: v, r: (d.disk_r || 35) / bin * sc, fill: "none", stroke: col, "stroke-width": 2.5, "stroke-dasharray": dash, opacity: 0.9, "pointer-events": "none" }));
         }
       };
       if (loss !== "mse") lat(fM, T.gauss, "7 6");
