@@ -1,4 +1,18 @@
 ---
+# How this deck works
+# - Every <div class="xp" data-xp="NAME"> is an interactive explainer. xp/main.js mounts it when its slide shows.
+# - The widget code is in xp/*.js (no external libraries; the deck runs offline). Test page: xp/dev.html?w=NAME.
+# - All explainers use real, openly licensed EM data (xp/data/*.json): four HAADF-STEM images of one oxide interface
+#   from STEM-Bank-26. xp/prep/make_columns.py builds the column table, xp/prep/make_models.py the model results.
+# - `data-station="k"` on a slide draws the red-line rail (six stations, xp/redline.js) at the top right.
+# - Timing plan (90 min, 53 slides on the main path): opening 0-6 (4 slides), Objects 6-19 (7), Descriptors 19-33 (8),
+#   Tree 33-47 (8), Ensemble 47-61 (9), Validate 61-72 (6), Explain 72-85 (7), wrap-up 85-89 (4).
+#   Guide: an explainer slide 3 min, a derivation 2 min, a figure or table 1.5 min, a checkpoint 2-3 min.
+# - If you are late, skip (each is self-contained and its notes say so): "The same idea for particles: segment, then measure",
+#   "From hand-made to systematic: symmetry functions", "Bagging or boosting?", "Explanation is not causation".
+#   That saves about 6 min. Backup slides after "Continue".
+# - The static figures img/fig_*.png come from xp/prep/make_figs.py (real data). The notes quote its printed numbers
+#   and the numbers that xp/prep/make_models.py prints.
 title: |-
   Data Science for Electron Microscopy<br>
   Week 5: From images to features: descriptors & tree ensembles
@@ -9,6 +23,11 @@ author:
   - Institute of Micro- and Nanostructure Research
 bibliography: ref.bib
 csl: custom.csl
+resources:
+  - xp/*.js
+  - xp/*.css
+  - xp/dev.html
+  - xp/data/*.json
 execute:
   eval: false
   echo: true
@@ -19,7 +38,9 @@ format:
     height: 1080
     template-partials:
     - title-slide.html
-    css: custom.css
+    css:
+    - custom.css
+    - xp/xp.css
     theme: custom.scss
     slide-number: c/t
     logo: eclipse_logo_small.png
@@ -29,892 +50,1196 @@ format:
       side: left
       loadIcons: true
     footer: ©Philipp Pelz - FAU Erlangen-Nürnberg - Data Science for Electron Microscopy
+    include-after-body:
+      text: |
+        <script type="module" src="xp/main.js"></script>
 ---
 
-<!-- ===== §0. Recap + roadmap ===== -->
+## Three numbers you will understand today
 
-## Recap: where we left off
-
-:::: {.incremental}
-- **Week 4:** regression → loss landscapes and gradient descent → Ridge/Lasso → honest validation.
-- Honest scores with `GroupKFold`; the leakage taxonomy is the checklist for every evaluation.
-- **Gap:** every model so far took a **ready-made feature matrix** $\mathbf{X}\in\mathbb{R}^{N\times D}$. But an EM experiment delivers *images*, not tables. Who builds $\mathbf{X}$?
-- **Today:** we build $\mathbf{X}$ ourselves — from particles, grains and atom columns — and learn the model family that dominates tabular data: **tree ensembles**.
-::::
-
-:::: {.notes}
-- Open with the Week 4 notebook: the leakage gap between random split and `GroupKFold` was large. Today that lesson returns — our "specimen" is now the *image*, and every column in an image shares probe current, background and dose.
-- The one point to land: Weeks 2–4 assumed the feature matrix exists. In EM it never does. Feature extraction is where most of the scientific judgement in classical ML lives, and it is where most published EM-ML pipelines silently succeed or fail.
-- Misconception to preempt: "feature engineering is obsolete since deep learning." For small EM datasets (a few dozen images) hand-designed physical descriptors plus a tree ensemble or a linear model are still the strongest baseline — and they are the baseline your CNN in Week 7 has to beat.
-- EM anchor: nanoparticle size distributions, grain-size statistics, atom-column intensities for defect mapping — all of these are "image → table → model" pipelines.
-- Recap detail (say, don't show): you can fit a model by minimising $\hat{R}(\mathbf{w})$, read its coefficients (E1/E2 explainability) and report an honest `GroupKFold` score so crops of one specimen never sit in train *and* test; leakage taxonomy = duplicate, temporal, group/specimen, preprocessing.
-- Pacing: 2 minutes. Do not re-teach Week 4.
-- Transition: "Here are the questions that will structure today."
-::::
-
-## Today's questions
-
-:::: {.incremental}
-- **How do we turn a micrograph into a table of physically meaningful numbers?** Segmentation → particle descriptors; atom-column finding → local-environment descriptors.
-- **Which properties must a good descriptor have?** Invariance to translation, rotation, neighbour order — and to *image-level nuisances* like probe current.
-- **Why do tree ensembles win on most tabular problems — and when do they not?**
-- **What does the model actually use?** Permutation importance and SHAP — and why correlated descriptors fool both.
-- **Road map:** images → features (4) · atom-column finding (3) · local-environment descriptors (7) · decision trees (5) · random forests & boosting (5) · baseline ladder & honest validation (3) · explaining tree models (8) · wrap-up (3).
-- **Self-study:** `notebooks/week05_features_trees.ipynb` — simulate HAADF images with vacancies and substitutions, find columns, compute descriptors, classify defects with RF/GBM under `GroupKFold`, and audit the model with permutation importance.
-::::
-
-:::: {.notes}
-- Read the four questions aloud, then point at the road map. Tell students the lecture follows the data: image → coordinates → descriptors → model → explanation.
-- The one point to land: the hardest and most consequential step is not the model — it is the feature design. The notebook shows this quantitatively: descriptors move balanced accuracy from about 0.5 to above 0.9, while switching between logistic regression, random forest and gradient boosting changes it by a few points.
-- Misconception to preempt: "trees are old-fashioned, we should go straight to neural networks." Trees are the default winner on tabular data in large benchmarks; neural networks win when the data have spatial/sequential structure (Weeks 6–10).
-- Forward link: explainability is taught with every model family in this course; today it is permutation importance and SHAP; Week 7 will add saliency and Grad-CAM for CNNs.
-- Transition: "What should you be able to do after today?"
-::::
-
-## Learning outcomes
-
-By the end of this week you can:
-
-:::: {.incremental}
-1. **Describe** a classical segmentation pipeline (smoothing → Otsu threshold → watershed → `regionprops`) and name its failure modes.
-2. **Implement** atom-column finding in HAADF-STEM: peak finding plus 2-D Gaussian refinement to sub-pixel precision.
-3. **Design** local-environment descriptors (neighbour distances, angles, relative intensity, radial symmetry functions) and **check** their invariances.
-4. **Explain** how a decision tree chooses splits, why a single tree has high variance, and how bagging, random forests and gradient boosting fix it.
-5. **Climb the baseline ladder** (majority → linear → RF/GBM → NN) with grouped cross-validation and justify the final model choice.
-6. **Compute and critique** impurity, permutation and SHAP importances, including the correlated-feature pitfall.
-::::
-
-:::: {.notes}
-- These six outcomes map one-to-one onto exam questions. Outcomes 3, 5 and 6 are the conceptual core; 1 and 2 are the EM craft; 4 is the model theory.
-- The one point to land: outcome 5 is the one students most often skip in the miniproject. A model without a baseline comparison is not a result.
-- Misconception to preempt: "I need to memorise the Gini formula." You need to know what impurity measures do and why misclassification error is not used for growing — the formula is on the slide for reference.
-- EM anchor: outcome 2 is exactly what Atomap and similar tools do; students who work on HAADF data in their theses will use this in week one.
-- **Timing plan (90 min = 85 min content + 5 min slack):**
-  - 0–5 · Opening: recap (2), today's questions & road map (1.5), learning outcomes (1.5)
-  - 5–13 · §1 Images → features: pixels → table (2), segmentation pipeline (2.5), `regionprops` (1.5), four pitfalls (2)
-  - 13–20 · §2 Atom-column finding: HAADF objects (1.5), peaks first (2), 2-D Gaussian refinement incl. noise model (3.5)
-  - 20–35.5 · §3 Descriptors: local environment (2.5), invariance discipline (2.5), simple descriptors (1.5), ACSF (3), SOAP / 2-D analogue (2.5), descriptor ladder (1.5), feature table & balanced accuracy (2)
-  - 35.5–46.5 · §4 Trees: tree as questions (2), split criterion + board example (3), impurity measures (2), pruning & instability (2.5), strengths/limits (1.5)
-  - 46.5–58 · §5 Ensembles: bagging variance formula (3), random forest (2), gradient boosting (3), boosting stages (1.5), why trees win (2)
-  - 58–64 · §6 Ladder & validation: baseline ladder (1.5), ladder figure (2.5), honest validation (2)
-  - 64–82 · §7 Explaining: overview (1), MDI (2), permutation (2), MDI vs permutation (2.5), correlated pitfall (3), SHAP definition (3), SHAP figure (2.5), SHAP limits (2)
-  - 82–85 · Wrap-up: self-study (1), summary / must-know (1.5), next week (0.5)
-  - 85–90 · Slack for questions. Checkpoints: start §4 by min 36, §7 by min 64. If behind, shorten the ACSF/SOAP walk-throughs, not §7. Backup slides (column-finding failure modes, GB in practice, explanation checklist) are off the lecture path.
-- Transition: "Let's start with the bridge from pixels to tables."
-::::
-
-<!-- ===== §1. Images to features ===== -->
-
-## From pixels to a feature table
-
-:::: {.columns}
-::: {.column width="50%"}
-:::: {.incremental}
-- A micrograph is a grid of $10^5$–$10^7$ correlated pixels. Classical ML needs rows = **objects**, columns = **descriptors**.
-- **Object** = what the scientific question is about: a particle, a grain, a precipitate, a pore, an atom column.
-- **Descriptor** = a number per object that encodes what we believe matters: size, shape, intensity, neighbourhood.
-- The resulting $\mathbf{X}\in\mathbb{R}^{N\times D}$ is small, interpretable and cheap to model.
-::::
+::: {.claim}
+Week 4: a model, a loss, an honest split. Today: where the *table* comes from, and the model that is the default for tables. One real data set all the way.
 :::
-::: {.column width="50%"}
-:::: {.incremental}
-- **Two routes** in this course:
-  - *Designed features* (today): physics chooses $\boldsymbol\phi(\text{image})$, the model is simple.
-  - *Learned features* (Weeks 6–10): the network learns $\boldsymbol\phi$ from data.
-- Designed features are **lossy by construction** — they keep only what you thought to keep [@sandfeld_materials_data_science].
-- But with $N$ = a few dozen images they are usually the **stronger** baseline.
-::::
+
+::: {.kpi-row}
+::: {.kpi .fragment}
+[1 934 × 11]{.big}
+
+![](img/kpi_table.png){.kpi-img fig-alt="An atomic-resolution image with marked atom columns, and an arrow to a table with one row per column"}
+
+[four images become one table: 1 934 objects, 11 descriptors each]{.lbl}
+
+[→ Acts 1 + 2 · Objects, Descriptors]{.act-tag}
 :::
-::::
+::: {.kpi .fragment}
+[94 → 69 %]{.big}
 
-:::: {.notes}
-- Write the pipeline on the board: image → objects → descriptors → table → model → explanation. Keep it visible for the whole lecture.
-- The one point to land: choosing the *object* is a scientific decision. For a defect-classification question the object is an atom column; for a coarsening study it is a particle; for a hardness model it may be the whole micrograph summarised by a grain-size distribution.
-- Misconception to preempt: "one row per image is always right." Often one row per object is better: it gives many more samples — but it also creates groups (objects of the same image are correlated), which is exactly the Week 4 leakage story.
-- EM anchor: the ASTM grain-size number is a designed descriptor that compresses a million pixels into one number. It answers exactly one question. The ML-PC course calls this the information bottleneck.
-- Forward link: Week 6 makes $\boldsymbol\phi$ learnable; today's descriptors are the baseline a network must beat.
-- Transition: "The first route to objects is classical segmentation."
-::::
+![](img/kpi_gap.png){.kpi-img fig-alt="Two bars: 94 percent accuracy on random folds and 69 percent on a new image"}
 
-## Classical segmentation → particle descriptors
+[accuracy of the same random forest: random folds versus a new image]{.lbl}
 
-![Synthetic particle image processed with scikit-image [@vanderwalt2014scikitimage]: smoothing, Otsu threshold [@otsu1979threshold], binary mask, distance-transform watershed to split touching particles, and a `regionprops` feature table (one row per particle).](img/seg_pipeline.png){width="100%"}
-
-:::: {.notes}
-- Walk left to right. (1) Noisy image. (2) Intensity histogram of the smoothed image with the Otsu threshold — Otsu chooses the threshold that maximises the between-class variance of the two intensity populations. (3) Binary mask: touching particles merge into one blob. (4) Distance transform + watershed splits most touching pairs — note that some pairs remain merged; no classical splitter is perfect. (5) `regionprops` returns one row per labelled region.
-- The one point to land: each step has a hyperparameter (smoothing width, threshold rule, watershed marker distance) that changes the final table. The descriptors inherit every segmentation error.
-- Misconception to preempt: "Otsu is objective, so the threshold is not a choice." Otsu is a rule that assumes a bimodal histogram. With uneven illumination, thickness gradients or diffraction contrast it fails — then local/adaptive thresholding or a learned segmenter (U-Net, Week 7) is needed.
-- EM anchor: nanoparticle size distributions from HAADF/ADF overview images in catalysis papers are exactly this pipeline.
-- Transition: "What goes into the feature table?"
-::::
-
-## `regionprops`: what a particle table contains
-
-:::: {.columns}
-::: {.column width="50%"}
-**Size & shape**
-
-- `area`, `equivalent_diameter_area` $=\sqrt{4A/\pi}$
-- `perimeter`, circularity $4\pi A/P^2$
-- `eccentricity` (of the fitted ellipse), `major/minor_axis_length`
-- `solidity` = area / convex-hull area (concavity, merged particles)
-- `orientation` (angle of the major axis)
+[→ Act 5 · Validate]{.act-tag}
 :::
-::: {.column width="50%"}
-**Intensity & context**
+::: {.kpi .fragment}
+[84 %]{.big}
 
-- `mean_intensity`, `max_intensity` (needs the intensity image)
-- centroid → nearest-neighbour distance, local number density
-- per-image statistics: size distribution, area fraction, $D_{50}$
-- **units:** convert px → nm with the calibrated pixel size *before* modelling
+![](img/kpi_invariant.png){.kpi-img fig-alt="Two bars: 87.5 percent on random folds and 84 percent on a new image with invariant descriptors"}
+
+[on a new image with six descriptors that do not know the image]{.lbl}
+
+[→ Acts 2 + 6 · Descriptors, Explain]{.act-tag}
 :::
-::::
-
-. . .
-
-> A `regionprops` table is a **designed representation**: every column encodes a hypothesis about what matters.
-
-:::: {.notes}
-- Show the scikit-image call: `measure.regionprops_table(labels, intensity_image=img, properties=(...))` returns a dict that goes straight into a pandas DataFrame.
-- The one point to land: solidity is the most useful "quality control" feature — merged particles have low solidity, so it flags segmentation errors.
-- Misconception to preempt: "eccentricity measures the particle shape in 3-D." It measures the 2-D projection. Stereology is needed to infer 3-D size distributions from 2-D sections/projections (ML-PC unit 4 covers this).
-- EM anchor: in in-situ heating experiments, tracking area and centroid per particle over time turns a movie into a coarsening dataset (Ostwald ripening vs coalescence).
-- Transition: "Before we trust such a table, four standard pitfalls."
-::::
-
-## Segmentation descriptors: four pitfalls
-
-:::: {.incremental}
-- **Edge truncation:** particles touching the image border are cut → biased small. Exclude them (`clear_border`) or correct statistically.
-- **Calibration & resolution:** pixel size varies with magnification; features below ~3 px diameter are dominated by the PSF and noise.
-- **Error propagation:** a split or merge error changes *several* descriptors at once (area, eccentricity, solidity) — segmentation errors become **correlated label noise**.
-- **2-D ≠ 3-D:** projections overlap, sections cut particles off-centre; distributions need stereological correction.
-- **Validation unit:** particles from the same image share imaging conditions → group by image (or specimen) when you cross-validate.
-::::
-
-:::: {.notes}
-- These pitfalls are more important than the choice of model. A random forest on a biased size distribution learns the bias.
-- The one point to land: segmentation errors are not random noise — they are structured and correlated across descriptors. That matters later today when we discuss correlated-feature pitfalls in importance measures.
-- Misconception to preempt: "more particles = more independent samples." 2 000 particles from 5 images are 5 groups, not 2 000 independent draws.
-- EM anchor: the Week 4 leakage story in a new form — a model that predicts processing temperature from particle descriptors must be validated with images (or better specimens) held out.
-- Transition: "At atomic resolution the objects are atom columns — and there the classical pipeline is peak finding."
-::::
-
-<!-- ===== §2. Atom-column finding ===== -->
-
-## HAADF-STEM: atom columns as objects
-
-![Simulated HAADF-STEM image (square lattice, spacing 12 px, Poisson noise) with vacancy-containing columns (dimmer) and heavier substitutional columns (brighter). Right: detected and refined columns coloured by ground truth.](img/haadf_lattice.png){width="78%"}
-
-:::: {.notes}
-- HAADF is Z-contrast imaging: the intensity of a column scales roughly as $Z^{1.7}$ per atom and with the number of atoms along the beam. A heavier substitution makes a column brighter; a column with missing atoms (vacancies) is dimmer.
-- Our simulation also makes neighbours relax: a substitution pushes its neighbours outwards, a vacancy pulls them in. Those small displacements (≈0.5–0.8 px here) are invisible by eye but measurable after sub-pixel refinement.
-- The one point to land: every image has its own probe current, background and dose. The absolute intensity of a host column differs by ±40 % between images — so absolute intensity alone cannot identify defects across images.
-- Misconception to preempt: "brighter = heavier, done." Thickness variation, channelling and probe tails change column intensities too. That is why we need *relative* descriptors and a learned classifier.
-- EM anchor: dopant mapping in 2-D materials and perovskites, vacancy detection in oxides — this is the standard use case for column-level ML [@ziatdinov2017deep].
-- Transition: "How do we find the columns?"
-::::
-
-## Atom-column finding: peaks first
-
-![Column finding on a crop: raw counts → Gaussian smoothing (matched filter) → local maxima with a minimum separation → 2-D Gaussian refinement to sub-pixel positions (mean error ≈ 0.13–0.14 px against ground truth).](img/atom_finding_steps.png){width="100%"}
-
-**Smooth** (matched filter) → **local maxima** with a minimum distance *and* an intensity threshold → **2-D Gaussian refinement**. These two hyperparameters decide which objects exist.
-
-:::: {.notes}
-- Step 2: smoothing with a Gaussian of roughly the column width is a matched filter — it maximises the signal-to-noise ratio for a Gaussian-shaped object in white noise.
-- Step 3: `skimage.feature.peak_local_max(img, min_distance=..., threshold_abs=...)`. `min_distance ≈ 0.4 a` prevents two maxima per column; the threshold prevents maxima in the background. Dim columns (vacancies) must stay above the threshold — here the threshold is 30 % of the way from background to the brightest columns.
-- Step 4: integer-pixel maxima are only accurate to ±0.5 px. The Gaussian fit brings this to ≈0.13 px — 1/90 of the lattice spacing — which is what makes strain and relaxation measurable.
-- The one point to land: two hyperparameters (`min_distance`, threshold) decide which objects exist. Missed columns are missing rows in your table, not "noise".
-- Transition: "What exactly does the refinement fit?"
-::::
-
-## 2-D Gaussian refinement
-
-:::: {.columns}
-::: {.column width="55%"}
-For each peak, fit in a small window ($9\times9$ px):
-
-$$
-I(\mathbf{r}) = A\,\exp\!\left(-\frac{|\mathbf{r}-\mathbf{r}_0|^2}{2\sigma^2}\right) + b
-$$
-
-by least squares $\min_{A,\mathbf{r}_0,\sigma,b}\sum_{\text{pixels}}\big(I_\text{obs}-I(\mathbf{r})\big)^2$.
-
-:::: {.incremental}
-- Outputs per column: **position** $\mathbf{r}_0$, **amplitude** $A$, **width** $\sigma$, **local background** $b$ → the first four descriptors.
-- Integrated intensity $\sum(I_\text{obs}-b)$ is more robust to probe blur than $A$.
-- **Sub-pixel precision is limited by counts**, not by pixel size (≈ 0.13 px here).
-- This is the workflow of *Atomap* [@nord2017atomap].
-::::
 :::
-::: {.column width="45%"}
-:::: {.incremental}
-- **Loss ↔ noise model (Week 2):** least squares = Gaussian noise. At < 10 counts per pixel a **Poisson likelihood** is the principled loss.
-- **Overlap:** when columns are closer than ~$3\sigma$, fit neighbouring Gaussians **jointly**.
-- **Scan distortion & drift** shift rows systematically — correct before measuring strain.
-- **Deep-learning finders** (fully convolutional networks) replace steps 1–3 when contrast is complex [@ziatdinov2017deep] → Week 7.
-::::
+
+::: {.notes}
+- Open with the link to Week 4. Last week every model started from a finished table: features X, target y. Today asks where the table comes from when the measurement is an image, and which model to use on it.
+- Do not explain the numbers now. Say: "By the end you can explain each of them." Come back to them on the summary slide.
+- 1 934 × 11: four HAADF-STEM images of one oxide interface. A column finder returns 2 266 intensity maxima; 1 934 of them have a clear label. Each maximum becomes one row with 11 numbers. This is the step from pixels to a feature table.
+- 94 % → 69 %: a random forest on three raw intensity features (peak height, background, width). Random 5-fold cross-validation says 94.4 %. When we hold out a whole image, the same model gets 68.6 %. Week 4 gave the reason: the columns of one image share the gain, the thickness and the focus.
+- 84 %: six descriptors that are ratios, distances and angles. The random-fold score is lower (87.5 %), and the new-image score is much higher (84.1 %). The gap closes from 26 points to 3. The improvement comes from the descriptors, not from a bigger model.
+- The images are made by xp/prep/make_kpi.py from the same data as the explainers.
 :::
-::::
 
-:::: {.notes}
-- Connect explicitly to Week 2: the choice of least squares is a choice of noise model. At high dose Gaussian is fine; at low dose use Poisson NLL — the same message as the Week 2 notebook.
-- The one point to land: the refinement turns an image into a set of physical parameters with uncertainties. Those parameters are the raw material for the descriptors on the next slides.
-- Misconception to preempt: "sub-pixel precision is impossible." Precision is limited by counts, not by pixel size: with hundreds of counts per column the centroid can be located to a small fraction of a pixel.
-- EM anchor: picometre-precision strain and polarisation mapping in ferroelectrics relies on exactly this fit (often with two Gaussians per unit cell for A- and B-site columns).
-- Forward link: in Week 7 we train a U-Net to output a "column probability map"; the Gaussian refinement stays as the last step.
-- Failure modes (missed/double detections, edge columns, validate on simulated truth): backup slide "Column finding: failure modes to check".
-- Transition: "We now have positions and intensities. How do we describe a column's environment?"
-::::
+## Today's red line: from an image to a classifier you can explain
 
-<!-- ===== §3. Local-environment descriptors ===== -->
-
-## The local environment of a column
-
-![Left: the environment of column $i$ — neighbours $j$ within a cutoff, bond lengths $r_{ij}$ and angles $\theta_{jik}$. Middle: 2-D radial symmetry function $G_i(R_s)$ for host, vacancy-neighbourhood and substitution-neighbourhood geometries. Right: two measured descriptors already separate the three classes.](img/local_env_descriptors.png){width="100%"}
-
-:::: {.notes}
-- Definition (from the MG course, unit 6): the local environment of atom (column) $i$ is the set of neighbours within a cutoff, described by relative vectors $\mathbf{r}_{ij}=\mathbf{r}_j-\mathbf{r}_i$ and their species/intensities.
-- Middle panel: a vacancy column pulls its neighbours in, so its own first-shell distances are shorter and the peak of $G(R_s)$ shifts to $R_s<a$; a substitution pushes them out, shifting the peak to $R_s>a$. Sampling $G$ at $R_s = 0.9a, 1.0a, 1.1a$ gives three numbers that encode this shift.
-- Right panel: measured data from 12 simulated images. Relative intensity $I_\text{rel}$ separates substitutions (bright) and vacancies (dim); the mean neighbour distance $\bar d$ adds the strain signature.
-- The one point to land: the environment is where the physics of a defect lives — in the intensity contrast *and* in the displacement of the neighbours.
-- Transition: "Which mathematical properties must such a descriptor have?"
-::::
-
-## Invariance discipline
-
-A local descriptor $\boldsymbol\phi(\text{environment of } i)$ should be:
-
-:::: {.columns}
-::: {.column width="50%"}
-:::: {.incremental}
-- **Translation invariant:** use $\mathbf{r}_j-\mathbf{r}_i$, never $\mathbf{r}_i$.
-- **Rotation invariant:** distances, angles, $|$Fourier modes$|$ — not raw $\Delta x,\Delta y$.
-- **Permutation invariant:** sums, means, histograms, sorted lists over neighbours — never "neighbour #1, #2, …".
-::::
+::: {.xp data-xp="redline"}
 :::
-::: {.column width="50%"}
-:::: {.incremental}
-- **Continuous:** a 0.1 px displacement → a small change of $\boldsymbol\phi$ (smooth cutoffs, Gaussian bins).
-- **Chemically / contrast sensitive:** a heavier column must change $\boldsymbol\phi$.
-- **EM-specific: invariant to image-level nuisances** — probe current, detector gain, background → use **ratios** like $I_\text{rel}=I_i/\text{median}_j I_j$.
-::::
+
+::: {.notes}
+- This is the map of the lecture. Six stations, each one question. The rail at the top right of every slide shows where we are.
+- 1 Objects: find the atom columns. Smooth, find local maxima, refine each maximum with a 2-D Gaussian fit. The precision of a position is set by the dose.
+- 2 Descriptors: describe each object with a few numbers. One row per object. Good descriptors do not change when the image is shifted, rotated or recorded with a different gain.
+- 3 Tree: a decision tree asks yes/no questions about the descriptors. It chooses each question greedily by the decrease of the impurity. A deep tree has a high variance.
+- 4 Ensemble: many trees are better than one. Bagging and random forests lower the variance. Boosting lowers the bias.
+- 5 Validate: the columns of one image are not independent. Hold out whole images. Start with a baseline.
+- 6 Explain: which descriptors does the model use? Impurity importance, permutation importance and SHAP, and what each of them cannot tell you.
+- The dashed arrow: when the score on a new image is bad, go back to the descriptors. A bigger model does not repair a descriptor that identifies the image.
+- Learning outcomes (one per station): (1) describe a column finder and its hyperparameters, and state what limits the position precision; (2) design descriptors with the correct invariances and explain ACSF/SOAP in one sentence; (3) compute an impurity decrease and explain greedy tree growth; (4) derive the variance of an average of correlated trees, and state the boosting update; (5) choose the group for cross-validation and build a baseline ladder; (6) compare MDI, permutation importance and SHAP, and name their failure modes.
 :::
-::::
 
-. . .
+## One specimen, four images, one question
 
-> If a descriptor violates an invariance, the model learns coordinate-system or session accidents instead of physics.
+![Four HAADF-STEM images of one cross-section: an oxide film on a LaAlO₃ substrate, with an amorphous layer on top. Different sessions, magnifications and doses.](img/fig_images.png){width="100%" fig-alt="Four atomic-resolution images of a substrate, a film and an amorphous layer, with dashed zone boundaries"}
 
-:::: {.notes}
-- The first five come directly from the MG course (unit 6, invariance discipline); the sixth is the EM-specific addition: image-level nuisance invariance. It is the direct analogue of "group by image" in validation — we remove the image identity from the features.
-- The one point to land: invariances are priors. Building them into the descriptor means the model does not need data to learn them — the same idea as physics-respecting augmentation in Week 8 and architectural inductive bias in Weeks 6, 7 and 10.
-- Misconception to preempt: "more raw information is better, the model will figure it out." With 3 900 columns from 12 images, raw absolute intensities give balanced accuracy ≈ 0.5 under grouped CV; relative descriptors give > 0.9.
-- Diagnostic to recommend: rotate the image by 90° (or an arbitrary angle), recompute descriptors, check they do not change. This catches most bugs.
-- EM anchor: the x-position of a column is a deliberate nuisance feature in the notebook — physically meaningless — and we will see what feature-importance methods make of it.
-- Transition: "The simplest descriptors satisfy these properties almost for free."
-::::
+::: {.claim}
+The question for every intensity maximum: is it a *substrate column*, a *film column*, or *no column* at all?
+:::
 
-## Simple, interpretable environment descriptors
+::: {.notes}
+- Purpose: introduce the one data set of today. Everything in this lecture is computed from these four images.
+- The data: STEM-Bank-26 (Hollyer and Stach), folder "haadf_SFO_LAO", licence CC BY 4.0. The file names say SFO on LAO. In HAADF the intensity grows with the atomic number. The bright square lattice on the left is the LaAlO₃ substrate (La, Z = 57). The darker lattice in the middle is the Sr–Fe oxide film. On the right is an amorphous layer. The metadata do not state this; it is my reading of the Z-contrast.
+- The four images. A: one frame, 2048², 4.7 pm per pixel. B: one frame, 1024², 9.8 pm per pixel. C: sum of 10 frames, 512², 15.5 pm per pixel. D: sum of 10 frames, 1024², 10 pm per pixel. The fields of view are 8 to 10 nm.
+- The images differ in pixel size, dose, gain and position on the specimen. This is the normal situation: you train on the images that you have, and you apply the model to the image of next week.
+- The labels come from the position. Left of the first dashed line: substrate column. Between the lines: film column. In the amorphous layer there are no columns, so each maximum there is a false detection: "no column". Candidates near a boundary get no label. This gives 942 substrate columns, 685 film columns and 307 false detections.
+- Why this task? It is small, real, and it has the structure of most EM classification tasks: objects in images, a few images, and labels that are cheap in some regions.
+- The one point to land: the unit of the measurement is the image. The unit of the table is the column. This difference is the theme of Act 5.
+:::
 
-| descriptor | definition | encodes |
+<!-- ===== Act 1. Objects ===== -->
+
+## {.act}
+
+::: {.act-kicker}
+Act 1 · Objects
+:::
+::: {.act-question}
+Where are the objects in the image?
+:::
+::: {.xp data-xp="redline" data-focus="1"}
+:::
+
+## From an image to objects: smooth, find maxima, fit {data-station="1"}
+
+![Image B, a strip across the interface. From left to right: the raw image; smoothed, with the slow background removed; the local maxima; the fitted positions, coloured by the label.](img/fig_pipeline.png){width="100%" fig-alt="Four panels: raw image, filtered image, detected maxima, fitted and labelled column positions"}
+
+::: {.claim}
+Three steps, three hyperparameters: the smoothing width, the minimum distance, the threshold. Each of them changes the table.
+:::
+
+::: {.notes}
+- Purpose: the classical column finder in one picture. This is the workflow of Atomap and of most in-house scripts.
+- Step 1, smooth. A Gaussian filter with σ = 0.04 nm, about the size of one column. This is a matched filter (Week 2): the filter with the shape of the signal gives the best signal-to-noise ratio. Then subtract a wide Gaussian (0.8 nm). This removes the slow background from thickness and from the amorphous layer.
+- Step 2, local maxima. A pixel is a candidate when it is the largest value in a window of ±0.12 nm, and when it is above a threshold. Here the threshold is 4 % of the brightest values. The window is the minimum distance between two columns.
+- Step 3, fit. A 2-D Gaussian plus a constant, fitted by least squares in a window of ±0.11 nm. The fit gives the position with sub-pixel precision, the peak height, the width and the local background.
+- Result on the four images: 2 266 candidates. 598, 692, 389 and 587 for images A to D.
+- Look at the right panel. In the amorphous layer the finder also returns maxima. A finder does not know what a column is; it returns every maximum above the threshold. These false detections are a class of our problem.
+- Misconception: "the finder has no parameters, it only finds the atoms." The next slide shows how much the result depends on the three parameters.
+- The one point to land: an object detector is the first model in the chain. Its errors go into every later number.
+:::
+
+## Find the columns: dose, smoothing, threshold {data-station="1"}
+
+::: {.xp data-xp="find-columns"}
+:::
+
+::: {.notes}
+- Purpose: students see that detection is a trade-off, and that the dose decides how hard it is.
+- The data: ten aligned frames of image D, a strip of 5.8 nm × 5.1 nm across the interface. The slider "frames summed" adds 1 to 10 frames, so it changes the dose. The circles are the maxima above the threshold, coloured by the zone.
+- Demo, step 1: ten frames, default smoothing and threshold. Read the counts: 33 maxima in the substrate, 104 in the film, and 57 in the amorphous layer. The amorphous layer has no columns, so these 57 are false detections.
+- Demo, step 2: raise the threshold. Read the chart on the right: it shows the count in each zone against the threshold. The substrate line is flat; these columns are safe. The amorphous curve falls to zero near 21 %. But at 21 % the film curve is at 70: one third of the film columns is gone. No threshold removes the false detections and keeps the film.
+- Demo, step 3: go to one frame. The image is noisier. Now 64 false detections, and the amorphous curve reaches zero only near 27 %, where half of the film columns are gone. A lower dose makes the trade-off worse.
+- Demo, step 4: set the smoothing to its minimum. The number of maxima rises: noise pixels become maxima. Set it too high: neighbouring columns merge.
+- Ask: "Which errors are worse, missed columns or false columns?" It depends on the question. A vacancy count needs no false negatives. A strain map tolerates missed columns.
+- Today we keep a low threshold and let a classifier decide what is a column. That is the reason for the class "no column".
+- The one point to land: the hyperparameters of the detector decide which rows the table has. Report them together with the result.
+- If you are late: do steps 1 and 3 only.
+:::
+
+## Refine each maximum: a 2-D Gaussian fit {data-station="1"}
+
+::: {.deriv}
+::: {.dstep .fragment}
+[1]{.dnum} **Model of one column:** $I(\mathbf r)=A\,\exp\!\big(-\lvert\mathbf r-\mathbf r_0\rvert^2/2\sigma^2\big)+b$ in a small window around the maximum.
+:::
+::: {.dstep .fragment}
+[2]{.dnum} **Least squares:** $\min_{A,\mathbf r_0,\sigma,b}\sum_{\text{pixels}}\big(I_\text{obs}-I(\mathbf r)\big)^2$. Non-linear in $\mathbf r_0$ and $\sigma$: Gauss–Newton, Week 4.
+:::
+::: {.dstep .fragment}
+[3]{.dnum} **Output for each column:** position $\mathbf r_0$, peak height $A$, width $\sigma$, background $b$, residual. The first descriptors.
+:::
+::: {.dstep .fragment}
+[4]{.dnum} **Precision:** $\sigma_{r_0}\approx\sigma/\sqrt{N}$ for $N$ detected electrons in the column. The pixel size does not appear.
+:::
+:::
+
+```python
+from scipy.optimize import least_squares
+def model(p, yy, xx):                      # p = (A, y0, x0, sigma, b)
+    return p[0] * np.exp(-((yy - p[1])**2 + (xx - p[2])**2) / (2 * p[3]**2)) + p[4]
+fit = least_squares(lambda p: (model(p, yy, xx) - window).ravel(), p_start)
+```
+
+::: {.notes}
+- Write the four lines on the board while the fragments appear.
+- Step 1: the Gaussian is a model of the probe-broadened column. It is not exact, but it is good near the maximum. The constant b takes the local background.
+- Step 2: this is a non-linear least-squares problem with five parameters. Week 4 gave the tools: Gauss–Newton or Levenberg–Marquardt. `scipy.optimize.least_squares` does it. The start values come from the maximum.
+- Least squares implies a Gaussian noise model with one σ (Week 4, Act 1). That is fine for many counts. At a few counts per pixel, use the Poisson likelihood.
+- Step 3: the fit turns an image patch into five physical numbers. They are the raw material for the descriptors of Act 2.
+- Step 4: the position of a peak of width σ, measured with N electrons, has a standard error of about σ/√N. This is the standard error of a mean. With σ = 50 pm and N = 100 electrons, the precision is 5 pm. The pixel size only needs to sample the peak (two or more pixels across σ).
+- When two columns are closer than about 3σ, fit them together with two Gaussians. Otherwise each fit pulls towards the neighbour.
+- Misconception: "the precision cannot be better than one pixel." The next slide measures it.
+- Forward link: a neural network can replace steps 1 and 2 of the finder (Week 7). The Gaussian fit stays as the last step.
+:::
+
+## The dose sets the precision, not the pixel size {data-station="1"}
+
+![Left: the repeatability of a column position, measured on 219 substrate columns from two independent sums of image D. Right: a cut through one column, for one frame and for the mean of ten frames (shown with 2 × 2 binning, 20 pm), with the Gaussian fits.](img/fig_precision.png){width="96%" fig-alt="Position repeatability in picometres against the number of summed frames for three estimators, with a one over square root guide line; and a cut through one column with a Gaussian fit"}
+
+::: {.claim}
+Pixel size 10 pm. Precision with one frame: 12 pm. With five frames: 5.6 pm. Factor $\sqrt5$: the precision follows $1/\sqrt{\text{dose}}$.
+:::
+
+::: {.notes}
+- Purpose: measure the precision on real data, without a ground truth.
+- The method: image D has ten frames. Sum n frames, and sum n other frames. Find the same 219 substrate columns in both sums. The two positions of one column differ only by noise. The standard deviation of the difference, divided by √2, is the precision of one measurement. This is a repeatability test; you can do it with every image stack.
+- The numbers, for one coordinate. One frame: pixel maximum 13.3 pm, centroid 12.9 pm, Gaussian fit 12.2 pm. Two frames: 8.8, 7.9, 7.4 pm. Five frames: 6.6, 5.9, 5.6 pm.
+- First result: from one frame to five frames the precision improves by a factor of 2.2. √5 = 2.24. The precision is limited by the counts.
+- Second result: the three estimators differ by only 10 to 15 %. The pixel maximum is taken after the smoothing, and the smoothing is a matched filter. So the maximum of the smoothed image is already a good estimate. The fit is the best of the three, and it also gives A, σ and b.
+- Third result: 5.6 pm is about half a pixel. Sub-pixel precision is normal. Strain maps and polarisation maps in ferroelectrics need 1 to 5 pm; they get it with more dose and with drift correction.
+- A limit of this test: it measures the random error only. A scan distortion that is the same in all frames does not show up.
+- The one point to land: precision is a property of the dose and of the estimator. Measure it with a split of your own frames.
+:::
+
+## The same idea for particles: segment, then measure {data-station="1"}
+
+![A synthetic particle image processed with scikit-image: smooth, Otsu threshold, binary mask, watershed to split touching particles, and one table row per particle (`regionprops`).](img/seg_pipeline.png){width="100%" fig-alt="Pipeline from a noisy particle image through thresholding and watershed to a table of particle properties"}
+
+| Object | Detector | Hyperparameters | Typical descriptors |
+|---|---|---|---|
+| atom column | smooth → maxima → Gaussian fit | smoothing width, minimum distance, threshold | position, height, width, neighbours |
+| particle, grain, pore | smooth → threshold → watershed | smoothing width, threshold rule, marker distance | area, equivalent diameter, eccentricity, solidity |
+
+::: {.notes}
+- Purpose: generalise. Atom columns are one kind of object. At lower magnification the objects are particles, grains, pores or precipitates, and the detector is a segmentation.
+- This figure is synthetic; it is the only synthetic figure of today. Walk from left to right. Smooth. The Otsu threshold separates two intensity populations. In the binary mask, particles that touch are one region. The distance transform and the watershed split most of them. `skimage.measure.regionprops_table` returns one row per region.
+- The descriptors: area, equivalent diameter √(4A/π), eccentricity of the fitted ellipse, solidity (area divided by the area of the convex hull), mean intensity. Convert pixels to nanometres before you model.
+- Error propagation. A merge of two particles changes the area, the eccentricity and the solidity at the same time. So the errors of the descriptors are correlated. They are not independent noise on each column of the table. Solidity is a good quality check: merged particles have a low solidity.
+- Other pitfalls. Particles at the image border are cut: remove them (`clear_border`). A 2-D projection is not the 3-D shape. Objects smaller than about 3 pixels are dominated by the probe and the noise.
+- The one point to land: the table is a designed representation. Each column of the table is a hypothesis about what matters, and each row carries the errors of the detector.
+- If you are late: show the table only and say one sentence about correlated errors.
+:::
+
+## Checkpoint: the detector {data-station="1"}
+
+::: {.claim}
+Two minutes, in pairs. Say what changes in the table.
+:::
+
+1. You double the smoothing width. [→ **Fewer false maxima, but close columns merge.** Rows disappear, and the fitted widths grow.]{.fragment}
+2. You want 3 pm precision; one frame gives 12 pm. [→ **16 times the dose** ($1/\sqrt N$), for example 16 aligned frames. A smaller pixel does not help.]{.fragment}
+3. The specimen is beam-sensitive: 5 electrons per pixel. [→ **Poisson likelihood** in the fit, not least squares (Week 2).]{.fragment}
+4. The watershed merges two particles. [→ **Area, eccentricity and solidity are wrong together:** correlated errors in one row.]{.fragment}
+5. A colleague reports "412 columns found". What do you ask? [→ **Threshold, minimum distance, smoothing, and the number of false detections** on a region without columns.]{.fragment}
+
+::: {.notes}
+- Procedure: show the five cases, give two minutes, then reveal the answers one by one. Ask one pair for each case.
+- Case 1: the smoothing width is a trade-off between noise and resolution. Too wide, and two columns at 0.14 nm become one maximum.
+- Case 2: the precision goes with 1/√N. A factor of 4 in precision needs a factor of 16 in dose. Students often answer "use a smaller pixel". A smaller pixel at the same dose only divides the same electrons over more pixels.
+- Case 3: least squares assumes Gaussian noise. At 5 counts the distribution is skewed. This is the rule of Weeks 2 and 4: the noise model gives the loss.
+- Case 4: this is must-know statement 1. Detection errors become correlated descriptor errors.
+- Case 5: a count without the detector settings cannot be reproduced. The amorphous region of our images is a free test for false detections.
+- Timing: 3 minutes in total. If you are late, do cases 2 and 4 only.
+:::
+
+<!-- ===== Act 2. Descriptors ===== -->
+
+## {.act}
+
+::: {.act-kicker}
+Act 2 · Descriptors
+:::
+::: {.act-question}
+Which numbers describe one object?
+:::
+::: {.xp data-xp="redline" data-focus="2"}
+:::
+
+## One row per object: the feature table {data-station="2"}
+
+| Descriptor | Meaning | Unit | Kind |
+|---|---|---|---|
+| `amp`, `bg` | peak height and background of the fit | counts | raw intensity |
+| `sigma` | width of the fit | nm | shape |
+| `resid` | RMS residual of the fit / peak height | – | shape |
+| `contrast` | peak height / background | – | ratio |
+| `I_rel` | peak height / median peak height of the 4 nearest | – | ratio |
+| `d1`, `d4` | distance to the nearest; mean distance to the 4 nearest | nm | geometry |
+| `d_spread` | std / mean of the 4 distances | – | geometry |
+| `n_near` | number of candidates within 0.45 nm | – | geometry |
+| `psi4` | four-fold order $\big\lvert\tfrac14\sum_{j=1}^{4}e^{4i\theta_j}\big\rvert$ of the 4 nearest | – | geometry |
+
+::: {.claim}
+1 934 rows × 11 columns. From here on the image is gone: the model sees only this table.
+:::
+
+::: {.notes}
+- Purpose: define the table of today. Read it by groups, not by rows.
+- Group 1, raw intensity: `amp` and `bg` come directly from the Gaussian fit, in detector counts.
+- Group 2, shape: `sigma` is the width of the column in nanometres. `resid` says how well a Gaussian describes the patch. A noise maximum is not a Gaussian, so its residual is large.
+- Group 3, ratios: `contrast` divides the peak height by the local background. `I_rel` divides the peak height by the median peak height of the four nearest neighbours. A ratio removes the gain of the detector. Only `I_rel` also removes an offset; the demo on the next slide shows it.
+- Group 4, geometry: distances and angles to the neighbours. `d1` is the distance to the nearest candidate. `d4` is the mean distance to the four nearest. `d_spread` is the relative spread of these four distances: zero on a perfect square lattice. `n_near` counts the candidates within 0.45 nm. `psi4` is the four-fold bond order: 1 when the four neighbours sit at 90° to each other, small when they sit at random angles.
+- These 11 numbers are a choice. Each one is a hypothesis: "the film has a different lattice spacing", "noise maxima have no order". This is the difference from deep learning, where the network learns the features (Week 7).
+- The feature sets of today. "Raw": amp, bg, sigma. "Invariant": I_rel, d1, d4, d_spread, n_near, psi4. "All": the 11 together.
+- The one point to land: classical machine learning on images needs a designed table. Rows are objects, columns are descriptors.
+:::
+
+## Describe one column {data-station="2"}
+
+::: {.xp data-xp="descriptor"}
+:::
+
+::: {.notes}
+- Purpose: connect each descriptor to something visible in the image, and test the invariances by hand.
+- Demo, step 1: click a substrate column. Read the table: `d4` is the lattice spacing, `psi4` is near 1, `d_spread` is near 0. The lines show the four nearest neighbours.
+- Demo, step 2: click a film column, then a maximum in the amorphous layer. Ask before each click: "Which numbers will change?" In the amorphous layer the neighbours are at irregular distances and angles: `psi4` falls and `d_spread` rises.
+- Demo, step 3: switch on "gain ×3 + offset". This is a different detector setting. `amp` and `bg` change. `contrast` changes too, from 0.50 to 0.43: it divides by the background, and an offset changes the background. `I_rel`, the widths and all distances show "same".
+- Ask: "Why does one ratio survive and the other not?" `I_rel` is a ratio of two peak heights. The fit removes the constant under each peak, so the offset cancels before the division.
+- Demo, step 4: switch on "rotate 90°". Nothing changes: all 11 descriptors use distances, or angles between neighbours. An x coordinate would change. That is why the position is not a descriptor.
+- The large circle has a radius of 0.9 nm. It is the cutoff of the symmetry functions on a later slide: the local environment of the column.
+- Misconception: "the position in the image is a good feature, the film is always in the middle." It is true in these four images, and wrong in the next image. A descriptor must describe the object, not the field of view.
+- The one point to land: a good descriptor changes when the physics changes, and does not change when the acquisition changes.
+:::
+
+## Raw intensities identify the image {data-station="2"}
+
+![Top: the peak height `amp` of the substrate columns, for each of the four images. Bottom: the relative intensity `I_rel` of the same columns.](img/fig_shift.png){width="94%" fig-alt="Histograms of the raw peak height for four images, which do not overlap, and of the relative intensity, which overlap"}
+
+::: {.claim}
+The median peak height differs by a factor of 4.3 between the images. A model that splits on `amp` learns *which image*, not *which column*.
+:::
+
+::: {.notes}
+- Purpose: show the nuisance in the data before any model sees it.
+- Top panel: the peak height of the substrate columns in detector counts. The same lattice, the same atoms. The median is 4.9·10⁵ in image A, 9.8·10⁵ in B, 2.1·10⁶ in C and 1.5·10⁶ in D. The reasons: the number of summed frames, the dwell time, the detector gain, the local thickness. None of them is a property of the column.
+- A threshold "amp > 10⁶ means substrate column" is right in one image and wrong in the next one.
+- Bottom panel: `I_rel`, the peak height divided by the median of the four nearest neighbours. The four distributions are on top of each other. The division removes every factor that the column shares with its neighbours.
+- This is the same idea as the standardisation in Week 4, but local, and inside one image. It needs no information from other images, so it cannot leak.
+- What `I_rel` loses: the absolute Z-contrast. Deep in the substrate and deep in the film, `I_rel` is near 1 in both. It only differs near the interface. So the geometry descriptors must do most of the work. This is honest: without a calibrated detector, the absolute intensity cannot be compared between images.
+- With a calibrated detector (intensity as a fraction of the incident beam) and a known thickness, the absolute intensity is a valid descriptor. That is quantitative STEM.
+- The one point to land: before you train, plot each feature for each image. A feature whose distribution identifies the image will be used to identify the image.
+:::
+
+## Build the invariances into the descriptor {data-station="2"}
+
+| The acquisition changes … | The descriptor must be … | How to get it |
 |---|---|---|
-| coordination $n_i$ | $\#\{j: r_{ij} < r_c\}$ | missing / extra neighbours |
-| mean bond length $\bar d_i$ | $\frac{1}{n_i}\sum_j r_{ij}$ | local strain (relaxation) |
-| bond-length spread $s_i$ | std of $r_{ij}$ | distortion, asymmetry |
-| angular spread | std of angular gaps between neighbours | shear, disorder (0 for a perfect square) |
-| relative intensity $I_{\text{rel},i}$ | $I_i / \mathrm{median}_j I_j$ | $Z$-contrast, occupancy |
-| neighbour contrast | $\mathrm{median}_j I_{\text{rel},j}$ | "a bright neighbour nearby" |
+| the field of view (shift) | translation invariant | use distances to neighbours, not positions |
+| the scan direction (rotation) | rotation invariant | use distances and angles *between* neighbours |
+| the order of the neighbours | permutation invariant | sum or average over the neighbours |
+| gain, offset, dwell time | intensity invariant | use ratios to the local neighbours |
+| the pixel size | scale aware | measure in nm, not in pixels |
 
-:::: {.notes}
-- Every row is a permutation-invariant aggregation (count, mean, std, median) over neighbours. That is exactly how invariance is achieved without heavy maths.
-- The one point to land: the cutoff $r_c$ is a scientific hyperparameter. Between the first and second shell (here $1.25a$) coordination is stable; right at a shell radius it jumps with noise.
-- Misconception to preempt: "coordination is enough." In our lattice every inner column has four neighbours — coordination carries no information at all here. Geometry and intensity do the work.
-- EM anchor: the MG course (unit 6) shows the same ladder for crystals: coordination → bond statistics → Voronoi → ACSF/SOAP.
-- Transition: "For richer, smooth descriptors we borrow from interatomic potentials."
+::: {.claim}
+And two more: *continuous* (a small shift of an atom gives a small change) and *sensitive* (different physics gives different numbers).
+:::
+
+::: {.notes}
+- Purpose: turn the last two slides into a design rule. This is must-know statement 3.
+- Read each row as "what can change without a change of the physics", then "what must the descriptor do".
+- Row 1: the same column in a shifted image must get the same row. So no absolute positions.
+- Row 2: the scan direction is arbitrary. Distances are invariant. Angles between two neighbours are invariant; the angle of one neighbour against the x axis is not. `psi4` uses exp(4iθ) and takes the absolute value of the mean: a rotation of all neighbours changes only the phase.
+- Row 3: "neighbour 1" and "neighbour 2" have no fixed order. Sums, means, medians and sorted lists are invariant under a change of the order.
+- Row 4: a ratio removes the gain. To remove an offset too, both numbers of the ratio must be free of it: `I_rel` passes, `contrast` fails.
+- Row 5: all lengths in nanometres with the calibrated pixel size. Then images with different magnifications share one table. This is not an invariance; the lattice spacing is physics, so the descriptor must keep it.
+- Continuity: `n_near` is not continuous. A neighbour at 0.449 nm counts, one at 0.451 nm does not. A smooth cutoff is better; the symmetry functions on the next slides have one.
+- Sensitivity is the opposite demand. A constant is invariant under everything and useless. The art is to remove the nuisance and to keep the physics.
+- Where the invariance comes from in deep learning: from data augmentation or from the architecture (Weeks 7 and 8). Here it comes from the design.
+- The one point to land: decide what must not matter, and make the descriptor blind to it.
+:::
+
+## Order and distance separate lattice from noise {data-station="2"}
+
+![Image B. Left: each candidate coloured by the four-fold order `psi4`. Right: coloured by the distance to the nearest neighbour, `d1`.](img/fig_psi4.png){width="96%" fig-alt="Two copies of an image with detected maxima coloured by bond order and by neighbour distance"}
+
+::: {.notes}
+- Purpose: look at two geometry descriptors on the image, before a model uses them.
+- Left, `psi4`. In the substrate and in the film the four nearest neighbours form a square: `psi4` is near 1. In the amorphous layer the maxima are at random places: `psi4` is low. So `psi4` separates "column" from "no column".
+- Right, `d1`. In the substrate the nearest neighbour is at 0.37 nm: the finder sees one square sublattice, the heavy La columns, and 0.379 nm is the lattice parameter of LaAlO₃. In the film the median is 0.28 nm, close to 0.38/√2 = 0.27 nm. There the two cation sublattices have a similar atomic number, so the finder sees both. So `d1` separates substrate from film.
+- The class medians. `psi4`: substrate 1.00, film 0.90, no column 0.49. The film is lower than the substrate because its four nearest neighbours are not always a clean square. `d1`: 0.37, 0.28 and 0.26 nm. `d_spread`: 0.02, 0.09 and 0.15.
+- Each descriptor answers one of the two questions. No single descriptor answers both. This is why we need a model that combines them, and a tree is the simplest one.
+- Look at the interface. There the neighbourhood of a column contains both lattices. The descriptors of these columns are between the two classes. Expect the errors of every model there.
+- `psi4` is the 2-D relative of the Steinhardt bond-order parameters that are used to find crystalline regions in simulations.
+- The one point to land: plot the descriptor on the image. If you can see the classes in this plot, a simple model can find them.
+:::
+
+## From hand-made to systematic: symmetry functions {data-station="2"}
+
+:::: {.columns}
+::: {.column width="42%"}
+**Radial symmetry functions** (ACSF, $G^2$) [@behler2007symmetry]
+
+$$G_i(r_s)=\sum_{j\ne i} e^{-(r_{ij}-r_s)^2/2w^2}\,f_c(r_{ij})$$
+
+- one number for each shell radius $r_s$: "how many neighbours at this distance?"
+- a sum over neighbours: translation, rotation and permutation invariant
+- a smooth cutoff $f_c$: continuous
+- angular functions and **SOAP** [@bartok2013soap] add angles; library: DScribe [@himanen2020dscribe]
+:::
+::: {.column width="58%"}
+![The mean fingerprint of each class: seven radial functions, $r_s$ = 0.2 to 0.8 nm, cutoff 0.9 nm.](img/fig_acsf.png){width="100%" fig-alt="Mean radial symmetry function values against shell radius for substrate columns, film columns and noise maxima"}
+:::
 ::::
 
-## ACSF: atom-centred symmetry functions
+::: {.notes}
+- Purpose: show that the hand-made descriptors have a systematic version. ACSF and SOAP come from machine-learned interatomic potentials. They work for atom columns in an image too.
+- The formula: put a Gaussian shell of radius r_s and width w around column i. Count the neighbours in the shell, with a smooth weight. Do this for several radii. The result is a radial fingerprint, like a smoothed radial distribution function of one column.
+- Invariances: the function uses only the distances r_ij, and it sums over all neighbours. So it is invariant by construction. The cutoff function goes smoothly to zero at 0.9 nm, so a neighbour that crosses the cutoff causes no jump.
+- The figure: the substrate has sharp shells at its lattice distances. The film has other shells. The noise maxima have a flat fingerprint: no preferred distance.
+- Result on our task (random forest, new image): I_rel plus the seven radial functions give 84.0 %. The six hand-made descriptors give 84.1 %. No gain here, because the hand-made set already contains the distances.
+- When are systematic descriptors better? When you do not know which distances and angles matter: defects, grain boundaries, many phases. Then you take a complete set and let the model select.
+- SOAP in one sentence: expand the neighbour density in radial functions and spherical harmonics, and take the power spectrum, which is rotation invariant.
+- If you are late: skip this slide. Say that ACSF and SOAP are the systematic version of today's descriptors.
+:::
+
+## Checkpoint: is this a good descriptor? {data-station="2"}
+
+::: {.claim}
+Two minutes, in pairs. Which invariance does it break, and how do you repair it?
+:::
+
+1. The x coordinate of the column in pixels. [→ **Not translation invariant.** Use distances to neighbours.]{.fragment}
+2. The angle of the nearest neighbour against the scan direction. [→ **Not rotation invariant.** Use the angle between two neighbours.]{.fragment}
+3. The peak height in detector counts. [→ **Not gain invariant.** Divide by the local median, or calibrate the detector.]{.fragment}
+4. The distance to the nearest neighbour in pixels. [→ **Depends on the magnification.** Convert to nm.]{.fragment}
+5. The intensities of neighbours 1, 2, 3, 4 as four features. [→ **Not permutation invariant.** Sort them, or use mean and spread.]{.fragment}
+6. The number of the image. [→ **Invariant under everything in the image, and a pure leak.** Remove it.]{.fragment}
+
+::: {.notes}
+- Procedure: give two minutes, then reveal one by one. Ask for the broken invariance first, then for the repair.
+- Cases 1 to 5 map to the five rows of the invariance table.
+- Case 5 is subtle. The order of the four nearest neighbours changes when two distances are nearly equal. Then the four features swap between two similar columns. A tree sees two different rows.
+- Case 6 is the bridge to Act 5. The image number is not physics. With a random split it is a perfect feature for everything that differs between images. `bg` and `amp` are image numbers in disguise.
+- Timing: 3 minutes. If you are late, do cases 1, 3 and 6.
+:::
+
+<!-- ===== Act 3. Tree ===== -->
+
+## {.act}
+
+::: {.act-kicker}
+Act 3 · Tree
+:::
+::: {.act-question}
+How does a tree ask questions?
+:::
+::: {.xp data-xp="redline" data-focus="3"}
+:::
+
+## A decision tree is a sequence of yes/no questions {data-station="3"}
+
+![A tree of depth 3 on the six invariant descriptors, trained on all 1 934 labelled candidates. Each node shows the question, the number of rows and the class counts.](img/fig_tree.png){width="100%" fig-alt="A decision tree with three levels of questions about neighbour distances and bond order, and eight leaves coloured by class"}
+
+::: {.notes}
+- Purpose: read a real tree before we learn how to build one.
+- Read from the top. Each node asks one question about one descriptor: "is the value below a threshold?" Yes goes left, no goes right. A leaf predicts the class that has the most training rows in it.
+- The root question: "is `d_spread` at most 0.04?" That means: are the four neighbour distances nearly equal? 915 candidates say yes; most of them are substrate columns.
+- Follow a substrate column: regular neighbourhood, yes; `I_rel` above 0.83, so not a dim maximum; `d4` at most 0.39 nm. It lands in a leaf with 795 rows, 98 % substrate.
+- Follow a noise maximum: `d_spread` above 0.04, and above 0.19; it lands in a leaf with 98 rows, 93 % "no column".
+- The questions are physics that you can check. A perfect square lattice has a spread of zero. The threshold of 0.39 nm is just above the lattice parameter of LaAlO₃, 0.379 nm. The tree found these numbers from the data.
+- The weak leaves are the two film leaves on the right, with 69 % and 54 % purity. Three questions are not enough for the film.
+- With three levels the tree has at most 8 leaves. Its accuracy is 79 % on the training rows, and a tree of this depth gets 75 % on a new image.
+- What a tree is as a function: it cuts the descriptor space into boxes with edges parallel to the axes, and it predicts one constant in each box. A piecewise-constant function.
+- Three properties follow from this picture. (1) A tree needs no feature scaling: a threshold on `d1` in nm or in pm gives the same split. (2) A tree finds thresholds and interactions: "if `psi4` is high and `d1` is large". (3) A tree cannot extrapolate: outside the range of the training data the prediction stays constant.
+- The one point to land: a small tree is a model that you can read. That is rare, and it is the reason why trees are the first non-linear model to try.
+:::
+
+## Which question? The one that makes the children purer {data-station="3"}
+
+::: {.deriv}
+::: {.dstep .fragment}
+[1]{.dnum} **Impurity of a node** with class fractions $p_k$: Gini $I=1-\sum_k p_k^2$, entropy $I=-\sum_k p_k\log_2 p_k$.
+:::
+::: {.dstep .fragment}
+[2]{.dnum} **A split** (feature $j$, threshold $t$) sends $N_L$ rows left and $N_R$ rows right.
+:::
+::: {.dstep .fragment}
+[3]{.dnum} **Impurity decrease:** $\Delta = I(\text{parent})-\frac{N_L}{N}I(L)-\frac{N_R}{N}I(R)$
+:::
+::: {.dstep .fragment}
+[4]{.dnum} **Choose** the pair $(j,t)$ with the largest $\Delta$. Regression: $I$ = variance of $y$ in the node.
+:::
+:::
+
+![Two classes: the impurity against the fraction $p$ of one class.](img/fig_impurity.png){width="52%" fig-alt="Gini impurity, entropy and misclassification error against the class fraction; all are zero for a pure node and largest at one half"}
+
+::: {.notes}
+- Write the four lines on the board while the fragments appear. This is must-know statement 4.
+- Step 1: the impurity is zero when all rows of a node have one class. It is largest when the classes are mixed equally. Gini: the probability that two rows drawn at random from the node have different classes. Entropy: the mean number of bits needed to state the class.
+- Example at the root of our table: 942, 685 and 307 rows. The fractions are 0.49, 0.35, 0.16. Gini = 1 − 0.49² − 0.35² − 0.16² = 0.61.
+- Step 3: the impurity of the two children, weighted by their sizes, subtracted from the impurity of the parent. With entropy this is the information gain.
+- Step 4: for regression trees, the impurity is the variance of the target in the node. Then the split minimises the sum of squared errors, the loss of Week 4.
+- The figure: Gini and entropy have nearly the same shape. In practice they choose nearly the same splits. The misclassification error is a straight line. It is a bad criterion: a split that makes one child purer and the other less pure can leave the error unchanged, and Gini rewards it.
+- Misconception: "the tree maximises the accuracy." It maximises the impurity decrease of one split at a time.
+:::
+
+## Find the best split of one node {data-station="3"}
+
+::: {.xp data-xp="split"}
+:::
+
+::: {.notes}
+- Purpose: students do one split by hand and see the computation of Δ.
+- The data: all 1 934 labelled candidates. The top chart shows the three classes along one descriptor.
+- Demo, step 1: the descriptor `d4`, the mean distance to the four nearest candidates. The substrate is the narrow blue peak at 0.38 nm. Move the threshold slowly from left to right. Watch the three bars: the parent, the left child, the right child. The lower chart draws Δ for each threshold.
+- Read the equation with the numbers at 0.360 nm: 0.612 − 554/1934 · 0.472 − 1380/1934 · 0.473 = 0.140.
+- Demo, step 2: press "best split". The threshold jumps to 0.370 nm with Δ = 0.159. Look at the Δ curve just right of it: Δ falls to zero, where the threshold cuts the substrate peak in two halves.
+- Demo, step 3: change the descriptor to `d_spread`, to ψ₄, then to `amp`. Each descriptor has its own best threshold and its own best Δ. The tree compares these best values and takes the largest one. That is one node.
+- Demo, step 4: switch from Gini to entropy. The scale of the curve changes (the parent has 1.46 bits), and the best threshold nearly stays.
+- Ask: "How many thresholds must the tree test for one feature?" At most N − 1: only the midpoints between sorted neighbours matter. So one node costs about N log N for each feature.
+- Note on `amp`: it gives a large Δ on this table, because the table contains all four images and the classes differ in intensity inside each image. Remember this for Act 5.
+- The one point to land: a split is an exhaustive search over features and thresholds for the largest impurity decrease.
+:::
+
+## CART: greedy, recursive, cheap {data-station="3"}
 
 :::: {.columns}
 ::: {.column width="50%"}
-**Radial** [@behler2007symmetry]
+**The algorithm**
 
-$$
-G_i^{\text{rad}}(R_s) = \sum_{j} e^{-\eta\,(r_{ij}-R_s)^2}\, f_c(r_{ij})
-$$
+1. Start with all rows in one node.
+2. Find the split $(j,t)$ with the largest $\Delta$.
+3. Split the rows. Repeat steps 2 and 3 in each child.
+4. Stop: node is pure, depth limit, or fewer than `min_samples_leaf` rows.
+5. Each leaf predicts its majority class (or its mean).
 
-- a *soft histogram* of neighbour distances around shell $R_s$
-- many $(\eta, R_s)$ pairs → a feature vector
-- $f_c$: smooth cutoff → continuity
+```python
+from sklearn.tree import DecisionTreeClassifier
+tree = DecisionTreeClassifier(max_depth=3)
+tree.fit(X_train, y_train)
+```
 :::
 ::: {.column width="50%"}
-**Angular**
+**What follows from it**
 
-$$
-G_i^{\text{ang}} = 2^{1-\zeta}\sum_{j,k}(1+\lambda\cos\theta_{jik})^{\zeta}\, e^{-\eta'(r_{ij}^2+r_{ik}^2)}\,f_cf_c
-$$
-
-- scores bond angles smoothly
-- invariant by construction: only distances and angles
-- **2-D use:** identical formulas with in-plane $r_{ij}$, $\theta_{jik}$
+- **Greedy:** the best split now, not the best tree. The best tree is NP-hard to find.
+- **No scaling needed:** only the order of the values matters.
+- **Thresholds and interactions** are natural; smooth linear trends need many steps.
+- **No extrapolation:** constant outside the training range.
+- **Unstable:** a small change of the data can change the root, and then everything below it.
 :::
 ::::
 
-:::: {.notes}
-- ACSF were introduced by Behler and Parrinello as the input layer of neural-network interatomic potentials: they needed smooth, invariant, per-atom features.
-- The radial term in plain English: "how many neighbours are near distance $R_s$", weighted by a Gaussian of width $1/\sqrt{2\eta}$. In the notebook we use $\eta = 1/(0.05a)^2$ and $R_s\in\{0.9a, 1.0a, 1.1a\}$ — three radial functions that detect inward and outward relaxation.
-- The one point to land: every term depends only on distances and angles, and sums over neighbours — so translation, rotation and permutation invariance are automatic. That is the design pattern to remember.
-- Misconception to preempt: "ACSF are only for DFT people." For projected columns in STEM the in-plane version is a perfectly good descriptor — the MG course derivation carries over with 3-D replaced by 2-D.
-- Transition: "SOAP takes a more systematic route."
+::: {.notes}
+- Purpose: the complete algorithm on one slide. CART = classification and regression trees (Breiman and co-workers, 1984).
+- Left column: read the five steps. This is a recursion. Each step uses only the rows of the current node.
+- Greedy: the algorithm never revises a split. A split that looks bad now and enables two very good splits below is not found. The XOR pattern is the standard example: no single split helps, two splits solve it.
+- No scaling: the split only compares values of one feature with a threshold. Any monotonic transform of a feature (log, scaling) gives the same tree. Compare with Week 4, where gradient descent needed standardised features.
+- No extrapolation, with a real example. With all 11 features, the random forest reaches 87 %, 77 % and 83 % on images B, C and D, and only 49 % on image A. Image A has the lowest counts of the four. Its `amp` values are below the range of the other three images, so every threshold on `amp` sends the columns of A to the wrong side.
+- Stopping rules are the regularisation of a tree: `max_depth`, `min_samples_leaf`, `max_leaf_nodes`. Cost-complexity pruning (`ccp_alpha`) grows a full tree and cuts it back.
+- Cost: about F · N log N for each level, for F features and N rows. A tree on our table trains in milliseconds.
+- The one point to land: a tree is a greedy, recursive search for impurity decrease. Its strengths and its weaknesses both come from that.
+:::
+
+## Grow a tree: depth against a new image {data-station="3"}
+
+::: {.xp data-xp="grow-tree"}
+:::
+
+::: {.notes}
+- Purpose: see the partition grow, and see overfitting and instability with real data.
+- The setting: two descriptors, `d4` and `I_rel`, so that the boxes are visible. The tree trains on the 1 354 candidates of images A, C and D. The test set is image B, a new image.
+- Demo, step 1: depth 1, then 2, then 3. Each step cuts boxes into two. The training accuracy rises: 62 %, 75 %, 78 %. The accuracy on image B does not rise: it is about 80 % from depth 1.
+- Why is the test score higher than the training score at depth 1? Image B has another class mixture and less noise than image A. One number for one image has a large uncertainty; do not read too much into it.
+- Demo, step 2: go to depth 8 and to depth 12. The boxes become thin strips around single points. The training accuracy goes to 97 %. The accuracy on image B falls to 70 %. This is the picture of Week 4: the training error always falls with the complexity.
+- Demo, step 3: set the depth to 4 and press "new bootstrap sample" several times. Each press draws the training rows again with replacement and grows a new tree. The boxes jump. The first split can change, and then the complete tree changes. "all data" goes back.
+- Ask: "If each tree is so unstable, how can we use trees at all?" Collect answers. The answer of Act 4: average many of them.
+- Misconception: "a deeper tree is a better tree." Deeper is a lower bias and a higher variance.
+- The one point to land: depth is the complexity knob of a tree, and a single deep tree has a high variance.
+- If you are late: do steps 1 and 3 only; the next slide shows step 2 as a figure.
+:::
+
+## Depth: the training score always rises {data-station="3"}
+
+![Accuracy against the depth of one tree. Left: three raw features (amp, bg, sigma). Right: six invariant descriptors. Training rows, random 5-fold, and a new image.](img/fig_depth.png){width="96%" fig-alt="Accuracy against tree depth for training data, random folds and a new image, for raw features and for invariant descriptors"}
+
+::: {.claim}
+Raw features, full tree: 100 % training, 93 % random folds, 64 % new image. The random folds do *not* show the overfitting.
+:::
+
+::: {.notes}
+- Purpose: the bias–variance trade-off of Week 4, measured for a tree, with two different test sets.
+- Left panel, raw features. The training accuracy reaches 100 % at depth 14 with 120 leaves. The random-fold accuracy rises with it to 93 %. So a random split says: "a deeper tree is better, no overfitting." The new-image accuracy stays between 43 % and 64 %, and it jumps from depth to depth: at this level the curve is noise.
+- Why do the random folds rise? The validation columns come from the same images as the training columns. The deep tree learns the intensity levels of each image, and these levels are valid for the validation columns. The tree memorises the images, and the random split rewards it.
+- Right panel, invariant descriptors. Training: 99 % at depth 14 with 215 leaves. Random folds: 83 % at depth 4, then flat. New image: 80 % at depth 4, a maximum of 81 % at depth 7, and no gain after that. Now the random folds and the new image tell the same story, 3 to 4 points apart.
+- The best depth for a new image is about 4 with 16 leaves or fewer. A tree that you can still read.
+- Compare the two test curves on the left: 30 points apart. On the right: 3 points. The descriptors decide whether the validation is honest, not the model.
+- The one point to land: choose the depth with a validation score, and choose the validation split that matches the deployment. Week 4, now with trees.
+:::
+
+## One tree is unstable {data-station="3"}
+
+![Two trees of depth 3 on two descriptors, trained on two bootstrap samples of the same rows. The shading shows the predicted class.](img/fig_unstable.png){width="96%" fig-alt="Two partitions of the same descriptor plane by two decision trees; the boxes differ"}
+
+::: {.claim}
+Same data, same algorithm, a different tree. High variance is the weakness of one tree, and the opportunity for many.
+:::
+
+::: {.notes}
+- Purpose: fix the instability in one static picture, as the bridge to Act 4.
+- A bootstrap sample: draw N rows from the N training rows with replacement. About 63 % of the rows appear at least once; the rest are left out. The two samples differ only by this random draw.
+- Compare the two panels. The large boxes agree: the substrate box near 0.38 nm, "no column" at the top. The boundaries differ: the border between film and "no column" is at a spread of 0.19 on the left and 0.17 on the right, and the right tree has an extra "no column" box at the bottom left.
+- Be honest about the size: these two trees disagree for 8.5 % of the candidates. This is the worst pair of 20 trees; a typical pair disagrees for 3 %. Deeper trees disagree more.
+- The reason is the greedy recursion. Two thresholds with nearly the same Δ compete at the root. A few rows decide which one wins. All later splits depend on that choice.
+- In the language of Week 4: the bias of a deep tree is low, because it can fit any boundary. Its variance is high.
+- A model with low bias and high variance is the ideal input for averaging. Averaging does not change the bias, and it lowers the variance.
+- The one point to land: do not interpret the details of one deep tree. Another sample of the same data gives other details.
+:::
+
+## Checkpoint: trees {data-station="3"}
+
+::: {.claim}
+Two minutes, in pairs.
+:::
+
+1. A node has 40 substrate and 40 film columns. A split gives (40, 10) and (0, 30). Compute $\Delta$ with Gini. [→ parent 0.50; children 0.32 and 0; $\Delta = 0.50-\tfrac{50}{80}\cdot0.32 = \mathbf{0.30}$]{.fragment}
+2. You replace `d1` by $\log$ `d1`. What changes in the tree? [→ **Nothing** but the threshold values. Only the order matters.]{.fragment}
+3. The training accuracy is 100 %, the accuracy on a new image is 64 %. Two things to do. [→ **Limit the depth** (or `min_samples_leaf`), and **check the features** for image identity.]{.fragment}
+4. A regression tree is trained on thicknesses of 10 to 50 nm. What does it predict for 80 nm? [→ **About 50 nm:** the value of the last leaf. No extrapolation.]{.fragment}
+5. Two colleagues train a tree on the same data, with 5 % different rows. The roots differ. Who is wrong? [→ **Nobody.** Trees are unstable. Average many.]{.fragment}
+
+::: {.notes}
+- Procedure: two minutes, then reveal. Case 1 is a typical exam calculation; do it on the board.
+- Case 1 in detail. Parent: p = (0.5, 0.5), Gini = 1 − 0.25 − 0.25 = 0.5. Left child (40, 10): p = (0.8, 0.2), Gini = 1 − 0.64 − 0.04 = 0.32. Right child (0, 30): pure, Gini = 0. Weights 50/80 and 30/80. Δ = 0.5 − 0.625 · 0.32 − 0 = 0.30.
+- Case 2: trees are invariant to monotonic transforms of each feature. This is a practical advantage for tables with mixed units.
+- Case 3: both answers are needed. The depth limit lowers the variance. The feature check finds the leak. Students often give only the first one.
+- Case 4: this is why tree models are a risk for process optimisation outside the tested range.
+- Case 5 leads to Act 4.
+- Timing: 3 minutes. If you are late, do cases 1 and 4.
+:::
+
+<!-- ===== Act 4. Ensemble ===== -->
+
+## {.act}
+
+::: {.act-kicker}
+Act 4 · Ensemble
+:::
+::: {.act-question}
+Why are many trees better than one?
+:::
+::: {.xp data-xp="redline" data-focus="4"}
+:::
+
+## Bagging: average many unstable trees {data-station="4"}
+
+::: {.deriv}
+::: {.dstep .fragment}
+[1]{.dnum} **Bootstrap:** draw $N$ rows with replacement, $B$ times. Train one deep tree on each sample.
+:::
+::: {.dstep .fragment}
+[2]{.dnum} **Aggregate:** average the $B$ predictions (regression) or take the majority vote (classification).
+:::
+::: {.dstep .fragment}
+[3]{.dnum} **Independent trees,** each with variance $\sigma^2$: $\;\mathrm{Var}\big(\tfrac1B\sum_b f_b\big)=\sigma^2/B$. The bias does not change.
+:::
+::: {.dstep .fragment}
+[4]{.dnum} **Correlated trees,** pairwise correlation $\rho$: $\;\mathrm{Var}=\rho\,\sigma^2+\dfrac{1-\rho}{B}\,\sigma^2\;\xrightarrow{B\to\infty}\;\rho\,\sigma^2$
+:::
+:::
+
+::: {.claim}
+More trees remove the second term only. The floor $\rho\sigma^2$ stays: to go lower, make the trees *less alike*.
+:::
+
+::: {.notes}
+- Write the four lines on the board. This is must-know statement 5. Bagging = bootstrap aggregating (Breiman 1996).
+- Steps 1 and 2: each tree sees another bootstrap sample, so each tree makes other errors at the class boundaries. The vote cancels a part of these errors.
+- Step 3: the variance of a mean of B independent values is σ²/B. This is the 1/√N law of Act 1 again: there we averaged frames, here we average trees.
+- Step 4: the trees are not independent, because all of them come from the same N rows. Derivation for the board: Var(Σf_b) = B σ² + B(B − 1) ρσ². Divide by B². The result is ρσ² + (1 − ρ)σ²/B.
+- Read the formula. The second term goes to zero with more trees. The first term does not depend on B. With ρ = 0.6, even an infinite number of trees keeps 60 % of the variance of one tree.
+- Consequence 1: more trees never hurt a bagged ensemble; they only cost time. B is not a hyperparameter to tune; use enough.
+- Consequence 2: the next improvement must lower ρ. That is the random forest.
+- Averaging does not lower the bias. So bagging needs trees with a low bias: deep trees.
+:::
+
+## Count the votes on a new image {data-station="4"}
+
+::: {.xp data-xp="bagging"}
+:::
+
+::: {.notes}
+- Purpose: see the vote of B trees on real columns, and see the floor.
+- The setting: 200 trees, trained on images A, C and D with the six invariant descriptors. The map shows the 580 candidates of image B, the new image. Green: the majority vote is right. Red: wrong. A large dot is a clear vote.
+- Demo, step 1: B = 1. One tree: about 80 % correct, with red points everywhere. Press "shuffle tree order" several times: another first tree, other red points. This is the instability of Act 3 on the image. The mean of the single trees is 78 %.
+- Demo, step 2: raise B slowly to 5, 10, 30, 100. The scattered red points inside the substrate and the film disappear. The curve rises fast and then flattens: 82 % at B = 5, 85 % at B = 10, 86 % at B = 30 and at B = 200. Read the line under the chart: the variance of the average is (0.60 + 0.40/B) σ².
+- The curve is not smooth: one point up or down between B = 30 and B = 100 is noise from 580 candidates. Shuffle the order to show it.
+- Demo, step 3: look at the red points that stay. They are at the interface, at the border of the amorphous layer, and at the left edge of the image, where the neighbourhood is cut. There all trees are wrong together. More trees cannot repair an error that every tree makes. It is the shared part: correlation, and the bias of the descriptors.
+- Demo, step 4: switch between "bagging" and "random forest". On this one image the two curves are nearly equal. The correlation between the trees is 0.60 for bagging and 0.56 for the forest.
+- Click one red candidate: the vote bar shows how the 200 trees are divided. A vote of 55 to 45 is an uncertain prediction. The vote share is a first, rough measure of confidence.
+- The one point to land: an ensemble removes the errors that the trees do not share. It keeps the errors that they share.
+:::
+
+## Random forest: decorrelate the trees {data-station="4"}
+
+:::: {.columns}
+::: {.column width="40%"}
+**Random forest** [@breiman2001randomforests] = bagging + one more random choice:
+
+- at **each split**, test only a random subset of the features (`max_features`, default $\sqrt F$ for classification)
+- a strong feature cannot be the root of every tree: $\rho$ falls
+- each tree is a little worse; the average is better
+- **out-of-bag score:** each tree tests the 37 % of rows it did not see
+
+```python
+from sklearn.ensemble import (
+    RandomForestClassifier as RF)
+rf = RF(300, oob_score=True)
+rf.fit(X_train, y_train)
+rf.oob_score_
+```
+:::
+::: {.column width="60%"}
+![Left: accuracy on a new image against the number of trees. Right: the variance formula for the measured ρ.](img/fig_ntrees.png){width="100%" fig-alt="Accuracy against the number of trees for bagging and random forest; both curves saturate, the forest higher"}
+:::
 ::::
 
-## SOAP and its 2-D analogue
+::: {.notes}
+- Purpose: one idea, lower ρ, and its measured effect.
+- The idea: in bagging, every tree may use every feature at every split. If one feature is very strong, all trees start with it, and the trees look alike. The random forest lets each split see only a random subset of the features. For 6 features, √6 gives 2 features per split.
+- The numbers, left panel: the mean over the four held-out images, six invariant descriptors. One tree alone: 77.5 %. Bagging: 82.6 % with 30 trees, 82.8 % with 200; ρ = 0.60. Random forest: 83.9 % with 30 trees, 84.1 % with 200; ρ = 0.56.
+- Right panel: the formula of the last slide for these two values of ρ. The dotted line is ρ = 0, independent trees: that variance would go to zero.
+- Be honest about the size of the effect: one point. With only six features, of which three or four are informative, the room for decorrelation is small. With 50 or 500 descriptors the gain of the forest over bagging is larger.
+- Both curves saturate after about 30 to 100 trees. More trees do not overfit. Use 300 to 500 and stop thinking about it.
+- Out-of-bag score: each bootstrap sample leaves out about 37 % of the rows. Each row is predicted by the trees that did not see it. This is a free validation score. Warning for our data: the out-of-bag rows come from the same images as the training rows. The out-of-bag score is a random-split score. It has the same optimism as the random folds.
+- Hyperparameters that matter: `max_features` and `min_samples_leaf`. The forest is robust: the defaults are usually within one or two points of the best setting.
+- The one point to land: a random forest lowers the variance twice: by averaging, and by making the trees less alike.
+:::
+
+## Boosting: each small tree corrects the last error {data-station="4"}
+
+::: {.deriv}
+::: {.dstep .fragment}
+[1]{.dnum} **Start** with a constant: $F_0(\mathbf x)=\bar y$. Loss $\mathcal L=\sum_i \ell\big(y_i,F(\mathbf x_i)\big)$.
+:::
+::: {.dstep .fragment}
+[2]{.dnum} **Pseudo-residuals:** $r_i=-\,\partial \ell/\partial F(\mathbf x_i)$. For the squared error: $r_i=y_i-F(\mathbf x_i)$, the residual.
+:::
+::: {.dstep .fragment}
+[3]{.dnum} **Fit a small tree** $h_m$ to the $r_i$ (depth 1 to 6).
+:::
+::: {.dstep .fragment}
+[4]{.dnum} **Update:** $F_m=F_{m-1}+\eta\,h_m$. Repeat steps 2 to 4.
+:::
+:::
+
+::: {.claim}
+Gradient descent of Week 4, $\mathbf w\leftarrow\mathbf w-\eta\nabla\mathcal L$, but in *function space*: each tree is one gradient step.
+:::
+
+::: {.notes}
+- Write the four lines. This is must-know statement 6 (Friedman 2001).
+- Bagging trains the trees in parallel and independently. Boosting trains them in sequence: each tree sees the errors of all trees before it.
+- Step 2: for the squared error, the negative gradient is the residual y − F. So "fit the next tree to the residuals" is a gradient step. For other losses the same recipe works with another gradient: log-loss for classification, Poisson deviance for counts, Huber for outliers. The noise model gives the loss, as in Week 4.
+- Step 3: the trees are small on purpose, often with 2 to 32 leaves. A small tree has a high bias and a low variance. Boosting lowers the bias step by step.
+- Step 4: η is the learning rate, the same η as in Week 4. η = 1 takes the full step. η = 0.1 takes a tenth, and needs about ten times more trees.
+- The analogy in one sentence: gradient descent changes the weight vector against the gradient. Boosting changes the function against the gradient, and a tree is the approximation of that gradient that we can store.
+- Difference from bagging that matters: a boosted ensemble can overfit when it has too many trees. So the number of trees is a hyperparameter here.
+- Misconception: "boosting is a better random forest." It attacks the bias, the forest attacks the variance. Which one wins depends on the data.
+:::
+
+## Watch boosting fit the residuals {data-station="4"}
+
+::: {.xp data-xp="boost"}
+:::
+
+::: {.notes}
+- Purpose: see steps 2 to 4 of the last slide happen, on a real 1-D profile.
+- The data: the peak height of each candidate of image B, divided by the median peak height of the substrate, against the distance from the interface. High in the substrate, a step down at the interface, low and noisy in the film and the amorphous layer. This is a regression task. The weak learner is a tree of depth 2.
+- Demo, step 1: stage 0. The model is the mean. The lower chart shows the residuals y − F.
+- Demo, step 2: stage 1, 2, 3 with η = 0.3. Each stage fits a small tree to the residuals and adds 30 % of it to the model. The first tree finds the step at the interface. The residuals shrink there. The next tree goes to another place.
+- Demo, step 3: press play. The model becomes a staircase that follows the profile. The training error on the right falls at every stage. The yellow curve is the error on image D, which the model does not see. It has its minimum at stage 17.
+- Demo, step 4: η = 1, 200 stages. The model has spikes: single trees that follow single bright points of image B. The training error is 0.003. The held-out error was lowest at stage 8 and is now 60 % higher. Then η = 0.03: slow, smooth, the minimum comes at stage 186.
+- Ask: "Where would you stop?" At the minimum of the held-out curve. This is early stopping.
+- A detail for a good question: in the first stages the held-out error is below the training error. Image D has less noise than image B. The level of the two curves is not comparable; the position of the minimum is.
+- The held-out data are the candidates of another image. If the held-out points came from the same image, the minimum would come later.
+- The one point to land: boosting is a sequence of small corrections. The learning rate and the number of stages together decide how far it goes.
+:::
+
+## Learning rate and early stopping {data-station="4"}
+
+![Boosting with trees of depth 2 on the six invariant descriptors. Log-loss on a new image (solid) and on the training images (dashed) against the number of trees, for four learning rates.](img/fig_boost.png){width="94%" fig-alt="Held-out and training log-loss against the boosting stage for four learning rates, with the best stage of each curve marked"}
+
+::: {.claim}
+η = 1: best at 5 trees, then worse than the start. η = 0.1: best at 98 trees. The training loss goes to zero in all cases.
+:::
+
+::: {.notes}
+- Purpose: the two hyperparameters of boosting, measured on the real classification task. Each image is the held-out image in turn; the curves are the mean.
+- Read the dashed curves first. The training loss falls at every stage for every η. With η = 1 it reaches 0.0003 after 300 trees. The training loss says nothing about when to stop.
+- Solid curves, the loss on a new image. η = 1: the minimum is at 5 trees with a log-loss of 0.53; after 300 trees it is 1.22, worse than a model that predicts the class fractions. η = 0.3: minimum at 33 trees, 0.433; after 300 trees 0.60. η = 0.1: minimum at 98 trees, 0.435. η = 0.03: still falling at 300 trees, 0.435.
+- Two results. First: a smaller η reaches the same or a better minimum, and it is flatter, so the exact stopping point matters less. Second: η and the number of trees are coupled. A tenth of the η needs about ten times the trees.
+- The recipe: set η to a small value, for example 0.05 to 0.1. Choose the number of trees by early stopping on held-out data. Then tune the tree size.
+- The held-out data for early stopping must be other images, not random rows. Random rows from the training images would stop too late.
+- In scikit-learn: `HistGradientBoostingClassifier(learning_rate=0.1, early_stopping=True)`. With grouped data, make the validation split yourself. Libraries: XGBoost, LightGBM and CatBoost implement the same idea with more speed and more regularisation.
+- The one point to land: boosting can overfit. A small learning rate plus early stopping on grouped data controls it.
+:::
+
+## Bagging or boosting? {data-station="4"}
+
+| | Random forest (bagging) | Gradient boosting |
+|---|---|---|
+| Trees | deep, low bias, high variance | small, high bias, low variance |
+| Training | parallel, independent | in sequence, each on the last error |
+| Lowers | the variance | the bias |
+| More trees | never hurt | overfit: use early stopping |
+| Main hyperparameters | `max_features`, `min_samples_leaf` | $\eta$, number of trees, tree size |
+| Tuning effort | small | larger; tune inside grouped CV |
+| On our task, new image | 84 % | 82 % |
+
+::: {.claim}
+Tree ensembles are the default *first* model for a table: mixed units, thresholds, useless columns. The default is a hypothesis: Act 5 tests it.
+:::
+
+::: {.notes}
+- Purpose: one comparison table for the exam and for practice.
+- Read the first four rows as opposites. The forest averages strong, noisy trees. Boosting adds weak, stable trees.
+- Our numbers: the forest gets 84.1 % on a new image, boosting 82.1 %, both with default settings and the six invariant descriptors. Two points on four images is not a significant difference. On large tables with careful tuning, boosting is often one or two points better; on small, noisy tables the forest is the safer choice.
+- Why trees work well on tables (Grinsztajn and co-workers, 2022, 45 data sets). (1) They ignore uninformative features: a feature that never gives a good split is never used. (2) They fit non-smooth targets: thresholds and steps. (3) The axes of a table have a meaning, and trees split along the axes. A neural network must learn all three.
+- The counter-position: when the descriptors are good physical quantities and the relation is smooth, a linear model can be as good, and it extrapolates. Foundation models for tables (TabPFN) are also competitive on small tables.
+- So "trees first" is a starting point. The baseline ladder of the next act decides.
+- If you are late: skip this slide; show the table for 20 seconds as a summary.
+:::
+
+## Checkpoint: ensembles {data-station="4"}
+
+::: {.claim}
+Two minutes, in pairs.
+:::
+
+1. One tree has variance $\sigma^2$; the trees correlate with $\rho=0.5$. The variance of 100 trees? Of infinitely many? [→ $0.5\sigma^2+0.005\sigma^2\approx\mathbf{0.505\,\sigma^2}$; floor $\mathbf{0.5\,\sigma^2}$]{.fragment}
+2. Your forest has 100 trees. A colleague says: "Use 10 000, it will be much better." [→ **No.** The term $(1-\rho)\sigma^2/B$ is already small. Lower $\rho$ or improve the descriptors.]{.fragment}
+3. Boosting: training loss 0.001, loss on new images rising. What do you change? [→ **Early stopping,** a **smaller η,** smaller trees.]{.fragment}
+4. Why does a random forest use deep trees, and boosting small trees? [→ **Averaging lowers variance, not bias:** it needs low-bias trees. **Boosting lowers bias:** it starts from low-variance trees.]{.fragment}
+5. The out-of-bag score of your forest is 93 %. Can you report it for a new image? [→ **No.** Out-of-bag rows come from the training images.]{.fragment}
+
+::: {.notes}
+- Procedure: two minutes, then reveal. Case 1 is an exam calculation.
+- Case 1: ρσ² + (1 − ρ)σ²/B = 0.5σ² + 0.5σ²/100. The second term is 1 % of the first. So 100 trees are at the floor.
+- Case 2 follows from case 1. Students who know the formula can answer it without an experiment.
+- Case 3: the picture of the last figure. All three answers are regularisation.
+- Case 4 is the core of the act. If students get this one, they understood the bias–variance logic of ensembles.
+- Case 5 prepares Act 5: an internal score of the model is only as honest as its split.
+- Timing: 3 minutes. If you are late, do cases 1 and 4.
+:::
+
+<!-- ===== Act 5. Validate ===== -->
+
+## {.act}
+
+::: {.act-kicker}
+Act 5 · Validate
+:::
+::: {.act-question}
+Does it work on a new image?
+:::
+::: {.xp data-xp="redline" data-focus="5"}
+:::
+
+## Two splits, two answers {data-station="5"}
+
+![Six models, two feature sets, two splits. Light bars: random 5-fold over the candidates. Red bars: leave one image out.](img/fig_ladder.png){width="96%" fig-alt="Bar chart of accuracy for six models with raw features and with invariant descriptors, each with a random split and a new-image split"}
+
+::: {.claim}
+Raw features: 94 % on random folds, 69 % on a new image. Invariant descriptors: 87 % and 84 %. The gap measures the leak.
+:::
+
+::: {.notes}
+- Purpose: the main result of the lecture. It is Week 4 again, with trees: the split must match the claim.
+- The claim that we want to make: "this classifier labels the columns of the next image of this specimen." So the test must be an image that the model never saw. Leave-one-image-out: train on three images, test on the fourth, four times. In scikit-learn: `GroupKFold` or `LeaveOneGroupOut` with `groups = image`.
+- Left panel, raw features. The random split says: full tree 93 %, random forest 94 %, boosting 94 %. The new-image split says: 64 %, 69 %, 64 %. A gap of 25 to 30 points. The depth-3 tree gets 45 % on a new image: that is below the 49 % of the majority-class rule.
+- Why? In a random split, the neighbours of each validation column are in the training set, from the same image, with the same gain, the same thickness and the same background. The model learns "background 9.4 × 10⁵ counts means image C", and that helps for image C only.
+- Right panel, invariant descriptors. The gap shrinks to 3 or 4 points for every model. The new-image accuracy rises from 69 % to 84 % for the forest. On the random split the invariant descriptors look worse: 87 % against 94 %. A random split would tell you to keep the raw features.
+- Read the ladder from left to right in the right panel: majority 49 %, logistic 75 %, tree of depth 3 75 %, full tree 78 %, random forest 84 %, boosting 82 %. Each step must earn its place.
+- The one point to land: the model decides a few points. The descriptors and the split decide 15 to 30 points.
+:::
+
+## See where the errors are {data-station="5"}
+
+::: {.xp data-xp="validate-map"}
+:::
+
+::: {.notes}
+- Purpose: put the two numbers of the last slide on the four images. The students see which columns fail.
+- Start: raw features, random forest, random 5-fold. 94.4 %. A few red points at the interface and in the amorphous layer. Everything looks good.
+- Demo, step 1: switch the split to "new image". The same model, the same features: 68.6 %. The red points fill the film of images A and B. Read the bars per image: image A is the worst.
+- Ask: "Nothing changed in the model. What changed?" Only the question. Now each image is predicted by a model that never saw it.
+- Demo, step 2: switch the descriptors to "invariant (6)". New image: 84.1 %. The red points go back to the interface and to the border of the amorphous layer. Switch the split back to "random": 87.5 %. The two numbers nearly agree.
+- Demo, step 3: stay on "invariant" and "new image", and step through the models: logistic 74.5 %, tree of depth 3 75.1 %, full tree 78.1 %, random forest 84.1 %, boosting 82.1 %. Watch the film region: the linear model fails there, because the film class is not one linear region in the descriptor space.
+- Demo, step 4: "ACSF (8)". Random forest 84.0 %, logistic 82.2 %. With the systematic descriptors, the linear model is within two points of the forest.
+- Read the confusion table once: the rows are the truth. Most errors are between film and "no column".
+- Balanced accuracy: the mean of the recalls of the three classes. It is lower than the accuracy, because the smallest class, "no column", is the most difficult.
+- The one point to land: always look at where the errors are. A score is one number; the map shows the mechanism.
+:::
+
+## Which class fails? The confusion matrix {data-station="5"}
+
+![Random forest, leave-one-image-out, all four images. Rows: truth. Columns: prediction. Large numbers: share of the row (recall on the diagonal).](img/fig_confusion.png){width="92%" fig-alt="Two confusion matrices for substrate, film and no column, with raw features and with invariant descriptors"}
+
+::: {.notes}
+- Purpose: one accuracy number hides which class fails.
+- How to read: each row is one true class and sums to 100 %. The diagonal is the recall of the class.
+- Left, raw features, 68.6 %. Substrate: 91 % found. Film: only 57 %. "No column": 25 %; three of four noise maxima are called film columns. For the task "remove the false detections", this classifier is useless, and the accuracy of 69 % did not say that.
+- Right, invariant descriptors, 84.1 %. Substrate 93 %, film 82 %, "no column" 62 %. The remaining error is between film and "no column": 115 noise maxima are called film, 78 film columns are called noise.
+- Is this remaining error a failure of the model? Partly it is the labels. Our labels come from three zones with straight borders. At the border of the film and the amorphous layer, a real column and a noise maximum look the same, also to a human.
+- Class imbalance: 942 substrate, 685 film, 307 "no column". Accuracy is dominated by the substrate, the easy class. Report the recall per class or the balanced accuracy: 79 % for the invariant forest, 58 % for the raw one.
+- Which error is worse depends on the use. For a strain map, a false column is worse than a missing one. Then move the decision threshold, and report precision and recall for the class that matters.
+- The one point to land: report the confusion matrix on the grouped split, not only the accuracy.
+:::
+
+## The baseline ladder decides {data-station="5"}
+
+:::: {.columns}
+::: {.column width="54%"}
+| New image, accuracy | all 11 | invariant 6 | ACSF 8 |
+|---|---|---|---|
+| majority class | 49 % | 49 % | 49 % |
+| logistic regression | **80 %** | 75 % | 82 % |
+| tree, depth 3 | 57 % | 75 % | 74 % |
+| random forest | 74 % | **84 %** | **84 %** |
+| boosting | 67 % | 82 % | 84 % |
+:::
+::: {.column width="46%"}
+**The rules**
+
+1. Start with the **majority class** and a **linear model**.
+2. Use the **same grouped folds** for every model.
+3. A complex model must **beat the baseline by more than the spread** between the folds.
+4. If it does not: improve the **descriptors**, not the model.
+:::
+::::
+
+::: {.claim}
+With all 11 features, logistic regression beats the random forest by 6 points. Image A alone: forest 49 %, logistic 63 %.
+:::
+
+::: {.notes}
+- Purpose: must-know statement 7. "Trees first" is a default; the ladder decides.
+- Column 1, all 11 features: the raw features are in the table together with the invariant ones. Logistic regression: 80 %. Random forest: 74 %. Boosting: 67 %. The more flexible the model, the worse it is. Why?
+- A flexible model uses every feature that lowers the training loss. The raw intensities lower it very well, so the trees split on them. On a new image these splits are wrong. The linear model has one weight for each feature and cannot build "if amp is in this narrow range" rules, so it suffers less.
+- Image A makes it visible. It has the lowest counts. All its `amp` values are below the range of the other images. The forest cannot extrapolate: 49 % on image A. The logistic model: 63 %.
+- Column 2, six invariant descriptors: now the forest wins, 84 % against 75 %. The classes are not linearly separable in these six numbers; the tree thresholds help.
+- Column 3, the symmetry functions: the linear model reaches 82 %, the forest 84 %. Better descriptors make the simple model nearly as good as the complex one. This is the general pattern.
+- Rule 3: the spread between the four folds is large here. The forest with invariant descriptors has 75 %, 87 %, 90 % and 86 % on images A to D. A difference of two points between two models is inside this spread. With four groups you cannot claim it.
+- Next week the ladder gets one more step: a neural network. It must beat these numbers on the same folds.
+- The one point to land: every model is a rung of one ladder, measured on the same grouped folds. The baseline is the reference for every claim.
+:::
+
+## Checkpoint: validation {data-station="5"}
+
+::: {.claim}
+Two minutes, in pairs. What is the group?
+:::
+
+1. 5 000 nanoparticles from 12 TEM images of 3 specimens. Claim: "works for a new specimen". [→ Group by **specimen:** 3 groups, leave one out.]{.fragment}
+2. Your features include the mean background of the image. Random-split accuracy: 97 %. [→ The background **identifies the image.** Group by image, and remove or normalise the feature.]{.fragment}
+3. Random forest 84 %, logistic regression 82 %, four folds between 75 % and 90 %. Which do you report? [→ **Both.** The difference is inside the fold spread; prefer the simpler model.]{.fragment}
+4. Accuracy 90 % with classes of 900, 80 and 20 objects. Good? [→ **Unknown.** "Always the majority" gives 90 %. Report recall per class.]{.fragment}
+5. You tune `max_depth` on the same folds that give your final score. [→ **Optimistic.** Tune inside the training folds (nested CV), or keep one image out of everything.]{.fragment}
+
+::: {.notes}
+- Procedure: two minutes, then reveal.
+- Case 1: the group is the unit of the claim. 12 images would be the group for "a new image of a known specimen". With 3 specimens the estimate has a large uncertainty; say so in the report.
+- Case 2: this is the leak of today. A feature that is constant inside one image and different between images is an image label.
+- Case 3: there is no shame in reporting that the simple model is as good. It is a result.
+- Case 4: the majority baseline is the first rung for this reason.
+- Case 5: Week 4, nested cross-validation. Hyperparameter tuning is a learned step; it goes inside the fold.
+- Timing: 3 minutes. If you are late, do cases 1, 2 and 4.
+:::
+
+<!-- ===== Act 6. Explain ===== -->
+
+## {.act}
+
+::: {.act-kicker}
+Act 6 · Explain
+:::
+::: {.act-question}
+Which descriptors does the model use?
+:::
+::: {.xp data-xp="redline" data-focus="6"}
+:::
+
+## Two importances: impurity and permutation {data-station="6"}
+
+![Random forest on all 11 features plus one column of pure random numbers ("noise"). Left: impurity importance. Middle: permutation importance on the training images. Right: permutation importance on a new image (bars: mean of four images; lines: spread).](img/fig_importance.png){width="100%" fig-alt="Three bar charts of feature importance for twelve features; the background feature is important on training data and not on a new image"}
+
+::: {.notes}
+- Purpose: two definitions of "important", and why the data that you compute them on matters.
+- Impurity importance (MDI, mean decrease in impurity): add the impurity decrease Δ of every split that uses the feature, over all trees. It is free: `rf.feature_importances_`. It is computed from the training data only.
+- Permutation importance: take the trained model. Shuffle one column of the test table, so that it has no relation to the labels. Measure how far the score falls. Repeat for each feature. `sklearn.inspection.permutation_importance`.
+- Left panel, MDI. The yellow bar is a column of random numbers. It gets 1.2 % of the impurity decrease. Deep trees split on anything in small nodes, also on noise. The bias is stronger for continuous features with many different values.
+- The red bar is `bg`, the background under the peak. MDI: 8 %, a middle rank. Middle panel, permutation on the training images: `bg` is the most important feature, 3.6 points. Right panel, permutation on a new image: −0.1 points. Zero.
+- So the model uses `bg` strongly, and `bg` does not help on a new image. Both statements are true. Importance on the training images tells you what the model uses. Importance on held-out groups tells you what generalises.
+- The same for `amp`: third in the impurity ranking, nearly zero on a new image. On the right, the top places go to `d1`, `d_spread`, `contrast` and `I_rel`.
+- Look at the lines on the right panel: the spread between the four images is as large as many bars. Do not rank features that differ by less than this spread.
+- Misconception: "feature importance tells me what matters physically." It tells you what this model uses on this data.
+- The one point to land: compute permutation importance on held-out groups, and include a noise column as the zero of the scale.
+:::
+
+## Correlated descriptors hide each other {data-station="6"}
+
+![Left: permutation importance on a new image for the six invariant descriptors, and again after adding one or two exact copies of d4 to the table. Right: accuracy when the feature is removed and the model is trained again.](img/fig_corr.png){width="96%" fig-alt="Grouped bars of permutation importance with and without copies of one feature, and a bar chart of accuracy after dropping features"}
+
+::: {.claim}
+`d4` falls from 11 points to 2.5 to 0 when copies exist. Remove `d1` *or* `d4`: −1 point. Remove both: −6 points.
+:::
+
+::: {.notes}
+- Purpose: the main trap of permutation importance. This is must-know statement 9.
+- The experiment: `d4` is the most important descriptor, 11 points. Add an exact copy of the `d4` column to the table and train again. The importance of `d4` falls to 2.5 points. With two copies it is zero. The information is the same in all three tables.
+- Why? The forest spreads its splits over the copies. When you shuffle one copy, the other copies still carry the information, and the score does not fall.
+- Real data have no exact copies, but they have correlations. `d1` and `d4` correlate with r = 0.78. Right panel: remove `d1` and train again: 84.1 → 82.9 %. Remove `d4`: 83.2 %. Each one looks nearly useless. Remove both: 77.8 %. Together they carry 6 points.
+- A second problem of the shuffle: it makes rows that cannot exist. A column with a nearest-neighbour distance of 0.38 nm and a mean distance of 0.28 nm is not possible; the mean of four distances cannot be below the smallest one. The model has never seen such rows, and its answer there has no meaning. The name is "off-manifold" data.
+- The cure: put correlated descriptors into one group, and permute or remove the group together. Find the groups with a correlation matrix or with hierarchical clustering of the features.
+- "Drop and retrain" is the honest and expensive version: one new model for each feature group.
+- Misconception: "low importance means that I can delete the feature." It can mean that another feature holds the same information.
+- The one point to land: importance belongs to groups of correlated features, not to single features.
+:::
+
+## SHAP: divide one prediction among the descriptors {data-station="6"}
+
+::: {.deriv}
+::: {.dstep .fragment}
+[1]{.dnum} **One prediction,** one sum: $f(\mathbf x)=\phi_0+\sum_j\phi_j$
+:::
+::: {.dstep .fragment}
+[2]{.dnum} $\phi_0$ = the mean prediction over the background data.
+:::
+::: {.dstep .fragment}
+[3]{.dnum} $\phi_j$ = the mean change of the prediction when feature $j$ joins, averaged over **all orders** of the features (Shapley value).
+:::
+::: {.dstep .fragment}
+[4]{.dnum} **TreeSHAP:** exact for trees in polynomial time. No sampling.
+:::
+:::
+
+![Each point: one candidate of image B. Colour: the value of the descriptor.](img/fig_shap.png){width="60%" fig-alt="SHAP summary plot for the class film column with six descriptors; points coloured by descriptor value"}
+
+::: {.notes}
+- Purpose: from "which features matter in general" to "why this prediction". Must-know statement 10.
+- Step 1: SHAP writes one prediction as a base value plus one signed number for each feature. The sum is exact. The name of this property is completeness, or local accuracy.
+- Step 3, the idea from game theory: the features are players, the prediction is the payout. The contribution of a feature depends on which features are already known. So take the mean over all orders. Lundberg and Lee, 2017.
+- Step 4: for a general model this needs a sum over 2^F subsets. For trees, an exact algorithm exists that follows the paths of the trees: TreeSHAP, Lundberg and co-workers, 2020. For our forest and 580 columns it takes seconds.
+- The figure, the summary plot: one row per descriptor, one point per column of image B. Horizontal position: φ for the class "film column". Right of zero: this descriptor pushes the probability of "film" up for this column. Colour: the value of the descriptor, red is high.
+- Read `d_spread`: blue points, a regular neighbourhood, are on the left: −0.13, against "film". This is the substrate. Red points are on the right. Read `d1`: red points, a large nearest distance, are left of zero: the substrate has 0.37 nm. Blue points split into two groups: a moderately small distance supports "film"; a very small distance is on the far left, against "film": these are noise maxima.
+- So a SHAP plot also shows non-monotonic relations. `d4` is the clearest: high values appear on both sides.
+- Global importance from SHAP: the mean of |φ| for each descriptor. It is a third importance measure, and it has the same problem with correlated features: the credit is divided among them.
+- The one point to land: SHAP is an exact accounting of one prediction of the model.
+:::
+
+## Click a column: why this prediction? {data-station="6"}
+
+::: {.xp data-xp="shap-click"}
+:::
+
+::: {.notes}
+- Purpose: read single explanations on the image, and check the sum rule with numbers.
+- The image: image B, which the forest did not see in training. The colour of each point is the predicted class. A white ring marks a wrong prediction.
+- Demo, step 1: the selected film column near the interface. Read the waterfall from the top. φ₀ = 0.345: the mean predicted probability of "film". `d_spread` = 0.144 adds 0.115. `d1` = 0.289 nm adds 0.107. `d4` = 0.342 nm takes away 0.097. The bars end at 0.655, the prediction. Check line: 0.345 + 0.311 = 0.655.
+- Demo, step 2: click a column deep in the substrate. Switch the class to "substrate". All bars point up: a regular square neighbourhood with the right distances.
+- Demo, step 3: click a column with a white ring, a wrong prediction, at the border of the amorphous layer. Look for the descriptor that pushed it to the wrong class. Often `psi4` and `d_spread` say "disordered", and the label says "film". The explanation shows that the model and the label disagree about what a film column is.
+- Demo, step 4: click one substrate column at the edge of the image. Its neighbours are cut off by the image border, so its descriptors are wrong. The explanation finds a data problem, not a physics result. This is the most common use of SHAP in practice: debugging.
+- Ask: "Does a large φ for `d1` mean that the distance causes the class?" No. Next slide.
+- The one point to land: an explanation is a tool to find errors in the data, the labels and the descriptors.
+:::
+
+## Explanation is not causation {data-station="6"}
 
 :::: {.columns}
 ::: {.column width="50%"}
-**SOAP** [@bartok2013soap]
+**What SHAP and importance tell you**
 
-1. Smooth the neighbours into a density $\rho_i(\mathbf{r})=\sum_j e^{-|\mathbf{r}-\mathbf{r}_{ij}|^2/2\sigma^2}$.
-2. Expand in radial × spherical-harmonic basis: $c_{nlm}$.
-3. Rotation-invariant **power spectrum** $p_{nn'l}=\sum_m c_{nlm}c^*_{n'lm}$.
-4. Compare environments with a kernel.
+- which inputs **this model** uses
+- how one prediction divides among the inputs
+- where the model uses a nuisance (`bg`, `amp`): a leak detector
+- where the labels and the model disagree
 :::
 ::: {.column width="50%"}
-**2-D version for projected columns**
+**What they do not tell you**
 
-1. Same smoothed density in the image plane.
-2. Expand the angular part in **circular harmonics** $e^{im\varphi}$: $c_{nm}$.
-3. In-plane rotation only changes the phase of $c_{nm}$ → $|c_{nm}|^2$ is **invariant**.
-4. $m=4$ / $m=6$ modes = bond-orientational order $\psi_4$, $\psi_6$ (square vs hexagonal).
+- what causes the property in the specimen
+- what happens if you **change** a descriptor in the experiment
+- anything stable under correlated features: the credit is divided
+- anything independent of the **background data** that defines $\phi_0$
 :::
 ::::
 
-:::: {.notes}
-- The key trick of SOAP is: expansion coefficients are *equivariant* (they rotate), but products summed over $m$ (the power spectrum) are *invariant*. In 2-D this becomes very concrete: a rotation by angle $\alpha$ multiplies $c_{nm}$ by $e^{im\alpha}$, and the modulus squared removes the phase.
-- The one point to land: SOAP and ACSF are two routes to the same goal — a smooth, complete-ish, invariant fingerprint of an environment. In 2-D the circular-harmonic version is simple enough to implement in 20 lines of NumPy.
-- Misconception to preempt: "the most complete descriptor is always best." SOAP vectors have hundreds of dimensions; with a few hundred defect examples a handful of interpretable features often generalise better. Libraries such as DScribe compute ACSF/SOAP for 3-D structures [@himanen2020dscribe].
-- EM anchor: $\psi_6$ maps are used to find grain boundaries and dislocations in colloidal crystals and 2-D materials images.
-- Forward link: Week 10 replaces hand-designed environment descriptors with message passing on the atom-column graph — the learned version of the same idea.
-- Transition: "How do we choose among all these descriptors?"
-::::
-
-## Choosing descriptors: a practical ladder
-
-:::: {.incremental}
-1. **Start with physics you can name:** relative intensity (occupancy / $Z$), mean bond length (strain), coordination (missing neighbours).
-2. **Add smooth, invariant fingerprints** (radial/angular symmetry functions, $|c_{nm}|^2$) when simple features plateau.
-3. **Tune the cutoff and widths** ($r_c$, $\eta$, $\sigma$) as hyperparameters — inside the cross-validation loop.
-4. **Check invariances** (rotate/flip the image, rescale the intensity) and **nuisance leakage** (can the features identify the image?).
-5. **Move to learned representations** (CNN, GNN) only when designed descriptors saturate *and* you have enough labelled data.
-::::
-
-:::: {.notes}
-- This is the EM version of the MG "descriptor ladder" (composition → RDF → local environments → learned).
-- The one point to land: step 4 is where most real pipelines leak. If the background level or the absolute intensity is in the feature set, the model can recognise the image — which inflates random-split scores.
-- Misconception to preempt: "tuning $r_c$ on the full dataset is fine because it is not a model parameter." It is a hyperparameter; tuning it outside cross-validation is preprocessing leakage (Week 4).
-- EM anchor: the notebook's Exercise 2 asks students to add a neighbour-contrast descriptor and test it with grouped CV — step 1 → 3 in miniature.
-- Transition: "We now have a table. Which model?"
-::::
-
-## The feature table we will model
-
-:::: {.columns}
-::: {.column width="50%"}
-**Dataset (notebook):** 12 simulated HAADF images, 3 888 inner columns
-
-- host 3 337 · vacancy 286 · substitution 265 (strong **class imbalance**)
-- 14 descriptors per column:
-  - *raw:* `amp`, `I_int`, `sigma`, `bg_local`, `x_pos`
-  - *local:* `I_rel`, `amp_rel`, `n_nb`, `d_mean`, `d_std`, `ang_std`, `G_0.9a`, `G_1.0a`, `G_1.1a`
-- **groups** = image id (for `GroupKFold`)
+::: {.claim}
+A model can be right for the wrong reason. Only an experiment or a physical model tests a cause.
 :::
-::: {.column width="50%"}
-:::: {.incremental}
-- **Metric: balanced accuracy** = mean per-class recall. "Always host" scores 86 % accuracy but only 0.33 balanced accuracy.
-- **Nuisance:** `x_pos` is physically meaningless — a built-in test for importance methods.
-- **Leakage trap:** `bg_local` differs per image and correlates with the image's defect fraction.
-- Heterogeneous units, a few hundred minority examples, thresholds in the physics → classic **tabular** regime.
-::::
+
+::: {.notes}
+- Purpose: set the limit of everything in this act. The second half of must-know statement 10.
+- Left column: these are statements about the model. They are useful. The forest with raw features had a high score on random folds, and its explanation said "background". That finding alone would have told us about the leak, without a second split.
+- Right column, point 1 and 2: a descriptor can be a proxy. In our data the thickness of the specimen changes the peak height and also the visibility of the film columns. A model that uses the peak height is not a model of the film.
+- Point 3: with correlated descriptors, another forest with another random seed can divide the credit differently between `d1` and `d4`. Report the group.
+- Point 4: φ₀ is the mean prediction over a background data set. Change the background, for example from "all images" to "substrate columns only", and every φ changes. Always state the background. For our figure: the training images of the forest, with the path-dependent TreeSHAP.
+- Good practice, as a list for the report: (1) the model beats the baseline on grouped folds; (2) permutation importance on held-out groups, with a noise column; (3) correlated features in groups; (4) SHAP for single cases, with the background stated; (5) a check against physics: does the sign make sense?
+- The one point to land: explain the model to find its errors. Do not sell the explanation as physics.
+- If you are late: skip this slide and say its claim in one sentence.
 :::
-::::
 
-:::: {.notes}
-- Make students state the prediction task out loud: "given the 14 descriptors of a column, predict host / vacancy / substitution".
-- The one point to land: this is exactly the regime where tree ensembles are the default — heterogeneous, tabular, moderately sized, imbalanced.
-- Misconception to preempt: "accuracy is fine." With 86 % host, accuracy hides failure on the classes we care about. Balanced accuracy, per-class recall, or a confusion matrix are the honest choices.
-- EM anchor: real defect statistics are even more imbalanced (dopants at 0.1–1 %) — then precision/recall on the minority class and a calibrated threshold matter (Week 11).
-- Transition: "Let's build the simplest tree-based model."
-::::
+## Checkpoint: explanations {data-station="6"}
 
-<!-- ===== §4. Decision trees ===== -->
-
-## A decision tree = a sequence of yes/no questions
-
-![A depth-2 tree on two descriptors: the root asks about the mean neighbour distance, the second level about the relative intensity. Left: the induced axis-aligned partition of feature space; right: the same tree as a flowchart.](img/tree_partition.png){width="90%"}
-
-:::: {.notes}
-- Read the flowchart: "Is $\bar d \le 12.54$ px? If no (neighbours pushed out) and $I_\text{rel} > 0.94$ → substitution. If yes and $\bar d \le 11.60$ px (neighbours pulled in) → vacancy. Otherwise host."
-- The one point to land: a tree partitions feature space into axis-aligned boxes and predicts a constant (majority class or mean) per box. That is the entire model.
-- Notice the tree found the physics we built in: relaxation first, then intensity. This is the E1 level of explainability — the model *is* its explanation — but only for shallow trees.
-- Misconception to preempt: "the tree understood the physics." It found thresholds that reduce impurity. With a different random seed or slightly different data the top split could change (next slides).
-- Transition: "How does the algorithm choose these questions?"
-::::
-
-## How splits are chosen
-
-At each node choose the (feature $j$, threshold $t$) that maximises the **impurity decrease**
-
-$$
-\Delta = I(\text{parent}) - \frac{N_L}{N}\, I(\text{left}) - \frac{N_R}{N}\, I(\text{right}).
-$$
-
-:::: {.incremental}
-- **Classification:** Gini $I=\sum_c p_c(1-p_c)$ or entropy $I=-\sum_c p_c\log p_c$.
-- **Regression:** $I$ = within-node variance → a regression tree is *piecewise least squares*.
-- **Greedy and recursive:** best split now, no look-ahead, no gradient descent.
-- Cost $\approx O(N D \log N)$ → fast on large tables; **no feature scaling needed** (only the order of values matters).
-::::
-
-:::: {.notes}
-- Board example: a node with targets {1,1,9,9}; the split {1,1}|{9,9} drops the variance from 16 to 0 — the maximal $\Delta$. Students see in 20 seconds why variance reduction = good split.
-- The one point to land: trees are trained by greedy combinatorial search, not by gradient descent. That is why they are fast and why each split is only locally optimal.
-- Misconception to preempt: "I have to standardise features for trees." No — trees are invariant to monotone transformations of each feature. (Logistic regression and MLPs do need scaling.)
-- EM anchor: invariance to monotone transforms is handy for intensity features with heavy tails — log or not, the tree gives the same partition.
-- Transition: "Why Gini or entropy, and not simply the error rate?"
-::::
-
-## Impurity measures
-
-![Gini, entropy and misclassification error for a two-class node as a function of $p$. All vanish at pure nodes; only Gini and entropy are strictly concave, so they reward splits that purify a child even without changing its majority class. (Figure from the MFML course, unit 8.)](img/impurity_curves.png){width="48%"}
-
-:::: {.incremental}
-- Gini ≈ entropy in practice; Gini is the scikit-learn default (no logarithm).
-- Misclassification error is **not** used for growing: it ignores improvements that do not flip the majority.
-::::
-
-:::: {.notes}
-- Classic exam question: a 400/100 node split into 300/0 and 100/100. Misclassification error: 100 errors before and after — unchanged. Gini and entropy both drop, because the left child is now pure. Concavity rewards purity.
-- The one point to land: Gini and entropy give very similar trees; the choice rarely matters. What matters is depth and the ensemble.
-- Keep this to ~3 minutes.
-- Transition: "How deep should a tree grow?"
-::::
-
-## Growing, pruning — and instability
-
-:::: {.columns}
-::: {.column width="45%"}
-:::: {.incremental}
-- Grown to pure leaves, a tree **memorises** the training set: low bias, **high variance**.
-- **Pre-pruning:** `max_depth`, `min_samples_leaf`.
-- **Cost-complexity pruning:** minimise $R_\alpha(T)=R(T)+\alpha|T|$ — regularised ERM with the number of leaves as penalty, $\alpha$ by CV.
-- A small change of the data can flip the root split and **reshape the whole tree**.
-::::
+::: {.claim}
+Two minutes, in pairs. True or false, and why?
 :::
-::: {.column width="55%"}
-![Nudging 10 % of the points changes the partition of a deep tree substantially (MFML course, unit 8).](img/intuition_instability.png){width="100%"}
+
+1. "The noise column has an impurity importance of 1 %, so it carries a little information." [→ **False.** MDI is biased; on held-out data it is zero.]{.fragment}
+2. "`bg` has the highest permutation importance on the training images, so I must keep it." [→ **False.** On a new image it is zero: it identifies the image.]{.fragment}
+3. "`d1` has a low permutation importance, so I can delete it." [→ **Not safe.** `d4` holds the same information. Test the group.]{.fragment}
+4. φ₀ = 0.35, the φ sum to +0.31. The predicted probability? [→ **0.66.** Completeness: $f=\phi_0+\sum\phi_j$.]{.fragment}
+5. "SHAP shows that a small `d1` causes a film column." [→ **False.** It shows what the model uses. Cause needs an experiment.]{.fragment}
+
+::: {.notes}
+- Procedure: two minutes, then reveal.
+- Case 1: the noise column is the zero of the scale. Every feature near its value is not distinguishable from noise.
+- Case 2: the difference between "used by the model" and "useful for the claim".
+- Case 3: remember the right panel of the correlation figure: one removed, 1 point; both removed, 6 points.
+- Case 4 is an exam calculation.
+- Case 5: the sentence to remember from this act.
+- Timing: 3 minutes. If you are late, do cases 2, 3 and 4.
 :::
-::::
 
-:::: {.notes}
-- Draw the parallel to Week 4: $R(T)+\alpha|T|$ is the same template as Ridge — data fit plus complexity penalty, with the penalty weight chosen by cross-validation.
-- The one point to land: a single deep tree is an unstable, high-variance learner. That is bad for one model — and exactly what an averaging ensemble needs as raw material.
-- Misconception to preempt: "carefully pruning one tree is the best practice." In modern practice complexity is controlled at the ensemble level; single trees are kept shallow only when interpretability is the goal.
-- EM anchor: a deep tree trained on the columns of 9 images would carve out boxes that fit the noise of those images; on a new image with a different dose those boxes do not transfer.
-- Transition: "So we average many trees."
-::::
+<!-- ===== Wrap-up ===== -->
 
-## Strengths and limits of a single tree
+## The red line, complete
 
-:::: {.columns}
-::: {.column width="50%"}
-**Strengths**
-
-- readable rules (for depth ≤ 3–4)
-- handles mixed units, no scaling, monotone-invariant
-- captures thresholds and interactions naturally
-- fast to train and predict
+::: {.xp data-xp="redline" data-mode="summary"}
 :::
-::: {.column width="50%"}
-**Limits**
 
-- high variance, unstable structure
-- piecewise constant → staircase approximations of smooth or oblique boundaries
-- cannot extrapolate beyond the training range
-- greedy → not globally optimal
+::: {.notes}
+- Purpose: one picture of the 90 minutes. Each station has its two results.
+- Walk along the line. Objects: smooth, find maxima, fit; the dose sets the precision. Descriptors: one row per object, with the invariances built in. Tree: greedy splits on impurity; a deep tree has a high variance. Ensemble: bagging lowers the variance, boosting lowers the bias. Validate: split by image, start with a baseline. Explain: permutation importance on held-out data; SHAP explains the model.
+- The arrow back: the score on a new image sent us back to the descriptors, not to a bigger model. From 69 % to 84 % with the same forest.
+- The three numbers of the first slide, now with their meaning. 1 934 × 11: the image became a table. 94 % → 69 %: the random split measured the leak. 84 %: invariant descriptors, on an image that the model never saw.
+- Connection to Week 4: the same rules, on a new kind of model. Noise model → loss. Complexity → variance. Split → claim.
 :::
-::::
 
-:::: {.notes}
-- The extrapolation limit is important for materials science: a tree trained on columns with intensity ratios up to 1.6 predicts the same constant for 2.5 — it cannot follow a trend beyond the data. A linear model extrapolates (sometimes wrongly, but it follows the trend).
-- The one point to land: every limitation except extrapolation is reduced by ensembling.
-- Misconception to preempt: "oblique boundaries are no problem for trees." They need many small steps; rotating the features destroys the axis alignment that trees exploit (slide on "why rotation matters").
-- Transition: "From one tree to a forest."
-::::
+## Must-know for the exam
 
-<!-- ===== §5. Ensembles ===== -->
-
-## Bagging: variance reduction by averaging
-
-:::: {.incremental}
-- **Bootstrap:** draw $N$ samples with replacement → a new training set (≈63 % unique points) [@breiman1996bagging].
-- Train one deep tree per bootstrap sample, **average** the predictions (or vote).
-- For $B$ predictors with variance $\sigma^2$ and pairwise correlation $\rho$:
-  $$
-  \operatorname{Var}\Big[\tfrac{1}{B}\textstyle\sum_b \hat f_b\Big] = \rho\,\sigma^2 + \frac{1-\rho}{B}\,\sigma^2 .
-  $$
-- More trees kill the second term; the **correlation ceiling** $\rho\sigma^2$ remains → we must **decorrelate** the trees.
-::::
-
-:::: {.notes}
-- Derive the formula quickly or state it: averaging independent predictors reduces variance by $1/B$; correlation limits the gain.
-- The one point to land: the random forest's key idea is not "many trees" but "many *decorrelated* trees".
-- Misconception to preempt: "more trees can overfit." Adding trees to a random forest does not increase variance; it only costs compute. (Boosting is different — there more trees can overfit.)
-- Out-of-bag error: each tree never saw ~37 % of the data, so predictions on those points give a free validation estimate — but beware: OOB is a *random* split estimate and ignores groups. For grouped EM data use `GroupKFold`, not OOB.
-- Transition: "How does a random forest decorrelate its trees?"
-::::
-
-## Random forest = bagging + random feature subsets
-
-:::: {.columns}
-::: {.column width="45%"}
-:::: {.incremental}
-- At every split, consider only a **random subset** of $m\approx\sqrt{D}$ features [@breiman2001randomforests].
-- Strong features cannot dominate every tree → lower $\rho$.
-- Defaults that just work: 200–500 trees, fully grown, `max_features="sqrt"`.
-- `class_weight="balanced_subsample"` for imbalanced defect classes.
-- **Extra-trees:** also randomise the thresholds — even lower $\rho$.
-::::
+::: {.mustknow}
+::: {.mk}
+[1]{.mk-n} [Classical ML needs a feature table: rows = objects, columns = descriptors. Detection errors propagate into it.]{.mk-t}
 :::
-::: {.column width="55%"}
-![Single full-depth tree vs random forest of 200 trees on the same data: averaging smooths the jagged boundary (MFML course, unit 8).](img/rf_smoothing.png){width="100%"}
+::: {.mk}
+[2]{.mk-n} [Column finding: smooth → local maxima → 2-D Gaussian fit. Precision ∝ 1/√dose; Poisson likelihood at low dose.]{.mk-t}
 :::
-::::
-
-:::: {.notes}
-- The one point to land: random forests are the "safe default" of tabular ML — few hyperparameters, hard to break, reasonable out of the box.
-- In the notebook: `RandomForestClassifier(n_estimators=200, min_samples_leaf=3, class_weight="balanced_subsample")` reaches balanced accuracy 0.94 under `GroupKFold` with the full descriptor set.
-- Misconception to preempt: "a random forest is a black box." It is an average of readable trees — but reading 200 trees is impossible, which is why we need importance and SHAP (§7).
-- EM anchor: random forests are the classifier behind interactive pixel classifiers such as ilastik and Trainable Weka Segmentation — pixel-wise filter-bank features + RF.
-- Transition: "The other route to strong ensembles is sequential: boosting."
-::::
-
-## Gradient boosting: gradient descent in function space
-
-:::: {.incremental}
-- Treat the predictor $\hat f$ itself as the variable. Minimise $\sum_i \mathcal{L}(y_i,\hat f(\mathbf{x}_i))$ [@friedman2001greedy].
-- At step $t$ compute the **pseudo-residuals** $r_i^{(t)} = -\partial\mathcal{L}(y_i,\hat f)/\partial \hat f(\mathbf{x}_i)$.
-- Fit a **small** regression tree $h_t$ to the $r_i^{(t)}$.
-- Update $\hat f^{(t)}=\hat f^{(t-1)}+\eta\, h_t$ — **the same $\eta$ as in Week 4**.
-- Squared error → pseudo-residual = ordinary residual: "each tree fixes what the ensemble still gets wrong". Log-loss → classification.
-::::
-
-:::: {.notes}
-- Deliver the analogy with weight: in Week 4, gradient descent moved a parameter vector $\mathbf{w}$ against $\nabla_\mathbf{w}\hat R$. Here it moves a function against $\nabla_{\hat f}\hat R$, and since we cannot store arbitrary functions we approximate each gradient step with a tree.
-- The one point to land: boosting reduces *bias* sequentially with shallow trees; bagging reduces *variance* in parallel with deep trees. They attack opposite corners of the bias–variance picture.
-- Misconception to preempt: "boosting is just a better random forest." It has more hyperparameters, can overfit with too many iterations, and needs early stopping.
-- Connect to Week 2: the loss choice (Gaussian → squared error, Bernoulli → log-loss, Poisson → Poisson deviance) selects the pseudo-residual — noise model decides loss, again.
-- Transition: "See the ensemble grow."
-::::
-
-## Boosting builds the function tree by tree
-
-![Fitting $y=\sin 2x+0.3x+\varepsilon$ with gradient boosting: after 1, 3, 10 and 50 shrunken trees the ensemble approaches the target and eventually starts to follow the noise — the reason for early stopping (MFML course, unit 8).](img/boosting_stages.png){width="85%"}
-
-:::: {.notes}
-- Narrate each panel as "previous curve + one shrunken tree fitted to the remaining residual".
-- The one point to land: bias falls monotonically with the number of trees; variance creeps in eventually. Early stopping on a (grouped!) validation set picks the number of trees.
-- Misconception to preempt: "the learning rate only affects speed." Small $\eta$ with many trees generalises better than large $\eta$ with few — shrinkage is a regulariser, exactly as small steps in Week 4 gave smoother optimisation.
-- Practical tuning recipe and implementations (HistGB, XGBoost, LightGBM, CatBoost): see backup slide "Gradient boosting in practice".
-- Transition: "Why do these models dominate tabular benchmarks?"
-::::
-
-## Why trees win on (most) tabular data
-
-:::: {.columns}
-::: {.column width="45%"}
-:::: {.incremental}
-- **Uninformative features** are ignored by split selection; MLPs must learn to suppress them.
-- **Non-smooth targets:** thresholds and jumps are natural for piecewise-constant trees.
-- **Meaningful axes:** each column is a physical quantity; trees exploit axis-aligned structure, rotation-invariant MLPs waste capacity.
-- Confirmed on 45 benchmark datasets [@grinsztajn2022treesdl]; foundation models such as TabPFN are closing the gap on small tables [@hollmann2023tabpfn].
-::::
+::: {.mk}
+[3]{.mk-n} [Good descriptors are invariant (translation, rotation, permutation, gain): ratios like $I_\text{rel}$, distances, ACSF/SOAP.]{.mk-t}
 :::
-::: {.column width="55%"}
-![Same data, original vs 45°-rotated axes: the boundary that one split captures on meaningful axes needs a staircase of many splits after rotation (MFML course, unit 8).](img/trees_vs_dl.png){width="100%"}
+::: {.mk}
+[4]{.mk-n} [Tree: greedy split with the largest $\Delta = I(\text{parent})-\frac{N_L}{N}I(L)-\frac{N_R}{N}I(R)$. No scaling, no extrapolation, high variance.]{.mk-t}
 :::
-::::
-
-:::: {.notes}
-- The one point to land: tree ensembles are the default first model for tabular materials data — process parameters, compositions, particle and column descriptors.
-- The rotation point is the most counter-intuitive: rotation invariance is a virtue for images and a liability for tables whose columns are individually meaningful.
-- Misconception to preempt: "trees always win." They win *on average* over heterogeneous benchmarks. The next slides show a case where a linear model is just as good — and the ladder tells you so.
-- Transition: "So how do we decide in practice? With the baseline ladder."
-::::
-
-<!-- ===== §6. Baseline ladder & validation ===== -->
-
-## The baseline ladder
-
-:::: {.incremental}
-1. **Trivial baseline:** predict the mean (regression) or the majority class. Anything below this is broken.
-2. **Linear model:** Ridge / logistic regression on standardised features. Interpretable, hard to overfit.
-3. **Tree ensemble:** random forest, then gradient boosting.
-4. **Neural network:** MLP on the same features (Week 6) — or a CNN on the raw image (Week 7).
-::::
-
-. . .
-
-**Rules:** same grouped CV folds for every rung · keep the simplest model that is not significantly worse · report *all* rungs in the paper / miniproject.
-
-:::: {.notes}
-- The one point to land: a result without the lower rungs is uninterpretable. "Our GBM reaches 0.95" means nothing until we know logistic regression reaches 0.975 on the same folds.
-- Misconception to preempt: "the ladder is extra work." It is four lines of scikit-learn in the same loop. The notebook does it in one cell.
-- Statistical note: with 4 grouped folds, the fold-to-fold standard deviation is often ±0.01–0.09; differences smaller than that are not evidence.
-- EM anchor: examiners and reviewers will ask "did you compare with a linear baseline under grouped CV?" — have the answer on one slide.
-- Transition: "Here is the ladder for our defect classifier."
-::::
-
-## The ladder on the defect classifier
-
-![Balanced accuracy under `GroupKFold` by image (4 folds, 12 images). Left: grey = raw intensity features only; blue = with local-environment descriptors. Right: raw features only, random `KFold` vs `GroupKFold` — the random split is optimistic.](img/baseline_ladder.png){width="92%"}
-
-:::: {.notes}
-- Numbers (notebook and figure script agree): majority 0.33; logistic raw 0.53 → all 0.975; random forest raw 0.48 → all 0.94; gradient boosting raw 0.47 → all 0.95; MLP raw 0.40 → all 0.93.
-- The one point to land: descriptors moved every model by +0.45; the choice of model moved the score by a few hundredths. **Feature design dominates.**
-- With good physical descriptors the classes are nearly linearly separable — so logistic regression is as good as (here slightly better than) the ensembles. That is an honest, useful outcome: report the linear model. Trees earn their place when relations are non-linear, thresholded and interacting — with raw features the ensembles also fail, because the information simply is not there.
-- Right panel: with raw features, random `KFold` looks 0.08–0.10 better than `GroupKFold`. The per-image background level and intensity scale let the model recognise the image and its defect fraction. That is leakage — same mechanism as Week 4.
-- Misconception to preempt: "the forest lost, so trees are bad." No — the ladder told us that for this representation a simpler model suffices. On raw process-parameter tables the ranking is often reversed.
-- Transition: "Honest validation for column-level data, in one slide."
-::::
-
-## Honest validation for object-level EM data
-
-:::: {.incremental}
-- **Group = the unit that shares nuisances:** image (probe, dose, drift), session, specimen. When in doubt, choose the **coarser** group.
-- **All preprocessing inside the folds:** scaler, feature selection, cutoff $r_c$ and $\eta$ tuning, class-weight choices.
-- **Imbalance:** stratify *within* groups if possible (`StratifiedGroupKFold`), report balanced accuracy and per-class recall / confusion matrix.
-- **Early stopping** for boosting on an inner grouped split — not on the outer test fold.
-- **Nuisance audit:** can a classifier predict the *image id* from your features? If yes, expect leakage under random splits.
-::::
-
-:::: {.notes}
-- This is the Week 4 checklist specialised to object-level data. Repeat the leakage taxonomy: group leakage (columns of the same image), preprocessing leakage (scaler/PCA fitted on all data), temporal leakage (in-situ series).
-- The one point to land: the "nuisance audit" is a cheap, powerful diagnostic. If a model can tell which image a column came from, it can exploit image-level label correlations under random splits.
-- Misconception to preempt: "GroupKFold is pessimistic." It answers the question you actually care about: performance on a new image.
-- EM anchor: for a thesis-size dataset (say 30 images from 3 specimens), group by specimen for the final number and by image for model selection.
-- Transition: "Once we have an honest model, we ask what it uses."
-::::
-
-<!-- ===== §7. Explaining tree models ===== -->
-
-## Explainability for tree models: where we are
-
-:::: {.incremental}
-- **Week 4 (E1–E2):** a linear model *is* its explanation — standardised coefficients, signs, magnitudes.
-- **Shallow tree:** readable rules (E1) — but unstable (a different sample → different rules).
-- **Forest / boosting:** hundreds of trees → need **post-hoc** explanations:
-  - *global:* which features does the model rely on overall? → impurity (MDI), **permutation importance**
-  - *local:* why this prediction for this column? → **SHAP**
-- **Always:** explanations describe the **model**, not nature. Importance ≠ causation.
-::::
-
-:::: {.notes}
-- Place today in the explainability thread of the course: W4 coefficients, W5 permutation/SHAP, W7 saliency/Grad-CAM/occlusion, W9 latent-space pitfalls, W10 attention maps, W11 uncertainty as trust gate, W13 the full E1–E6 ladder.
-- The one point to land: global and local explanations answer different questions. A materials paper claiming "feature X drives property Y" needs a global, held-out, correlation-aware importance — not a single SHAP plot.
-- Misconception to preempt: "the most important feature is the physical cause." The model uses whatever predicts the label in the training data, including artefacts and proxies.
-- Transition: "Start with the importance that scikit-learn gives you for free."
-::::
-
-## Impurity (MDI) importance
-
-$$
-\text{MDI}_j = \frac{1}{B}\sum_{b=1}^{B}\ \sum_{\text{nodes splitting on } j} \frac{N_\text{node}}{N}\,\Delta_\text{node}, \qquad \text{normalised to } \textstyle\sum_j \text{MDI}_j = 1 .
-$$
-
-:::: {.incremental}
-- `rf.feature_importances_` — free, computed during training.
-- **Computed on the training data** → cannot distinguish "useful" from "useful for memorising".
-- **Cardinality bias:** continuous, high-resolution features offer more thresholds → more chance splits → inflated scores, even for pure noise [@strobl2007bias].
-- **Correlated features** share splits arbitrarily → MDI spreads or concentrates credit unpredictably.
-::::
-
-:::: {.notes}
-- Say the formula aloud: for each split on feature $j$, take its impurity decrease, weight by the fraction of samples reaching the node, sum over all nodes and trees, normalise.
-- The one point to land: two structural reasons for bias — training-set quantity, and more thresholds for continuous features. Strobl et al. 2007 is the classic reference.
-- Misconception to preempt: "MDI is fine because it is built in." It is fine for a quick look; it is not evidence in a publication.
-- EM anchor: in column descriptors every feature is continuous — including the nuisance `x_pos`. Watch it on the next slide.
-- Transition: "The honest alternative: permutation importance."
-::::
-
-## Permutation importance
-
-:::: {.columns}
-::: {.column width="52%"}
-:::: {.incremental}
-1. Score the fitted model on **held-out** data (here: held-out *images*) → baseline.
-2. Shuffle column $j$ across rows — its distribution stays, its link to $y$ is destroyed.
-3. Re-score the **same** model.
-4. Importance$_j$ = baseline − shuffled score; repeat and average.
-::::
+::: {.mk}
+[5]{.mk-n} [Average of $B$ trees: variance $\rho\sigma^2+\frac{1-\rho}{B}\sigma^2$. A random forest lowers $\rho$ with random feature subsets.]{.mk-t}
 :::
-::: {.column width="48%"}
-:::: {.incremental}
-- **Model-agnostic:** needs only `predict` and a score → works for RF, GBM, MLP, CNN features.
-- **Held-out** → not fooled by memorisation.
-- **Question it answers:** how much does *this model* rely on feature $j$ for *this data*?
-- `sklearn.inspection.permutation_importance(model, X_te, y_te, scoring="balanced_accuracy", n_repeats=10)`
-::::
+::: {.mk}
+[6]{.mk-n} [Boosting = gradient descent in function space: fit a small tree to $-\partial\mathcal L/\partial F$, add $\eta h$. Early stopping.]{.mk-t}
 :::
-::::
+::: {.mk}
+[7]{.mk-n} [Baseline ladder on identical grouped folds: majority → linear → forest/boosting. Good descriptors help the linear model.]{.mk-t}
+:::
+::: {.mk}
+[8]{.mk-n} [Cross-validate by image, session or specimen. Features that identify the image inflate random-split scores.]{.mk-t}
+:::
+::: {.mk}
+[9]{.mk-n} [MDI is biased (noise gets credit). Permutation on held-out groups; permute correlated features together.]{.mk-t}
+:::
+::: {.mk}
+[10]{.mk-n} [SHAP: $f(\mathbf x)=\phi_0+\sum_j\phi_j$, exact for trees. It explains the model, not the cause; it depends on the background.]{.mk-t}
+:::
+:::
 
-:::: {.notes}
-- Thought experiment: randomly reassign every column's `d_mean` to a different column. If balanced accuracy collapses, the model relies on `d_mean`.
-- The one point to land: compute permutation importance on the *grouped* held-out fold. Computing it on training data reintroduces the MDI problem.
-- Misconception to preempt: "a feature with zero permutation importance is physically irrelevant." It may be redundant with another feature that carries the same information (next slides).
-- Transition: "Compare the two on our forest."
-::::
-
-## MDI vs permutation importance on the defect forest
-
-![Random forest trained on 9 images, importances for the 3 held-out images. Left: MDI (training data) gives every feature — including the meaningless column position `x_pos` (orange) and the width `sigma` — non-zero credit and ranks the geometric fingerprints `G_0.9a`/`G_1.1a` high. Right: permutation importance on held-out images puts `x_pos` and `sigma` at ≈ 0 and ranks `d_mean` and `amp_rel` first.](img/mdi_vs_permutation.png){width="88%"}
-
-:::: {.notes}
-- Walk through: MDI ranks `d_mean`, `amp_rel`, `G_0.9a`, `G_1.1a` highest; permutation ranks `d_mean` (drop 0.43) and `amp_rel` (0.20) far ahead, then a cluster of features at 0.04–0.07. The `G` features look much more important by MDI than by permutation — they are correlated with `d_mean`, and MDI credits them for splits that `d_mean` could have made.
-- `x_pos`: MDI ≈ 0.005 (non-zero), permutation ≈ −0.005 (zero within noise). The forest made chance splits on it during training; on new images they do not help.
-- The one point to land: the two methods can disagree on the *ranking*, not only on noise features. Report permutation importance on held-out groups.
-- Misconception to preempt: "small MDI values do not matter." In a real dataset with 50 descriptors, a dozen noise features with MDI 0.01 each look like a meaningful "long tail".
-- Transition: "But permutation importance has its own blind spot: correlated features."
-::::
-
-## The correlated-feature pitfall
-
-![Left: adding a near-duplicate of `I_rel` (same quantity, slightly different integration window) splits its importance between the two copies; permuting both together reveals the true joint importance (≈ 2× either copy). Right: permuting `d_mean` alone creates columns whose bond length contradicts their own $G(R_s)$ values — the sum of single-feature importances exceeds the importance of the geometry group permuted together.](img/correlated_permutation.png){width="92%"}
-
-:::: {.notes}
-- Numbers (figure script): `I_rel` alone 0.059; with its duplicate: 0.047 and 0.055; both permuted together: 0.11. Geometry group: sum of single importances 0.59 vs group permuted together 0.49.
-- Pitfall 1 — masking: when one copy is shuffled, the model uses the other. Each copy looks half as important as the underlying information. In EM this happens constantly: peak vs integrated intensity, intensity with different windows, $\bar d$ vs radial symmetry functions.
-- Pitfall 2 — extrapolation: shuffling one of several dependent features creates impossible combinations (a column whose mean bond length says "compressed" while its $G$ values say "expanded"). The model is evaluated off the data manifold, and the drop measures extrapolation failure, not reliance [@hooker2021unrestricted].
-- The one point to land: permute **groups of correlated features together** (cluster features by correlation first), or retrain without the group (drop-column importance).
-- Transition: "SHAP is often presented as the fix. Let's see what it does."
-::::
-
-## SHAP: additive attribution for one prediction
-
-:::: {.incremental}
-- Decompose one prediction [@lundberg2017shap]:
-  $$
-  f(\mathbf{x}) = \phi_0 + \sum_{j=1}^{D}\phi_j, \qquad \phi_0 = \mathbb{E}[f(\mathbf{X})] .
-  $$
-- $\phi_j$ = **Shapley value**: the average marginal contribution of feature $j$ over all coalitions $S$ of other features:
-  $$
-  \phi_j = \sum_{S\subseteq D\setminus\{j\}} \frac{|S|!\,(D-|S|-1)!}{D!}\,\big[v(S\cup\{j\})-v(S)\big].
-  $$
-- **Completeness:** attributions sum exactly to prediction − baseline. **Signed:** pushes up or down.
-- **TreeSHAP** computes exact values for tree ensembles in polynomial time [@lundberg2020treeshap].
-::::
-
-:::: {.notes}
-- The value function $v(S)$ = expected model output when only the features in $S$ are known. The "interventional" version replaces the unknown features by values from a background sample — this is what the next figure uses.
-- The one point to land: SHAP answers a *local* question ("why did this column get $P(\text{vacancy})=0.69$?"). Averaging $|\phi_j|$ over many samples gives a global ranking.
-- Misconception to preempt: "SHAP is causal." It distributes the model's output among inputs according to fairness axioms. Nothing more.
-- Exam deliverable: "SHAP assigns a signed attribution $\phi_j$ to each feature; they sum to prediction minus baseline; exact and fast for trees (TreeSHAP)."
-- Transition: "Here is SHAP for our gradient-boosting classifier."
-::::
-
-## SHAP on the defect classifier
-
-![Exact (brute-force, $2^9$ coalitions) interventional Shapley values for $P(\text{vacancy})$ of a gradient-boosting model with 9 descriptors, computed without the `shap` package. Left: mean $|\phi_j|$ over 50 held-out columns. Right: one vacancy column — baseline 0.06, prediction 0.69; attributions sum exactly to the difference.](img/shapley_vacancy.png){width="92%"}
-
-:::: {.notes}
-- Left: `d_mean` dominates, then `I_rel` and `amp` — consistent with permutation importance. Nuisances `bg_local` and `x_pos` get small but non-zero average attributions.
-- Right: for this particular vacancy column, the compressed neighbour shell (`d_mean` = 11.37 px) pushes $P(\text{vacancy})$ up by +0.45; its raw amplitude (`amp` = 1.19, bright because the image has a high probe current) pushes it *down* by −0.22 — the model partially learned "bright = not vacancy" from the raw feature. `x_pos` gets −0.07 for this one sample: local attributions of a meaningless feature are not zero. A physicist reading this plot should conclude: remove the non-invariant raw amplitude and `x_pos` from the feature set.
-- The one point to land: SHAP is a debugging tool — it exposes *what the model uses per sample*, including the parts that are physically wrong.
-- Practical: with the `shap` package, `shap.TreeExplainer(model).shap_values(X)` does this in milliseconds for trees. The notebook has an optional guarded cell.
-- Transition: "SHAP has limits too — mostly the same ones."
-::::
-
-## SHAP: honest limitations
-
-:::: {.incremental}
-- **Correlated features:** interventional SHAP also builds off-manifold inputs (it mixes $\mathbf{x}_S$ with background values of $\mathbf{x}_{\bar S}$); credit between correlated copies is split, sometimes unstably.
-- **Baseline dependence:** $\phi_0$ and all $\phi_j$ depend on the background sample — explain relative to a *meaningful* reference (e.g. host columns).
-- **Describes the model, not the physics:** a shortcut feature gets a large, "fair" attribution.
-- **Cost:** exact Shapley is exponential in $D$; KernelSHAP approximates, TreeSHAP is exact only for trees.
-- **Good practice:** combine permutation importance on held-out groups + grouped features + SHAP for local debugging + domain knowledge.
-::::
-
-:::: {.notes}
-- The correlated-feature pitfall does not disappear with SHAP; it changes form. SHAP spreads credit among correlated features according to the value function; different value functions (interventional vs conditional) give different answers.
-- The one point to land: no explanation method is an oracle. Explanations are hypotheses about the model that must be tested (for example by retraining without a feature group, or by a controlled simulation where the ground-truth mechanism is known — which is exactly what the notebook's simulation provides).
-- Misconception to preempt: "SHAP is the gold standard, so a SHAP plot proves my interpretation." Reviewers increasingly ask for robustness checks.
-- EM anchor: the Week 7 shortcut-learning demo (a corner artefact) shows the same failure for CNN saliency.
-- The six-step miniproject checklist is in the backup slides.
-- Transition: "Let's wrap up."
-::::
-
-<!-- ===== §8. Wrap-up ===== -->
+::: {.notes}
+- These ten statements are the exam scope of this week. The long version is in the must-know list of the course.
+- Each statement has its slide: 1 and 2 in Act 1, 3 in Act 2, 4 in Act 3, 5 and 6 in Act 4, 7 and 8 in Act 5, 9 and 10 in Act 6.
+- Typical exam tasks: compute an impurity decrease (checkpoint of Act 3); compute the variance of an ensemble (checkpoint of Act 4); name the group for a validation claim (checkpoint of Act 5); use the SHAP sum rule (checkpoint of Act 6).
+:::
 
 ## Self-study this week
 
-:::: {.incremental}
-- **Notebook:** `notebooks/week05_features_trees.ipynb` — [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ECLIPSE-Lab/public_presentations/blob/main/data_science_for_em/notebooks/week05_features_trees.ipynb)
-  - simulate HAADF images → find columns → 14 descriptors → baseline ladder with `GroupKFold` → importance audit
-  - **Exercises:** grouped permutation importance; design a neighbour-contrast descriptor
-- **Runtime:** a few minutes on a laptop CPU; no GPU needed.
-::::
+::: {.columns}
+::: {.column width="60%"}
+**Notebook (molab):** `notebooks/unit05_features_trees.py`: "From an image to a classifier you can explain, on real HAADF-STEM data"
 
-:::: {.notes}
-- Notebook contents: simulate 12 HAADF images with vacancies and substitutions (per-image probe current, background, dose); peak finding + 2-D Gaussian refinement (≈ 0.13 px error); 14 descriptors and the baseline ladder with `GroupKFold` by image; random vs grouped split on raw features (leakage gap ≈ 0.08–0.10); MDI vs permutation importance and the near-duplicate pitfall; optional SHAP (only if `shap` is installed).
-- Point out the two exercises: the first is the correlated-feature fix (grouped permutation), the second is a small feature-design experiment evaluated honestly.
-- The one point to land: the notebook's self-check cells verify the four lessons — sub-pixel finding, descriptors ≫ model choice, random split optimism, nuisance feature ≈ 0 permutation importance.
-- Misconception to preempt: "I need to install shap." No — the notebook runs without it; the SHAP cell is optional.
-- Miniproject link: teams working on tabular or object-level data should reuse the ladder + grouped CV + importance code directly.
-- Transition: "The week in six exam-level statements."
-::::
+1. Parts 1–2: find the columns of a real image (smooth, maxima, threshold); compute `I_rel`, `d1` and `psi4` yourself and test their invariance.
+2. Parts 3–4: Gini and the best split by hand; grow a tree in NumPy; bagging and the $\rho\sigma^2$ floor; boosting with stumps and early stopping (⭐).
+3. Parts 5–6: random versus image-grouped validation and the baseline ladder; permutation importance with a noise column and a copied column.
 
-## Summary: must-know takeaways
+[Ten exercises with automatic checks; CPU only, NumPy and Matplotlib. Sign in to molab → **Fork** → your own copy.]{.muted}
+:::
+::: {.column width="40%"}
+[![](https://molab.marimo.io/molab-shield.svg){width="420" fig-alt="Open in molab"}](https://molab.marimo.io/github/ECLIPSE-Lab/public_presentations/blob/main/data_science_for_em/notebooks/unit05_features_trees.py)
 
-:::: {.incremental}
-1. A regionprops / column table is a **designed representation**; segmentation and detection errors propagate into correlated descriptor errors.
-2. Gaussian refinement of atom columns = least-squares fit (Gaussian noise); sub-pixel precision is limited by counts, not pixel size.
-3. Local descriptors must be translation, rotation and permutation invariant; ACSF/SOAP achieve this by summing over neighbours and using distances, angles or power spectra.
-4. Trees split greedily by impurity decrease; they are scale-free, capture thresholds and interactions, but have high variance and cannot extrapolate.
-5. Bagging variance $=\rho\sigma^2+\frac{1-\rho}{B}\sigma^2$: random forests lower $\rho$ with feature subsampling; gradient boosting fits trees to pseudo-residuals with learning rate $\eta$.
-6. MDI is training-set based and biased; permutation importance on held-out groups is honest but masked by correlated features; SHAP satisfies completeness but explains the model, not causation.
-::::
+**Reading:** Breiman, *Random forests* [@breiman2001randomforests]; Grinsztajn et al. on trees and tabular data [@grinsztajn2022treesdl]; Lundberg et al. on TreeSHAP [@lundberg2020treeshap].
+:::
+:::
 
-:::: {.notes}
-- Summary to say aloud (merged from the former summary slide):
-  - **Images → tables:** segment objects (particles, columns), then describe them; every step's hyperparameters shape the table.
-  - **Atom-column finding:** smooth → local maxima → 2-D Gaussian fit gives sub-pixel positions, amplitudes and widths.
-  - **Descriptors must be invariant** to translation, rotation, neighbour order — and to image-level nuisances (use ratios such as $I_\text{rel}$).
-  - **Trees** partition feature space greedily; **random forests** reduce variance by averaging decorrelated trees; **gradient boosting** reduces bias by functional gradient descent.
-  - **Baseline ladder with grouped CV:** in our defect task descriptors moved balanced accuracy from ≈ 0.5 to > 0.9; the model choice moved it by a few points.
-  - **Explanations:** prefer held-out permutation importance over MDI; permute correlated groups together; SHAP explains single predictions of the *model*, not physics.
-- The order of importance in practice: data/labels → descriptors → validation → model → explanation. Students tend to invert it.
-- These six statements are the exam core for Week 5; the full list for the course lives in `_shared/exam_mustknow.md`.
-- Exam-style prompt to practise: "A random forest trained on particle descriptors reports 'particle area' as most important by MDI. Name two reasons why this may be misleading and how you would check it." (Answer: cardinality/training-set bias; correlation with perimeter/diameter; check with grouped held-out permutation importance of the size-feature cluster, or drop-column retraining.)
-- Transition: "Next week: letting the model learn the features."
-::::
+::: {.notes}
+- The notebook uses the same four images and the same feature table as the lecture. It loads the data from the course repository; no download by hand is necessary.
+- Everything is NumPy: the students write the split search, the tree, the bagging loop and the boosting loop themselves. Each is 10 to 20 lines.
+- Each exercise has an automatic check and a solution cell. The exercise with the star is optional.
+- Time: about 2 to 3 hours.
+:::
 
 ## Next week: neural networks & backpropagation
 
-:::: {.incremental}
-- Today we **designed** $\boldsymbol\phi(\mathbf{x})$ from physics and used simple models on top.
-- **Week 6:** make the feature map **learnable** — perceptron → MLP, activation functions, softmax & cross-entropy.
-- **Autograd & backpropagation:** the chain rule on a computational graph, a worked 2-layer example.
-- **Training diagnostics:** initialisation, normalisation, loss curves, overfit-one-batch check.
-- The **baseline ladder continues:** the MLP must beat today's logistic regression / GBM on the *same* grouped folds — in the notebook it did not (0.93 vs 0.975).
-::::
+::: {.claim}
+Today we designed the descriptors by hand. Next week the model learns its own features, and it must beat today's ladder on the same grouped folds.
+:::
 
-:::: {.notes}
-- Frame next week as the next rung of the ladder: an MLP on the same descriptors adds flexibility but also variance. Only on raw, high-dimensional inputs (images) do learned features pay off — Weeks 7–8.
-- The one point to land: neural networks do not replace today's discipline; they plug into the same ERM + grouped-validation framework.
-- Forward link to the architecture arc: MLP (no structure, W6) → CNN (grid, W7) → GNN/transformer (graph/set, W10). Today's local environments are the hand-crafted version of what a GNN learns by message passing.
-- Transition: "Do the notebook before Week 6 — see you next week."
-::::
+- Today: image → **hand-made descriptors** → tree ensemble. 84 % on a new image.
+- Next week: a network of simple units learns the descriptors **and** the classifier from the data.
+- The tools stay: a loss from the noise model, gradient descent (Week 4), validation by image (today).
+- New: the chain rule on a computational graph, **backpropagation**.
+
+::: {.notes}
+- Bridge: the weak point of today was the descriptor design. We needed physics knowledge to find `I_rel` and `psi4`, and we still made errors at the image border and at the interface.
+- A neural network replaces the hand-made descriptors by learned ones. The price: more data, more compute, and a model that is harder to explain.
+- The baseline ladder gets a new rung. The network must beat 84 % on the same leave-one-image-out folds. We will see if it does.
+- Preparation: repeat the chain rule and the gradient descent slides of Week 4.
+:::
 
 <!-- BEGIN prev-next -->
 
@@ -928,76 +1253,93 @@ $$
 
 ## Backup slides {visibility="uncounted"}
 
-Material moved out of the 90-minute lecture path; covered by the notebook and self-study.
-
-## Column finding: failure modes to check {visibility="uncounted"}
-
-:::: {.incremental}
-- **Missed columns** (below threshold) → vacancies-rich regions under-sampled; check detection recall on a simulated image with known truth.
-- **Double detections** (`min_distance` too small) → fake neighbours at $r \ll a$; check the nearest-neighbour distance histogram.
-- **Edge columns:** incomplete neighbour shells → descriptors differ systematically; drop columns within one lattice spacing of the border (as in the notebook).
-- **Mismatch to ground truth:** in simulations, match detected ↔ true positions with a KD-tree and a tolerance ($< a/3$) before assigning labels.
-- **Rule:** validate the finder on **simulated images with known truth** before trusting any downstream statistics.
-::::
-
-:::: {.notes}
-- In our simulation: 400 true columns, 400 detected, 400 matched within a/3 in the first image; mean position error 0.13 px over 12 images. That is a best case — real data with drift and contamination will be worse.
-- The one point to land: simulation with known ground truth is the standard way to validate an image-analysis pipeline. It is also how we get labels for supervised learning when real labels are scarce (a theme for Week 8: sim-to-real).
-- Misconception to preempt: "if the overlay looks right, the finder is right." Eyeballing 400 columns misses the 2 % that matter — the defects.
-- EM anchor: for real data, compare with a multislice simulation (abTEM, Dr.Probe) of the expected structure.
-- Transition: "Now to the core of today's feature design: local-environment descriptors."
-::::
+Material outside the 90-minute path, for questions and self-study.
 
 ## Gradient boosting in practice {visibility="uncounted"}
 
+| Library | Idea | When to use |
+|---|---|---|
+| `HistGradientBoosting*` (scikit-learn) | histogram bins, native missing values | default; no extra dependency |
+| XGBoost [@chen2016xgboost] | second-order steps, L1/L2 on leaf values | large tables, GPU |
+| LightGBM | leaf-wise growth, very fast | very large tables |
+| CatBoost [@prokhorenkova2018catboost] | ordered boosting, categorical features | many categorical columns |
+
+**Tuning recipe:** (1) η = 0.05 to 0.1; (2) the number of trees by early stopping on *grouped* validation data; (3) tree size (`max_leaf_nodes` 8 to 64); (4) `min_samples_leaf`, L2; (5) subsampling of rows and columns.
+
+::: {.notes}
+- All four libraries implement the algorithm of Act 4. The differences are speed and regularisation.
+- The histogram trick: sort each feature once into at most 255 bins. The split search then costs the number of bins, not the number of rows.
+- The most common error in practice: early stopping on a random validation split of grouped data. The model stops too late.
+:::
+
+## Trees are not rotation invariant {visibility="uncounted"}
+
+![A tree splits along the axes of the table. A boundary that is diagonal in the feature space needs many steps.](img/trees_vs_dl.png){width="80%" fig-alt="Decision boundaries of a tree and of a linear model for an axis-aligned and for a rotated class boundary"}
+
+::: {.notes}
+- A tree splits on one feature at a time. A class boundary along a diagonal, for example "d1 − d4 > 0", needs a staircase of many splits.
+- For tables this is often an advantage: the columns have a meaning, and physical thresholds apply to single quantities. Grinsztajn and co-workers name this as one reason why trees beat neural networks on tables.
+- If you know that a combination matters, for example a ratio or a difference, add it as a descriptor. One good descriptor replaces many splits.
+:::
+
+## Out-of-bag error and regression trees {visibility="uncounted"}
+
 :::: {.columns}
 ::: {.column width="50%"}
-**Regularisation knobs**
+**Out-of-bag (OOB)**
 
-- learning rate $\eta$ = 0.03–0.1 + **early stopping**
-- shallow trees (depth 3–8 / `max_leaf_nodes`)
-- subsampling rows / columns (stochastic GB)
-- L2 penalty on leaf values, min samples per leaf
+- a bootstrap sample omits a row with probability $(1-1/N)^N\to e^{-1}\approx 37\,\%$
+- predict each row with the trees that did not see it
+- a validation score without a second data set
+- **grouped data:** OOB rows share the image with training rows → optimistic, like a random split
 :::
 ::: {.column width="50%"}
-**Implementations**
+**Regression trees**
 
-- `HistGradientBoostingClassifier` (scikit-learn): histogram binning, native missing values, fast
-- XGBoost [@chen2016xgboost] — regularised objective, the Kaggle workhorse
-- LightGBM, CatBoost [@prokhorenkova2018catboost] — speed / categorical features
+- impurity = variance of $y$ in the node
+- a leaf predicts the mean of its rows
+- the split minimises the sum of squared errors
+- other losses: absolute error (median leaf), Poisson deviance (counts)
+- the prediction is piecewise constant: no extrapolation
 :::
 ::::
 
-. . .
+::: {.notes}
+- OOB is useful for a fast check during the development. For the final claim, use the grouped split.
+- Regression trees are the weak learners of gradient boosting, also for classification: the trees fit the pseudo-residuals, which are real numbers.
+:::
 
-> Tuning recipe: fix $\eta=0.05$, early-stop the number of trees on grouped validation folds, then tune depth and `min_samples_leaf`.
+## When the column finder fails {visibility="uncounted"}
 
-:::: {.notes}
-- In the notebook we use `HistGradientBoostingClassifier(max_iter=150, class_weight="balanced")` — balanced accuracy 0.95 under `GroupKFold`.
-- The one point to land: boosting has more hyperparameters than a random forest; tune them *inside* grouped CV, or you leak (Week 4).
-- Practical note for shared/CPU machines: histogram GB uses OpenMP threads; on an overloaded server set `OMP_NUM_THREADS` to a small number — oversubscription can make it 20× slower.
-- Misconception to preempt: "XGBoost is a different algorithm." It is gradient boosting with a second-order approximation and extra regularisation; the concepts are identical.
-- Transition: "Why do these models dominate tabular benchmarks?"
-::::
+| Failure | Sign | Cure |
+|---|---|---|
+| threshold too low | maxima in the vacuum and in amorphous regions | raise the threshold; classify the candidates (today) |
+| σ too large | close columns merge (dumbbells) | smaller σ; fit two Gaussians |
+| σ too small | several maxima for one column at low dose | larger σ; a minimum distance |
+| image border | cut neighbourhoods, wrong descriptors | discard a margin of one neighbour distance |
+| scan distortion, drift | distances change along the slow scan axis | average fast frames; correct the drift first |
+| thickness gradient | intensities change across the image | local normalisation (`I_rel`) |
+
+::: {.notes}
+- Every row is an error that goes into the feature table, and from there into the model. This is must-know statement 1: detection errors propagate.
+- Tools that implement the complete pipeline: Atomap [@nord2017atomap] for atom columns; scikit-image [@vanderwalt2014scikitimage] for segmentation and region properties of particles.
+:::
 
 ## Checklist: explaining a tabular EM model {visibility="uncounted"}
 
-:::: {.incremental}
-1. **Ladder first:** is the model better than majority and linear under grouped CV? If not, there is little to explain.
-2. **Held-out permutation importance** with the same grouped folds; report mean ± std over repeats.
-3. **Cluster correlated descriptors** (e.g. |Spearman ρ| > 0.8) and permute clusters together.
-4. **Check nuisance features:** position, image id, background, acquisition time must have ≈ 0 importance.
-5. **SHAP** for individual failure cases (misclassified columns): which descriptor misled the model?
-6. **Confirm by intervention:** retrain without a feature group; simulate data where the mechanism is known.
-::::
+1. State the claim and the group (image, session, specimen).
+2. Report the baseline ladder on identical grouped folds.
+3. Add a noise column. Compute permutation importance on held-out groups.
+4. Cluster correlated descriptors. Permute or drop the groups.
+5. Use SHAP for single cases. State the background data and the model output (probability or log-odds).
+6. Check the sign of each main effect against physics.
+7. Look at the wrong predictions on the image.
+8. Do not claim a cause.
 
-:::: {.notes}
-- This list is the practical outcome of §7 — copy it into the miniproject report template.
-- The one point to land: step 6 is the strongest evidence. Importance values are observational statements about a model; retraining and simulation are experiments.
-- Misconception to preempt: "one importance plot is enough." Different methods answer different questions; agreement across methods is what builds trust.
-- EM anchor: in the notebook, the simulation knows the ground truth (relaxation + intensity), so students can verify that the importance ranking recovers the built-in physics — and that `x_pos` is correctly ignored.
-- Transition: "Let's wrap up."
-::::
+::: {.notes}
+- This list is a template for a methods section and for a thesis chapter.
+- Points 1 and 2 come from Week 4 and Act 5. Points 3 to 8 are Act 6.
+:::
 
 ## References
 
